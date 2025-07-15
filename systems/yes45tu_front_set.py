@@ -20,8 +20,9 @@ from utils.formulas import (
     calculate_int_vertical,
     calculate_og_int_horizontal,
     calculate_og_head_h,
-    calculate_sill_flashing_h
-)
+    calculate_sill_flashing_h,
+    calculate_fabrication_joints
+    )
 
 def calculate_yes45tu_quantities(
     bays_wide: int,
@@ -54,6 +55,7 @@ def calculate_yes45tu_quantities(
         "Int. Vertical": calculate_int_vertical(bays_wide, total_count, opening_height),
         "OG Int. Horizontal": calculate_og_int_horizontal(opening_width, total_count),
         "OG Head (H)": calculate_og_head_h(opening_width, total_count),
-        "Sill Flashing (H)": calculate_sill_flashing_h(opening_width, total_count)
+        "Sill Flashing (H)": calculate_sill_flashing_h(opening_width, total_count),
+        "Fabrication Joints": calculate_fabrication_joints(bays_wide, bays_tall, total_count)
     }
     return outputs
