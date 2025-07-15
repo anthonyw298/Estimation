@@ -9,3 +9,7 @@
 #   exit
 
 # customtkinter for ui design
+# New ui designing needs recompiling and rerelease aka take binary ui and drop down on github
+
+# new folder 1 file per system
+# tweak ui for new change
