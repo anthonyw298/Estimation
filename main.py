@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
-from estimation import generate_excel_report # Import the function
+from utils.excel_generator import generate_excel_report  # Corrected import
+from systems.yes45tu_front_set import calculate_yes45tu_quantities # Import the system calculation function
 
 class App(ctk.CTk):
     """
@@ -24,15 +25,15 @@ class App(ctk.CTk):
         self.data_prompts = [
             "Enter System Input (YES 45TU Front Set(OG) or other):",
             "Enter Elevation Type:",
-            "Enter Total Count (integer):",
-            "Enter # Bays Wide (integer):",
-            "Enter # Bays Tall (integer):",
-            "Enter Opening Width (float):",
-            "Enter Opening Height (float):",
-            "Enter Sq Ft per Type (float):",
-            "Enter Total Sq Ft (float):",
-            "Enter Perimeter Ft (float):",
-            "Enter Total Perimeter Ft (float):"
+            "Enter Total Count:",
+            "Enter # Bays Wide:",
+            "Enter # Bays Tall:",
+            "Enter Opening Width:",
+            "Enter Opening Height:",
+            "Enter Sq Ft per Type:",
+            "Enter Total Sq Ft:",
+            "Enter Perimeter Ft:",
+            "Enter Total Perimeter Ft:"
         ]
         self.current_prompt_index = 0 # Tracks which prompt is currently active
         self.collected_data = []      # Stores all data entered by the user
@@ -121,7 +122,7 @@ class App(ctk.CTk):
     def show_completion_screen(self):
         """
         Displays a final screen indicating that all data has been collected.
-        Also calls the `generate_excel_report` function from excel_calculator.py.
+        Also calls the `generate_excel_report` function.
         """
         # Remove all existing widgets from the main frame
         for widget in self.main_frame.winfo_children():
@@ -154,7 +155,7 @@ class App(ctk.CTk):
 
     def call_excel_generator(self):
         """
-        Prepares data and calls the generate_excel_report function from excel_calculator.py.
+        Prepares data and calls the generate_excel_report function.
         """
         # Ensure correct number of arguments
         if len(self.collected_data) != len(self.data_prompts):
@@ -178,7 +179,27 @@ class App(ctk.CTk):
             self.update_completion_status(f"Error: Invalid number format. Please check your inputs. ({e})", "red")
             return
 
-        # Call the external function from excel_calculator.py
+        # --- IMPORTANT CHANGE HERE ---
+        # First, calculate the specific outputs for the system
+        # This function encapsulates all the formulas for "YES 45TU Front Set(OG)"
+        if system_input == "YES 45TU Front Set(OG)":
+            calculated_outputs = calculate_yes45tu_quantities(
+                bays_wide,
+                bays_tall,
+                total_count,
+                opening_width,
+                opening_height
+            )
+        else:
+            # Handle cases for other systems or no specific calculations
+            # For now, it's an empty dictionary if the system doesn't match
+            # You would expand this with `elif system_input == "Other System":` etc.
+            calculated_outputs = {}
+            self.update_completion_status(f"Warning: No specific calculations defined for '{system_input}'. Only input data will be in Excel.", "orange")
+
+
+        # Call the external generate_excel_report function from utils.excel_generator.py
+        # Now passing the `calculated_outputs` dictionary
         generate_excel_report(
             system_input,
             elevation_type,
@@ -191,6 +212,7 @@ class App(ctk.CTk):
             total_sqft,
             perimeter_ft,
             total_perimeter_ft,
+            calculated_outputs,  # Pass the dictionary of calculated outputs
             self.update_completion_status # Pass the UI update callback
         )
 

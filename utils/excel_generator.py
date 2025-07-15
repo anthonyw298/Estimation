@@ -1,3 +1,5 @@
+# utils/excel_generator.py
+
 import openpyxl
 from openpyxl.utils import get_column_letter
 
@@ -13,17 +15,18 @@ def generate_excel_report(
     total_sqft: float,
     perimeter_ft: float,
     total_perimeter_ft: float,
+    calculated_outputs: dict, # This is the key: it expects a dictionary of outputs
     completion_callback # A callback function to update UI status
 ):
     """
-    Performs Excel calculations and generates an Excel file based on provided inputs.
+    Generates an Excel file based on provided inputs and pre-calculated outputs.
     Updates the UI via a callback function.
     """
-    # --- System Input Validation ---
+    # --- System Input Validation (Simplified as main.py handles initial check) ---
     if system_input != "YES 45TU Front Set(OG)":
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws['A1'] = "System not matched. Empty file created."
+        ws['A1'] = f"System '{system_input}' not matched. Empty file created."
         try:
             wb.save("output.xlsx")
             completion_callback(f"System not matched. Empty 'output.xlsx' created.", "orange")
@@ -31,13 +34,12 @@ def generate_excel_report(
             completion_callback(f"Error saving empty file: {e}", "red")
         return # Exit the function if system doesn't match
 
-    # --- Proceed with calculations and Excel generation if system matches ---
+    # --- Proceed with Excel generation if system matches ---
     try:
-        # Create a new Excel workbook and select the active worksheet
         wb = openpyxl.Workbook()
         ws = wb.active
 
-        # Define input and output headers
+        # Define input headers
         inputs_headers = [
             "System Input", "Elevation Type", "Total Count",
             "# Bays Wide", "# Bays Tall",
@@ -45,14 +47,9 @@ def generate_excel_report(
             "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
         ]
 
-        outputs_headers = [
-            "Total Gasket (Ft)", "End Dam", "Water Deflector", "Assembly Screw",
-            "Sill Flash Screw", "End Dam Screw", "Setting Block Chair",
-            "Side Block", "Setting Block", "Anti Walk Block Deep Pocket",
-            "Anti Walk Block Shallow Pocket", "Setting Block (Int. Horizontal)",
-            "Jamb Ft (V)", "Sill Ft (H)", "Flush Filler (V)",
-            "Int. Vertical", "OG Int. Horizontal", "OG Head (H)", "Sill Flashing (H)"
-        ]
+        # Get output headers from the keys of the calculated_outputs dictionary
+        # This makes it flexible for other systems if they have different outputs
+        outputs_headers = list(calculated_outputs.keys())
 
         # Combine input and output headers and write them to the first row
         headers = inputs_headers + outputs_headers
@@ -66,28 +63,8 @@ def generate_excel_report(
             sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft
         ]
 
-        # Calculate output values directly and store them in a list
-        output_values = [
-            (((bays_wide * 4 * opening_height) + (bays_tall * 4 * opening_width)) * total_count) / 12,  # Total Gasket (Ft)
-            2 * total_count,  # End Dam
-            2 * bays_wide * total_count,  # Water Deflector
-            ((bays_wide * 8) + (((bays_tall - 1) * 6) * bays_wide)) * total_count,  # Assembly Screw
-            3 * bays_wide * total_count,  # Sill Flash Screw
-            4 * total_count,  # End Dam Screw
-            2 * bays_wide,  # Setting Block Chair
-            (bays_wide - 1) * bays_tall * total_count,  # Side Block
-            2 * bays_wide * total_count,  # Setting Block
-            2 * bays_tall * total_count,  # Anti Walk Block Deep Pocket
-            (bays_wide - 1) * bays_tall * total_count,  # Anti Walk Block Shallow Pocket
-            2 * bays_wide * total_count,  # Setting Block (Int. Horizontal)
-            (2 * opening_height) / 12 * total_count,  # Jamb Ft (V)
-            (opening_width / 12) * total_count,  # Sill Ft (H)
-            ((bays_wide - 1) * total_count * opening_height) / 12,  # Flush Filler (V)
-            ((bays_wide - 1) * total_count * opening_height) / 12,  # Int. Vertical (same as Flush Filler)
-            (opening_width / 12) * total_count,  # OG Int. Horizontal
-            (opening_width / 12) * total_count,  # OG Head (H)
-            (opening_width / 12) * total_count   # Sill Flashing (H)
-        ]
+        # Get output values in the correct order based on outputs_headers
+        output_values = [calculated_outputs[key] for key in outputs_headers]
 
         # Combine inputs and outputs and write them to row 2
         all_values = input_values + output_values
@@ -108,4 +85,3 @@ def generate_excel_report(
     except Exception as e:
         completion_callback(f"An error occurred during Excel generation: {e}", "red")
         print(f"Error during Excel generation: {e}")
-
