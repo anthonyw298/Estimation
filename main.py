@@ -145,16 +145,13 @@ class App(ctk.CTk):
             system_input = self.collected_data[0]
             elevation_type = self.collected_data[1]
             total_count = int(self.collected_data[2])
-
             sqft_per_type = 0.0
             total_sqft = 0.0
             perimeter_ft = 0.0
             total_perimeter_ft = 0.0
             calculated_outputs = {}
-
             opening_width_inches = 0.0
             opening_height_inches = 0.0
-            
             bays_wide = 0
             bays_tall = 0
 
@@ -168,25 +165,17 @@ class App(ctk.CTk):
                 opening_width_inches = float(self.collected_data[5])
                 opening_height_inches = float(self.collected_data[6])
 
-                calculated_outputs = calculate_yes45tu_quantities(
-                    bays_wide,
-                    bays_tall,
-                    total_count,
-                    opening_width_inches,
-                    opening_height_inches
-                )
+                calculated_outputs = calculate_yes45tu_quantities(bays_wide,bays_tall,total_count,opening_width_inches,opening_height_inches)
+
             else:
                 opening_width_inches = float(self.collected_data[3])
                 opening_height_inches = float(self.collected_data[4])
-
                 self.update_completion_status(f"Warning: No specific calculations defined for '{system_input}'. Calculating basic geometry.", "orange")
 
-            opening_width_feet = opening_width_inches / 12.0
+            opening_width_feet = opening_width_inches / 12.0                #automatically calculates area and perimeter in feet
             opening_height_feet = opening_height_inches / 12.0
-
             sqft_per_type = calculate_rectangle_area(opening_width_feet, opening_height_feet)
             total_sqft = sqft_per_type * total_count
-
             perimeter_ft = calculate_perimeter(opening_width_feet, opening_height_feet)
             total_perimeter_ft = perimeter_ft * total_count
 
@@ -194,7 +183,7 @@ class App(ctk.CTk):
             self.update_completion_status(f"Error processing inputs: {e}. Please ensure correct data types were entered.", "red")
             return
 
-        generate_excel_report(
+        generate_excel_report( #run function to generate the Excel report
             system_input,
             elevation_type,
             total_count,
