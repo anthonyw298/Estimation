@@ -60,10 +60,10 @@ def calculate_sill_ft_h(opening_width: float, total_count: int) -> float:
     return (opening_width / 12) * total_count
 
 def calculate_flush_filler_v(bays_wide: int, total_count: int, opening_height: float) -> float:
-    return (bays_wide * opening_height / 12) * total_count
+    return ((bays_wide-1) * opening_height / 12) * total_count
 
 def calculate_int_vertical(bays_wide: int, total_count: int, opening_height: float) -> float:
-    return (bays_wide * opening_height / 12) * total_count
+    return ((bays_wide-1) * opening_height / 12) * total_count
 
 def calculate_og_int_horizontal(opening_width: float, total_count: int) -> float:
     return (opening_width / 12) * total_count
