@@ -1,7 +1,7 @@
-# utils/excel_generator.py
-
 import openpyxl
 from openpyxl.utils import get_column_letter
+from utils.part_number import PART_NUMBER_MAP
+from utils.pricing import get_price_by_part
 
 def generate_excel_report(
     system_input: str,
@@ -15,73 +15,95 @@ def generate_excel_report(
     total_sqft: float,
     perimeter_ft: float,
     total_perimeter_ft: float,
-    calculated_outputs: dict, # This is the key: it expects a dictionary of outputs
-    completion_callback # A callback function to update UI status
+    calculated_outputs: list,  # Now expecting list of dicts from yes45tu_front_set
+    completion_callback=None  # Made optional for flexibility
 ):
-    """
-    Generates an Excel file based on provided inputs and pre-calculated outputs.
-    Updates the UI via a callback function.
-    """
-    # --- System Input Validation (Simplified as main.py handles initial check) ---
     if system_input != "YES 45TU Front Set(OG)":
         wb = openpyxl.Workbook()
         ws = wb.active
         ws['A1'] = f"System '{system_input}' not matched. Empty file created."
         try:
             wb.save("output.xlsx")
-            completion_callback(f"System not matched. Empty 'output.xlsx' created.", "orange")
+            if completion_callback:
+                completion_callback(f"System not matched. Empty 'output.xlsx' created.", "orange")
         except Exception as e:
-            completion_callback(f"Error saving empty file: {e}", "red")
-        return # Exit the function if system doesn't match
+            if completion_callback:
+                completion_callback(f"Error saving empty file: {e}", "red")
+        return
 
-    # --- Proceed with Excel generation if system matches ---
     try:
         wb = openpyxl.Workbook()
         ws = wb.active
 
-        # Define input headers
         inputs_headers = [
             "System Input", "Elevation Type", "Total Count",
             "# Bays Wide", "# Bays Tall",
             "Opening Width", "Opening Height",
             "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
         ]
-
-        # Get output headers from the keys of the calculated_outputs dictionary
-        # This makes it flexible for other systems if they have different outputs
-        outputs_headers = list(calculated_outputs.keys())
-
-        # Combine input and output headers and write them to the first row
+        outputs_headers = [item['description'] for item in calculated_outputs]
         headers = inputs_headers + outputs_headers
-        for idx, header in enumerate(headers):
-            ws[f"{get_column_letter(idx + 1)}1"] = header
 
-        # Prepare input values for row 2
+        # Write headers row 1
+        for idx, header in enumerate(headers, 1):
+            ws[f"{get_column_letter(idx)}1"] = header
+
         input_values = [
             system_input, elevation_type, total_count,
             bays_wide, bays_tall, opening_width, opening_height,
             sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft
         ]
-
-        # Get output values in the correct order based on outputs_headers
-        output_values = [calculated_outputs[key] for key in outputs_headers]
-
-        # Combine inputs and outputs and write them to row 2
+        output_values = [item['quantity'] for item in calculated_outputs]
         all_values = input_values + output_values
-        for idx, val in enumerate(all_values):
-            ws[f"{get_column_letter(idx + 1)}2"] = val
 
-        # Auto-size each column based on max length of header or data
+        # Write values row 2 (quantities)
+        for idx, val in enumerate(all_values, 1):
+            ws[f"{get_column_letter(idx)}2"] = val
+
+        # Calculate prices and total cost per part for row 3
+        prices = []
+        for item in calculated_outputs:
+            part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'])
+            if part_num:
+                price = get_price_by_part(part_num)
+                prices.append(price if price is not None else 0.0)
+            else:
+                prices.append(0.0)
+
+        total_costs = []
+        for qty, price in zip(output_values, prices):
+            try:
+                total_costs.append(float(qty) * float(price))
+            except Exception:
+                total_costs.append(0.0)
+
+        # The first 11 columns in row 3 (inputs) will be left blank or zero
+        for idx in range(1, len(inputs_headers) + 1):
+            ws[f"{get_column_letter(idx)}3"] = ""  # blank
+
+        # Write total cost for each output in row 3
+        for idx, cost in enumerate(total_costs, start=len(inputs_headers) + 1):
+            ws[f"{get_column_letter(idx)}3"] = cost
+
+        # Optionally, add a label for row 3 at column 1
+        ws["A3"] = "Total Cost ($)"
+
+        # Auto-size columns
         for idx, header in enumerate(headers, 1):
             col_letter = get_column_letter(idx)
-            cell_value = str(ws[f"{col_letter}2"].value) if ws[f"{col_letter}2"].value is not None else ""
-            ws.column_dimensions[col_letter].width = max(len(header), len(cell_value)) + 2
+            max_len = len(str(header))
+            for row in range(1, 4):
+                cell_val = ws[f"{col_letter}{row}"].value
+                if cell_val is not None:
+                    max_len = max(max_len, len(str(cell_val)))
+            ws.column_dimensions[col_letter].width = max_len + 2
 
-        # Save workbook
         wb.save("output.xlsx")
-        completion_callback("Excel file 'output.xlsx' generated successfully!", "green")
-        print("Excel file saved as 'output.xlsx'") # Also print to console for confirmation
+        if completion_callback:
+            completion_callback("Excel file 'output.xlsx' generated successfully!", "green")
+        print("Excel file saved as 'output.xlsx'")
 
     except Exception as e:
-        completion_callback(f"An error occurred during Excel generation: {e}", "red")
+        if completion_callback:
+            completion_callback(f"An error occurred during Excel generation: {e}", "red")
         print(f"Error during Excel generation: {e}")

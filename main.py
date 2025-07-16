@@ -9,14 +9,14 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("Excel Data Entry Application")
-        self.geometry("500x350")
+        self.geometry("500x400")
         self.resizable(False, False)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
         self.initial_prompt = "Enter System Input (YES 45TU Front Set(OG) or other):"
-        
+
         self.yes45tu_prompts = [
             "Enter Elevation Type:",
             "Enter Total Count:",
@@ -25,7 +25,7 @@ class App(ctk.CTk):
             "Enter Opening Width (in inches):",
             "Enter Opening Height (in inches):"
         ]
-        
+
         self.generic_prompts = [
             "Enter Elevation Type:",
             "Enter Total Count:",
@@ -35,17 +35,17 @@ class App(ctk.CTk):
 
         self.data_prompts = [self.initial_prompt]
         self.current_prompt_index = 0
-        self.collected_data = [] 
-        # Ensure system_input_chosen is always initialized
-        self.system_input_chosen = "" 
+        self.collected_data = []
+        self.system_input_chosen = ""
 
         self.main_frame = ctk.CTkFrame(self, corner_radius=10)
         self.main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-        
+
         self.main_frame.grid_columnconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure(2, weight=1)
+        self.main_frame.grid_rowconfigure(3, weight=1)
 
         self.title_label = ctk.CTkLabel(
             self.main_frame,
@@ -83,6 +83,8 @@ class App(ctk.CTk):
     def display_current_prompt(self):
         if self.current_prompt_index < len(self.data_prompts):
             self.title_label.configure(text=self.data_prompts[self.current_prompt_index])
+            self.entry_box.configure(state="normal")
+            self.submit_button.configure(state="normal")
             self.entry_box.delete(0, tk.END)
             self.entry_box.focus_set()
             self.status_label.configure(text="")
@@ -92,28 +94,37 @@ class App(ctk.CTk):
     def submit_data(self):
         entered_text = self.entry_box.get().strip()
 
-        if entered_text:
-            if self.current_prompt_index == 0:
-                # Set system_input_chosen here, after the first prompt
-                self.system_input_chosen = entered_text.upper() 
-                self.collected_data.append(entered_text) 
-
-                if self.system_input_chosen == "YES 45TU FRONT SET(OG)":
-                    self.data_prompts.extend(self.yes45tu_prompts)
-                else:
-                    self.data_prompts.extend(self.generic_prompts)
-                
-                self.current_prompt_index += 1
-                self.display_current_prompt()
-            else:
-                self.collected_data.append(entered_text)
-                self.current_prompt_index += 1
-                self.display_current_prompt()
-        else:
+        if not entered_text:
             self.status_label.configure(text="Please enter some text!")
             self.after(1500, lambda: self.status_label.configure(text=""))
+            return
+
+        if self.current_prompt_index == 0:
+            # Normalize system input to uppercase and strip whitespace
+            self.system_input_chosen = entered_text.upper()
+            self.collected_data = [entered_text]  # reset collected data with first entry
+
+            # Reset data_prompts properly to avoid repeated appends
+            if self.system_input_chosen == "YES 45TU FRONT SET(OG)":
+                self.data_prompts = [self.initial_prompt] + self.yes45tu_prompts
+            else:
+                self.data_prompts = [self.initial_prompt] + self.generic_prompts
+
+            self.current_prompt_index = 1
+            self.display_current_prompt()
+
+        else:
+            # Append entered data
+            self.collected_data.append(entered_text)
+            self.current_prompt_index += 1
+            self.display_current_prompt()
 
     def show_completion_screen(self):
+        # Disable entry and submit button to prevent input
+        self.entry_box.configure(state="disabled")
+        self.submit_button.configure(state="disabled")
+        self.status_label.configure(text="")
+
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
@@ -129,33 +140,47 @@ class App(ctk.CTk):
             wraplength=300
         )
         self.completion_label.grid(row=0, column=0, pady=30, sticky="nsew")
-        
-        self.after(100, lambda: self.call_excel_generator())
+
+        self.restart_button = ctk.CTkButton(
+            self.main_frame,
+            text="Restart",
+            command=self.restart_app,
+            state="disabled"  # enabled after generation
+        )
+        self.restart_button.grid(row=1, column=0, pady=(10, 20))
+
+        self.after(100, self.call_excel_generator)
 
     def update_completion_status(self, message: str, color: str):
         self.completion_label.configure(text=message, text_color=color)
+        # Enable restart button once finished (success or failure)
+        self.restart_button.configure(state="normal")
 
     def call_excel_generator(self):
         expected_len = len(self.data_prompts)
         if len(self.collected_data) != expected_len:
-            self.update_completion_status(f"Error: Incorrect number of inputs provided. Expected {expected_len}, got {len(self.collected_data)}.", "red")
+            self.update_completion_status(
+                f"Error: Expected {expected_len} inputs, but got {len(self.collected_data)}.",
+                "red"
+            )
             return
 
         try:
             system_input = self.collected_data[0]
             elevation_type = self.collected_data[1]
             total_count = int(self.collected_data[2])
+
             sqft_per_type = 0.0
             total_sqft = 0.0
             perimeter_ft = 0.0
             total_perimeter_ft = 0.0
-            calculated_outputs = {}
+            calculated_outputs = []
             opening_width_inches = 0.0
             opening_height_inches = 0.0
             bays_wide = 0
             bays_tall = 0
 
-            if not hasattr(self, 'system_input_chosen') or self.system_input_chosen == "":
+            if not self.system_input_chosen:
                 self.update_completion_status("Internal Error: System input choice not found.", "red")
                 return
 
@@ -165,25 +190,33 @@ class App(ctk.CTk):
                 opening_width_inches = float(self.collected_data[5])
                 opening_height_inches = float(self.collected_data[6])
 
-                calculated_outputs = calculate_yes45tu_quantities(bays_wide,bays_tall,total_count,opening_width_inches,opening_height_inches)
-
+                calculated_outputs = calculate_yes45tu_quantities(
+                    bays_wide, bays_tall, total_count, opening_width_inches, opening_height_inches
+                )
             else:
                 opening_width_inches = float(self.collected_data[3])
                 opening_height_inches = float(self.collected_data[4])
-                self.update_completion_status(f"Warning: No specific calculations defined for '{system_input}'. Calculating basic geometry.", "orange")
+                self.update_completion_status(
+                    f"Warning: No specific calculations defined for '{system_input}'. Calculating basic geometry.",
+                    "orange"
+                )
 
-            opening_width_feet = opening_width_inches / 12.0                #automatically calculates area and perimeter in feet
+            opening_width_feet = opening_width_inches / 12.0
             opening_height_feet = opening_height_inches / 12.0
+
             sqft_per_type = calculate_rectangle_area(opening_width_feet, opening_height_feet)
             total_sqft = sqft_per_type * total_count
             perimeter_ft = calculate_perimeter(opening_width_feet, opening_height_feet)
             total_perimeter_ft = perimeter_ft * total_count
 
-        except (ValueError, IndexError) as e:
-            self.update_completion_status(f"Error processing inputs: {e}. Please ensure correct data types were entered.", "red")
+        except ValueError as e:
+            self.update_completion_status(f"Input type error: {e}. Please check your entries.", "red")
+            return
+        except IndexError as e:
+            self.update_completion_status(f"Input missing error: {e}. Please fill all fields.", "red")
             return
 
-        generate_excel_report( #run function to generate the Excel report
+        generate_excel_report(
             system_input,
             elevation_type,
             total_count,
@@ -198,6 +231,50 @@ class App(ctk.CTk):
             calculated_outputs,
             self.update_completion_status
         )
+
+    def restart_app(self):
+        # Reset all state and widgets to initial state
+        self.data_prompts = [self.initial_prompt]
+        self.current_prompt_index = 0
+        self.collected_data = []
+        self.system_input_chosen = ""
+
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+
+        # Rebuild UI elements
+        self.title_label = ctk.CTkLabel(
+            self.main_frame,
+            text="",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="white",
+            wraplength=400
+        )
+        self.title_label.grid(row=0, column=0, pady=(20, 10), sticky="s")
+
+        self.entry_box = ctk.CTkEntry(
+            self.main_frame,
+            width=300,
+            placeholder_text="Type here..."
+        )
+        self.entry_box.grid(row=1, column=0, pady=10, sticky="n")
+
+        self.submit_button = ctk.CTkButton(
+            self.main_frame,
+            text="Submit",
+            command=self.submit_data
+        )
+        self.submit_button.grid(row=2, column=0, pady=(10, 20), sticky="n")
+
+        self.status_label = ctk.CTkLabel(
+            self.main_frame,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="red"
+        )
+        self.status_label.grid(row=3, column=0, pady=(0, 10))
+
+        self.display_current_prompt()
 
 
 if __name__ == "__main__":
