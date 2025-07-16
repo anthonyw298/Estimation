@@ -34,7 +34,7 @@ def extract_fields(row):
             continue
         s = str(val).strip()
 
-        # ✅ NEW: allow numbers and parentheses
+        # ✅ Allow words/numbers with parentheses for Finish
         if finish is None and re.match(r'^[A-Za-z0-9\s\(\)]+$', s):
             finish = s
             continue
@@ -50,9 +50,21 @@ def extract_fields(row):
                 continue
 
         if list_price is None:
-            if '$' in s or re.match(r'^\d+(\.\d+)?$', s):
-                list_price = s
+            try:
+                num = float(s)
+                list_price = num
                 continue
+            except ValueError:
+                pass
+
+            if '$' in s:
+                s_clean = s.replace('$', '').replace(',', '').strip()
+                try:
+                    num = float(s_clean)
+                    list_price = num
+                    continue
+                except ValueError:
+                    pass
 
     page_number = row.iloc[15] if len(row) > 15 else None
 
@@ -60,7 +72,7 @@ def extract_fields(row):
 
 
 def main():
-    filter_prefix = 'AS-'               #CHANGE TO WHAT UR SEARCHING FOR
+    filter_prefix = ''               #CHANGE TO WHAT UR SEARCHING FOR
     USE_COLS = list(range(16))
 
     df = pd.read_excel(FILE_PATH, header=None, usecols=USE_COLS, skiprows=2)
@@ -81,6 +93,8 @@ def main():
 
     # Adjust index to match skipped rows
     extracted.index = extracted.index + 3
+    
+    print(extracted)
 
 
 if __name__ == "__main__":

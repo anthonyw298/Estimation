@@ -1,6 +1,5 @@
 # systems/yes45tu_front_set.py
-
-# Import all specific formula functions from the single formulas file
+from utils.part_number import (PART_NUMBER_MAP)
 from utils.formulas import (
     calculate_total_gasket_ft,
     calculate_end_dam,
@@ -21,9 +20,7 @@ from utils.formulas import (
     calculate_og_int_horizontal,
     calculate_og_head_h,
     calculate_sill_flashing_h,
-    calculate_fabrication_joints
-    
-    )
+    calculate_fabrication_joints)
 
 def calculate_yes45tu_quantities(
     bays_wide: int,
@@ -31,11 +28,11 @@ def calculate_yes45tu_quantities(
     total_count: int,
     opening_width: float,
     opening_height: float
-) -> dict:
+) -> list:  # 🔄 Note: Return type is now a list!
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
     by calling dedicated formula functions.
-    Returns a dictionary of calculated values.
+    Returns a list of dictionaries with description, quantity, and part number.
     """
     outputs = {
         "Total Gasket (Ft)": calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count),
@@ -59,4 +56,14 @@ def calculate_yes45tu_quantities(
         "Sill Flashing (H)": calculate_sill_flashing_h(opening_width, total_count),
         "Fabrication Joints": calculate_fabrication_joints(bays_wide, bays_tall, total_count)
     }
-    return outputs
+
+    results = []
+    for key, value in outputs.items():
+        part_number = PART_NUMBER_MAP.get(key, "UNKNOWN")
+        results.append({
+            "description": key,
+            "quantity": value,
+            "part_number": part_number
+        })
+
+    return results
