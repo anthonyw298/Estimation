@@ -1,6 +1,4 @@
 # Estimation Script For UNITED GLASS VENTURES 
-# Consider Having a Dictionary Database for Accessories with key as the accessory and value as a list [price,id,etc] for easy access.
-# Dictionary for Fomulas may be convenient for ease of access within systems
 
 # To compile to EXE:
 #   Enter venv: venv\Scripts\activate
@@ -8,12 +6,6 @@
 #   Compiled program will be found in the dist folder
 #   exit
 
-# customtkinter for ui design
 # New ui designing needs recompiling and rerelease aka take binary ui and drop down on github
 
-# new folder 1 file per system
-# tweak ui for new change
-# ai data analytics tools
-# notebook action items
-# before starting action item ask whichway is best to make this(python,api,etc)
 # with data adjust the AS to whatever the user inputs and the fetch withever the user inputs as well
