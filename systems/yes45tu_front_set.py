@@ -22,6 +22,7 @@ from utils.formulas import (
     calculate_og_head_h,
     calculate_sill_flashing_h,
     calculate_fabrication_joints
+    
     )
 
 def calculate_yes45tu_quantities(
