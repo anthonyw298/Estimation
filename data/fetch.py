@@ -15,7 +15,7 @@ def get_price_by_part(part_number, csv_file='cleaned_data.csv'):
 
 if __name__ == "__main__":
     # Change this part number to whatever you want to look up
-    part_to_lookup = 'E2-0052'  
+    part_to_lookup = 'AS-0411'  
     
     price = get_price_by_part(part_to_lookup)
     
