@@ -13,3 +13,7 @@
 
 # new folder 1 file per system
 # tweak ui for new change
+# ai data analytics tools
+# notebook action items
+# before starting action item ask whichway is best to make this(python,api,etc)
+# with data adjust the AS to whatever the user inputs and the fetch withever the user inputs as well
