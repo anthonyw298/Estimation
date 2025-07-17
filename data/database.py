@@ -2,6 +2,7 @@ import pandas as pd
 import re
 
 FILE_PATH = r'C:\Users\tonyw\OneDrive\Desktop\Estimation\data\mydata.xlsx'
+OUTPUT_CSV_PATH = r'C:\Users\tonyw\OneDrive\Desktop\Estimation\data\cleaned_data.csv'  # changed output path
 
 def clean_value(val):
     if isinstance(val, str):
@@ -16,7 +17,7 @@ def extract_fields(row):
     list_price = None
 
     found_idx = -1
-    for idx in range(16):
+    for idx in range(len(row)):
         val = row.iloc[idx]
         if pd.notna(val):
             s = str(val).strip()
@@ -28,13 +29,14 @@ def extract_fields(row):
     if found_idx == -1:
         return pd.Series([None, None, None, None, None, None])
 
-    for idx in range(found_idx + 1, 16):
+    for idx in range(found_idx + 1, len(row)):
         val = row.iloc[idx]
-        if pd.isna(val) or val == '':
+        if pd.isna(val):
             continue
         s = str(val).strip()
+        if s == '':
+            continue
 
-        # ✅ Allow words/numbers with parentheses for Finish
         if finish is None and re.match(r'^[A-Za-z0-9\s\(\)]+$', s):
             finish = s
             continue
@@ -51,51 +53,32 @@ def extract_fields(row):
 
         if list_price is None:
             try:
-                num = float(s)
+                num = float(s.replace('$', '').replace(',', '').strip())
                 list_price = num
                 continue
             except ValueError:
                 pass
 
-            if '$' in s:
-                s_clean = s.replace('$', '').replace(',', '').strip()
-                try:
-                    num = float(s_clean)
-                    list_price = num
-                    continue
-                except ValueError:
-                    pass
-
-    page_number = row.iloc[15] if len(row) > 15 else None
+    page_number = row.iloc[-1] if len(row) > 0 else None
 
     return pd.Series([part_number, finish, length, units, list_price, page_number])
 
-
 def main():
-    filter_prefix = ''               #CHANGE TO WHAT UR SEARCHING FOR
     USE_COLS = list(range(16))
 
     df = pd.read_excel(FILE_PATH, header=None, usecols=USE_COLS, skiprows=2)
-
-    # ✅ Use .apply instead of deprecated .applymap
     df = df.apply(lambda col: col.map(clean_value))
-
     extracted = df.apply(extract_fields, axis=1)
     extracted.columns = ['Part Number', 'Finish', 'Length', 'Units', 'List Price', 'Page Number(s)']
 
-    extracted = extracted[
-        extracted['Part Number'].notna() & extracted['Part Number'].str.startswith(filter_prefix)
-    ]
-
-    # ✅ Use raw string for regex to avoid SyntaxWarning
-    extracted['List Price'] = extracted['List Price'].replace(r'[\$,]', '', regex=True)
+    extracted = extracted[extracted['Part Number'].notna()]
     extracted['List Price'] = pd.to_numeric(extracted['List Price'], errors='coerce')
-
-    # Adjust index to match skipped rows
     extracted.index = extracted.index + 3
-    
-    print(extracted)
 
+    # Save to CSV file instead of .py
+    extracted.to_csv(OUTPUT_CSV_PATH, index=False)
+
+    print(f"Saved cleaned data to CSV file at {OUTPUT_CSV_PATH}")
 
 if __name__ == "__main__":
     main()
