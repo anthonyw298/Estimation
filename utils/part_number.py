@@ -18,5 +18,5 @@ PART_NUMBER_MAP = {
     "OG Int. Horizontal": "BE9-2515",
     "OG Head (H)": "BE9-2514",
     "Sill Flashing (H)": "BE9-2578",
-    "Fabrication Joints": None  # <--- You can update this when you have it!
+    "Fabrication Joints": None  
 }
