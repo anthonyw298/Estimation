@@ -5,7 +5,7 @@ from utils.pricing import get_price_by_part
 
 def generate_excel_report(
     system_input: str,
-    finish_input: str,  # new finish input
+    finish_input: str,
     elevation_type: str,
     total_count: int,
     bays_wide: int,
@@ -16,20 +16,16 @@ def generate_excel_report(
     total_sqft: float,
     perimeter_ft: float,
     total_perimeter_ft: float,
-    calculated_outputs: list,  # list of dicts with 'description', 'quantity', 'part_number' keys, may contain 'profile_type'
-    completion_callback=None  # Optional callback for status updates
+    calculated_outputs: list,
+    completion_callback=None
 ):
     if system_input != "YES 45TU FRONT SET(OG)":
         wb = openpyxl.Workbook()
         ws = wb.active
         ws['A1'] = f"System '{system_input}' not matched. Empty file created."
-        try:
-            wb.save("output.xlsx")
-            if completion_callback:
-                completion_callback(f"System not matched. Empty 'output.xlsx' created.", "orange")
-        except Exception as e:
-            if completion_callback:
-                completion_callback(f"Error saving empty file: {e}", "red")
+        wb.save("output.xlsx")
+        if completion_callback:
+            completion_callback("System not matched. Empty 'output.xlsx' created.", "orange")
         return
 
     finish_multiplier_map = {
@@ -39,94 +35,87 @@ def generate_excel_report(
     }
     multiplier = finish_multiplier_map.get(finish_input.lower(), 1.0)
 
-    try:
-        wb = openpyxl.Workbook()
-        ws = wb.active
+    wb = openpyxl.Workbook()
+    ws = wb.active
 
-        # Define headers
-        inputs_headers = [
-            "System Input", "Elevation Type", "Total Count",
-            "# Bays Wide", "# Bays Tall",
-            "Opening Width", "Opening Height",
-            "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
-        ]
-        outputs_headers = [item['description'] for item in calculated_outputs]
-        headers = inputs_headers + outputs_headers
+    # Inputs in A & B
+    inputs_headers = [
+        "System Input", "Elevation Type", "Total Count",
+        "# Bays Wide", "# Bays Tall",
+        "Opening Width", "Opening Height",
+        "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
+    ]
+    input_values = [
+        system_input, elevation_type, total_count,
+        bays_wide, bays_tall, opening_width, opening_height,
+        sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft
+    ]
 
-        # Write headers row 1 (inputs + output descriptions)
-        for idx, header in enumerate(headers, 1):
-            ws[f"{get_column_letter(idx)}1"] = header
+    for idx, (header, value) in enumerate(zip(inputs_headers, input_values), 1):
+        ws[f"A{idx}"] = header
+        ws[f"B{idx}"] = value
 
-        # Write part numbers in row 2 (blank for input columns)
-        for idx in range(1, len(inputs_headers) + 1):
-            ws[f"{get_column_letter(idx)}2"] = ""  # blank for inputs columns
+    # OUTPUT label in D1, labels under it
+    ws["D1"] = "OUTPUT"
+    ws["D2"] = "Part Number"
+    ws["D3"] = "Quantity"
+    ws["D4"] = "Price"
 
-        for col_idx, item in enumerate(calculated_outputs, start=len(inputs_headers) + 1):
-            part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
-            ws[f"{get_column_letter(col_idx)}2"] = part_num
+    # Compute costs
+    total_costs = []
+    for item in calculated_outputs:
+        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'])
+        qty = item['quantity']
+        price = get_price_by_part(part_num) or 0.0
+        if item.get('type') == 'profiles':
+            price *= multiplier
+        total_cost = qty * price
+        total_costs.append(total_cost)
 
-        # Write input values + output quantities in row 3
-        input_values = [
-            system_input, elevation_type, total_count,
-            bays_wide, bays_tall, opening_width, opening_height,
-            sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft
-        ]
-        output_values = [item['quantity'] for item in calculated_outputs]
-        all_values = input_values + output_values
+    # Outputs side-by-side starting at column E (no skipping)
+    output_col_idx = 5  # E
+    output_start_row = 1
 
-        for idx, val in enumerate(all_values, 1):
-            ws[f"{get_column_letter(idx)}3"] = val
+    for idx, item in enumerate(calculated_outputs):
+        col_letter = get_column_letter(output_col_idx)
 
-        # Calculate prices for outputs with finish multiplier applied only if profile_type exists
-        prices = []
-        for item in calculated_outputs:
-            part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'])
-            if part_num:
-                price = get_price_by_part(part_num)
-                print(price)
-                if price is None:
-                    price = 0.0
+        # Description at top
+        ws[f"{col_letter}{output_start_row}"] = item['description']
 
-                if item.get('type') == 'profiles':
-                    price *= multiplier
-                prices.append(price)
-            else:
-                prices.append(0.0)
+        # Part number under OUTPUT labels
+        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
+        ws[f"{col_letter}{output_start_row + 1}"] = part_num
 
-        # Calculate total costs per part
-        total_costs = []
-        for qty, price in zip(output_values, prices):
-            try:
-                total_costs.append(float(qty) * float(price))
-            except Exception:
-                total_costs.append(0.0)
+        # Quantity with unit
+        qty = item['quantity']
+        qty_unit = "ft" if isinstance(qty, float) and not qty.is_integer() else "pcs"
+        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {qty_unit}"
 
-        # Write total cost row 4 (blank inputs columns)
-        for idx in range(1, len(inputs_headers) + 1):
-            ws[f"{get_column_letter(idx)}4"] = ""  # blank for inputs columns
+        # Cost formatted
+        ws[f"{col_letter}{output_start_row + 3}"] = f"${total_costs[idx]:.2f}"
 
-        for idx, cost in enumerate(total_costs, start=len(inputs_headers) + 1):
-            ws[f"{get_column_letter(idx)}4"] = cost
+        output_col_idx += 1  # move to next column, no skipping
 
-        ws["A4"] = "Total Cost ($)"
+    # Move GRAND TOTAL two more rows UP (4 rows up total from previous position)
+    grand_total_col_letter = get_column_letter(output_col_idx)
+    grand_total_row = output_start_row + 2  # Moved two more rows up (from 4 to 2)
+    ws[f"{grand_total_col_letter}{grand_total_row}"] = "GRAND TOTAL"
+    ws[f"{grand_total_col_letter}{grand_total_row + 1}"] = f"${sum(total_costs):.2f}"
 
+    # Widen blank column C
+    ws.column_dimensions['C'].width = 15  # wider gap
 
-        # Auto-size columns
-        for idx, header in enumerate(headers, 1):
-            col_letter = get_column_letter(idx)
-            max_len = len(str(header))
-            for row in range(1, 5):
-                cell_val = ws[f"{col_letter}{row}"].value
-                if cell_val is not None:
-                    max_len = max(max_len, len(str(cell_val)))
-            ws.column_dimensions[col_letter].width = max_len + 2
+    # Auto-size others
+    for col in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col[0].column)
+        if col_letter == 'C':
+            continue  # already set
+        for cell in col:
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_length + 2, 10)
 
-        wb.save("output.xlsx")
-        if completion_callback:
-            completion_callback("Excel file 'output.xlsx' generated successfully!", "green")
-        print("Excel file saved as 'output.xlsx'")
-
-    except Exception as e:
-        if completion_callback:
-            completion_callback(f"An error occurred during Excel generation: {e}", "red")
-        print(f"Error during Excel generation: {e}")
+    wb.save("output.xlsx")
+    if completion_callback:
+        completion_callback("Excel file 'output.xlsx' generated successfully!", "green")
