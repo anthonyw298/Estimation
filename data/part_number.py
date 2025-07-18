@@ -1,22 +1,26 @@
 PART_NUMBER_MAP = {
-    "Total Gasket (Ft)": "E2-0052",
-    "End Dam": "E1-0199",
-    "Water Deflector": "E2-0047",
-    "Assembly Screw": "PC-1220",
-    "Sill Flash Screw": "PM-1006-SS",
-    "End Dam Screw": "UA-1212",
-    "Setting Block Chair": "E1-2530",
-    "Side Block": "E2-0166",
-    "Setting Block": "E2-0177",
-    "Anti Walk Block Deep Pocket": "E2-0545",
-    "Anti Walk Block Shallow Pocket": "E2-0154",
-    "Setting Block (Int. Horizontal)": "E2-0611",
-    "Jamb Ft (V)": "BE9-2513",
-    "Sill Ft (H)": "BE9-2513",
-    "Flush Filler (V)": "BE9-2512",
-    "Int. Vertical": "BE9-2511",
-    "OG Int. Horizontal": "BE9-2515",
-    "OG Head (H)": "BE9-2514",
-    "Sill Flashing (H)": "BE9-2578",
-    "Fabrication Joints": None  
+    "accessories": {
+        "Total Gasket (Ft)": "E2-0052",
+        "End Dam": "E1-0199",
+        "Water Deflector": "E2-0047",
+        "Assembly Screw": "PC-1220",
+        "Sill Flash Screw": "PM-1006-SS",
+        "End Dam Screw": "UA-1212",
+        "Setting Block Chair": "E1-2530",
+        "Side Block": "E2-0166",
+        "Setting Block": "E2-0177",
+        "Anti Walk Block Deep Pocket": "E2-0545",
+        "Anti Walk Block Shallow Pocket": "E2-0154",
+        "Setting Block (Int. Horizontal)": "E2-0611"
+    },
+    "profiles": {
+        "Jamb Ft (V)": "BE9-2513",
+        "Sill Ft (H)": "BE9-2513",
+        "Flush Filler (V)": "BE9-2512",
+        "Int. Vertical": "BE9-2511",
+        "OG Int. Horizontal": "BE9-2515",
+        "OG Head (H)": "BE9-2514",
+        "Sill Flashing (H)": "BE9-2578",
+        "Fabrication Joints": None
+    }
 }
