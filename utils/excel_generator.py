@@ -87,9 +87,7 @@ def generate_excel_report(
         ws[f"{col_letter}{output_start_row + 1}"] = part_num
 
         # Quantity with unit
-        qty = item['quantity']
-        qty_unit = "ft" if isinstance(qty, float) and not qty.is_integer() else "pcs"
-        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {qty_unit}"
+        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {'pcs'}"
 
         # Cost formatted
         ws[f"{col_letter}{output_start_row + 3}"] = f"${total_costs[idx]:.2f}"
