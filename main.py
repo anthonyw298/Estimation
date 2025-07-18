@@ -27,7 +27,7 @@ class App(ctk.CTk):
         self.var_opening_height = tk.StringVar()
 
         # Main Frame
-        self.main_frame = ctk.CTkFrame(self, corner_radius=10)
+        self.main_frame = ctk.CTkFrame(self, corner_radius=20)
         self.main_frame.pack(fill="both", expand=True, padx=30, pady=30)
 
         # System Dropdown
@@ -153,4 +153,5 @@ if __name__ == "__main__":
     ctk.set_default_color_theme("blue")
 
     app = App()
+    app.after(10, lambda: app.state('zoomed'))
     app.mainloop()

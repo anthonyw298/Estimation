@@ -16,7 +16,7 @@ PART_NUMBER_MAP = {
     "profiles": {
         "Jamb Ft (V)": "BE9-2513",
         "Sill Ft (H)": "BE9-2513",
-        "Flush Filler (V)": "BE9-2512",
+        "Flush Filler (V)": "E9-2512",
         "Int. Vertical": "BE9-2511",
         "OG Int. Horizontal": "BE9-2515",
         "OG Head (H)": "BE9-2514",
