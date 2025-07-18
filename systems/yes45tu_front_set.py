@@ -58,12 +58,28 @@ def calculate_yes45tu_quantities(
     }
 
     results = []
-    for key, value in outputs.items():
-        part_number = PART_NUMBER_MAP.get(key, "UNKNOWN")
+
+    for desc, qty in outputs.items():
+        part_number = None
+        part_type = None
+
+        # Search in each category (outer key) for the description
+        for outer_key, inner_dict in PART_NUMBER_MAP.items():
+            if desc in inner_dict:
+                part_number = inner_dict[desc]
+                part_type = outer_key
+                break
+
+        # If not found, you can decide what to do (e.g., set UNKNOWN)
+        if part_number is None:
+            part_number = "UNKNOWN"
+            part_type = "UNKNOWN"
+
         results.append({
-            "description": key,
-            "quantity": value,
-            "part_number": part_number
+            "description": desc,
+            "quantity": qty,
+            "part_number": part_number,
+            "type": part_type
         })
 
     return results

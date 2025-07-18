@@ -11,13 +11,14 @@ class App(ctk.CTk):
 
         self.title("Excel Data Entry Application")
         self.state('zoomed')  # Maximize window
-        self.minsize(600, 400)
 
         # SYSTEM OPTIONS
         self.system_options = ["YES 45TU FRONT SET(OG)", "Other"]
+        self.finish_options = ["Clear", "Black", "Paint"]  # New finish options
 
         # Variables for inputs
         self.var_system = tk.StringVar(value=self.system_options[0])
+        self.var_finish = tk.StringVar(value=self.finish_options[0])  # New finish variable
         self.var_elevation_type = tk.StringVar()
         self.var_total_count = tk.StringVar()
         self.var_bays_wide = tk.StringVar()
@@ -34,15 +35,20 @@ class App(ctk.CTk):
         self.system_dropdown = ctk.CTkOptionMenu(self.main_frame, values=self.system_options, variable=self.var_system, command=self.on_system_change)
         self.system_dropdown.grid(row=0, column=1, sticky="ew", pady=(0, 15))
 
+        # Finish Dropdown (new)
+        ctk.CTkLabel(self.main_frame, text="Select Finish:", font=ctk.CTkFont(size=18, weight="bold")).grid(row=1, column=0, sticky="w", pady=(0, 15))
+        self.finish_dropdown = ctk.CTkOptionMenu(self.main_frame, values=self.finish_options, variable=self.var_finish)
+        self.finish_dropdown.grid(row=1, column=1, sticky="ew", pady=(0, 15))
+
         # Elevation Type
-        ctk.CTkLabel(self.main_frame, text="Elevation Type:").grid(row=1, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Elevation Type:").grid(row=2, column=0, sticky="w", pady=5)
         self.entry_elevation_type = ctk.CTkEntry(self.main_frame, textvariable=self.var_elevation_type)
-        self.entry_elevation_type.grid(row=1, column=1, sticky="ew", pady=5)
+        self.entry_elevation_type.grid(row=2, column=1, sticky="ew", pady=5)
 
         # Total Count
-        ctk.CTkLabel(self.main_frame, text="Total Count:").grid(row=2, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Total Count:").grid(row=3, column=0, sticky="w", pady=5)
         self.entry_total_count = ctk.CTkEntry(self.main_frame, textvariable=self.var_total_count)
-        self.entry_total_count.grid(row=2, column=1, sticky="ew", pady=5)
+        self.entry_total_count.grid(row=3, column=1, sticky="ew", pady=5)
 
         # Bays Wide (only for YES 45TU)
         self.label_bays_wide = ctk.CTkLabel(self.main_frame, text="# Bays Wide:")
@@ -53,22 +59,22 @@ class App(ctk.CTk):
         self.entry_bays_tall = ctk.CTkEntry(self.main_frame, textvariable=self.var_bays_tall)
 
         # Opening Width
-        ctk.CTkLabel(self.main_frame, text="Opening Width (in inches):").grid(row=5, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Opening Width (in inches):").grid(row=6, column=0, sticky="w", pady=5)
         self.entry_opening_width = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_width)
-        self.entry_opening_width.grid(row=5, column=1, sticky="ew", pady=5)
+        self.entry_opening_width.grid(row=6, column=1, sticky="ew", pady=5)
 
         # Opening Height
-        ctk.CTkLabel(self.main_frame, text="Opening Height (in inches):").grid(row=6, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Opening Height (in inches):").grid(row=7, column=0, sticky="w", pady=5)
         self.entry_opening_height = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_height)
-        self.entry_opening_height.grid(row=6, column=1, sticky="ew", pady=5)
+        self.entry_opening_height.grid(row=7, column=1, sticky="ew", pady=5)
 
         # Submit button
         self.submit_button = ctk.CTkButton(self.main_frame, text="Generate Excel Report", command=self.submit_data)
-        self.submit_button.grid(row=7, column=0, columnspan=2, pady=20)
+        self.submit_button.grid(row=8, column=0, columnspan=2, pady=20)
 
         # Status label
         self.status_label = ctk.CTkLabel(self.main_frame, text="", text_color="red")
-        self.status_label.grid(row=8, column=0, columnspan=2)
+        self.status_label.grid(row=9, column=0, columnspan=2)
 
         # Configure grid weights for responsiveness
         self.main_frame.grid_columnconfigure(1, weight=1)
@@ -79,10 +85,10 @@ class App(ctk.CTk):
     def on_system_change(self, selected_system):
         # Show/hide bays wide and bays tall fields based on system
         if selected_system == "YES 45TU FRONT SET(OG)":
-            self.label_bays_wide.grid(row=3, column=0, sticky="w", pady=5)
-            self.entry_bays_wide.grid(row=3, column=1, sticky="ew", pady=5)
-            self.label_bays_tall.grid(row=4, column=0, sticky="w", pady=5)
-            self.entry_bays_tall.grid(row=4, column=1, sticky="ew", pady=5)
+            self.label_bays_wide.grid(row=4, column=0, sticky="w", pady=5)
+            self.entry_bays_wide.grid(row=4, column=1, sticky="ew", pady=5)
+            self.label_bays_tall.grid(row=5, column=0, sticky="w", pady=5)
+            self.entry_bays_tall.grid(row=5, column=1, sticky="ew", pady=5)
         else:
             self.label_bays_wide.grid_forget()
             self.entry_bays_wide.grid_forget()
@@ -92,6 +98,7 @@ class App(ctk.CTk):
     def submit_data(self):
         try:
             system_input = self.var_system.get()
+            finish_input = self.var_finish.get()  # new finish input
             elevation_type = self.var_elevation_type.get().strip()
             total_count = int(self.var_total_count.get())
             opening_width_inches = float(self.var_opening_width.get())
@@ -118,6 +125,7 @@ class App(ctk.CTk):
 
             generate_excel_report(
                 system_input,
+                finish_input,                # Pass finish here
                 elevation_type,
                 total_count,
                 bays_wide,

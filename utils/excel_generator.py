@@ -5,6 +5,7 @@ from utils.pricing import get_price_by_part
 
 def generate_excel_report(
     system_input: str,
+    finish_input: str,  # new finish input
     elevation_type: str,
     total_count: int,
     bays_wide: int,
@@ -15,7 +16,7 @@ def generate_excel_report(
     total_sqft: float,
     perimeter_ft: float,
     total_perimeter_ft: float,
-    calculated_outputs: list,  # list of dicts with 'description', 'quantity', 'part_number' keys
+    calculated_outputs: list,  # list of dicts with 'description', 'quantity', 'part_number' keys, may contain 'profile_type'
     completion_callback=None  # Optional callback for status updates
 ):
     if system_input != "YES 45TU FRONT SET(OG)":
@@ -30,6 +31,13 @@ def generate_excel_report(
             if completion_callback:
                 completion_callback(f"Error saving empty file: {e}", "red")
         return
+
+    finish_multiplier_map = {
+        "clear": 1.0,
+        "black": 1.1,
+        "paint": 1.2
+    }
+    multiplier = finish_multiplier_map.get(finish_input.lower(), 1.0)
 
     try:
         wb = openpyxl.Workbook()
@@ -69,13 +77,19 @@ def generate_excel_report(
         for idx, val in enumerate(all_values, 1):
             ws[f"{get_column_letter(idx)}3"] = val
 
-        # Calculate prices for outputs
+        # Calculate prices for outputs with finish multiplier applied only if profile_type exists
         prices = []
         for item in calculated_outputs:
             part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'])
             if part_num:
                 price = get_price_by_part(part_num)
-                prices.append(price if price is not None else 0.0)
+                print(price)
+                if price is None:
+                    price = 0.0
+
+                if item.get('type') == 'profiles':
+                    price *= multiplier
+                prices.append(price)
             else:
                 prices.append(0.0)
 
@@ -95,6 +109,7 @@ def generate_excel_report(
             ws[f"{get_column_letter(idx)}4"] = cost
 
         ws["A4"] = "Total Cost ($)"
+
 
         # Auto-size columns
         for idx, header in enumerate(headers, 1):
