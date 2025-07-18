@@ -1,5 +1,5 @@
 # systems/yes45tu_front_set.py
-from utils.part_number import (PART_NUMBER_MAP)
+from data.part_number import (PART_NUMBER_MAP)
 from utils.formulas import (
     calculate_total_gasket_ft,
     calculate_end_dam,
