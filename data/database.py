@@ -1,8 +1,9 @@
 import pandas as pd
 import re
+import json
 
 FILE_PATH = r'C:\Users\tonyw\OneDrive\Desktop\Estimation\data\mydata.xlsx'
-OUTPUT_CSV_PATH = r'C:\Users\tonyw\OneDrive\Desktop\Estimation\data\cleaned_data.csv'  # changed output path
+OUTPUT_DICT_PATH = r'C:\Users\tonyw\OneDrive\Desktop\Estimation\data\cleaned_data.py'  # saving as a .py file
 
 def clean_value(val):
     if isinstance(val, str):
@@ -73,12 +74,42 @@ def main():
 
     extracted = extracted[extracted['Part Number'].notna()]
     extracted['List Price'] = pd.to_numeric(extracted['List Price'], errors='coerce')
-    extracted.index = extracted.index + 3
 
-    # Save to CSV file instead of .py
-    extracted.to_csv(OUTPUT_CSV_PATH, index=False)
+    # Build dictionary output
+    output_dict = {}
+    for _, row in extracted.iterrows():
+        pn = row['Part Number']
+        if pn is None:
+            continue
 
-    print(f"Saved cleaned data to CSV file at {OUTPUT_CSV_PATH}")
+        # Finish as list
+        finish_list = []
+        if isinstance(row['Finish'], str):
+            finish_list = [f.strip() for f in row['Finish'].split(',') if f.strip()]
+        # Page Numbers as list, split by comma or keep as list if already
+        pages = []
+        if pd.notna(row['Page Number(s)']):
+            if isinstance(row['Page Number(s)'], str):
+                pages = [p.strip() for p in row['Page Number(s)'].split(',') if p.strip()]
+            elif isinstance(row['Page Number(s)'], list):
+                pages = row['Page Number(s)']
+            else:
+                pages = [str(row['Page Number(s)'])]
+
+        output_dict[pn] = {
+            "Finish": finish_list if finish_list else [],
+            "Length": row['Length'] if pd.notna(row['Length']) else "",
+            "Units": row['Units'] if pd.notna(row['Units']) else "",
+            "List Price": float(row['List Price']) if pd.notna(row['List Price']) else None,
+            "Page Numbers": pages
+        }
+
+    # Save dictionary as a Python file with valid syntax
+    with open(OUTPUT_DICT_PATH, 'w', encoding='utf-8') as f:
+        f.write("data = ")
+        f.write(json.dumps(output_dict, indent=4, ensure_ascii=False))
+
+    print(f"Saved cleaned data dictionary to {OUTPUT_DICT_PATH}")
 
 if __name__ == "__main__":
     main()

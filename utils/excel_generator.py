@@ -1,6 +1,6 @@
 import openpyxl
 from openpyxl.utils import get_column_letter
-from utils.part_number import PART_NUMBER_MAP
+from data.part_number import PART_NUMBER_MAP
 from utils.pricing import get_price_by_part
 
 def generate_excel_report(
@@ -16,6 +16,7 @@ def generate_excel_report(
     perimeter_ft: float,
     total_perimeter_ft: float,
     calculated_outputs: list,  # Now expecting list of dicts from yes45tu_front_set
+    finish: str = "Clear",
     completion_callback=None  # Made optional for flexibility
 ):
     if system_input != "YES 45TU Front Set(OG)":
