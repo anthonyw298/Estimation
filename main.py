@@ -9,7 +9,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Excel Data Entry Application")
+        self.title("United Glass Estimation Calculation Tool")
         self.state('zoomed')  # Maximize window
 
         # SYSTEM OPTIONS
@@ -59,12 +59,12 @@ class App(ctk.CTk):
         self.entry_bays_tall = ctk.CTkEntry(self.main_frame, textvariable=self.var_bays_tall)
 
         # Opening Width
-        ctk.CTkLabel(self.main_frame, text="Opening Width (in inches):").grid(row=6, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Opening Width (in inches):   ").grid(row=6, column=0, sticky="w", pady=5)
         self.entry_opening_width = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_width)
         self.entry_opening_width.grid(row=6, column=1, sticky="ew", pady=5)
 
         # Opening Height
-        ctk.CTkLabel(self.main_frame, text="Opening Height (in inches):").grid(row=7, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(self.main_frame, text="Opening Height (in inches):   ").grid(row=7, column=0, sticky="w", pady=5)
         self.entry_opening_height = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_height)
         self.entry_opening_height.grid(row=7, column=1, sticky="ew", pady=5)
 

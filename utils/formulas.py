@@ -77,3 +77,7 @@ def calculate_sill_flashing_h(opening_width: float, total_count: int) -> float:
 def calculate_fabrication_joints(bays_wide: int, bays_tall: int, total_count: int) -> int:
     """Calculate number of fabrication joints."""
     return ((4 * bays_wide) + (2 * (bays_tall - 1)) ) * total_count
+
+def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int) -> float:
+    """Calculate glass stop length."""
+    return (opening_width / 12) * bays_tall * total_count
