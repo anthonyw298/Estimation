@@ -66,12 +66,19 @@ def generate_excel_report(
 
     # Calculate total costs
     total_costs = []
+    unit_types = []  # keep unit type for each item
+
     for item in calculated_outputs:
         part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
         qty = item['quantity']
-        unit_price = get_price_by_part(part_num) or 0.0
+        unit_price, unit_type = get_price_by_part(part_num)
+        unit_price = unit_price or 0.0
+        unit_type = unit_type or "pcs"
+        unit_types.append(unit_type)
+
         if item.get('type') == 'profiles':
             unit_price *= multiplier
+
         total_cost = qty * unit_price
         total_costs.append(total_cost)
 
@@ -84,13 +91,14 @@ def generate_excel_report(
 
         part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
         qty = item['quantity']
+        unit_type = unit_types[idx]
 
         # Description at top
         ws[f"{col_letter}{output_start_row}"] = item['description']
         # Part number under OUTPUT labels
         ws[f"{col_letter}{output_start_row + 1}"] = part_num
-        # Quantity with unit
-        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} pcs"
+        # Quantity with unit label
+        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {unit_type}"
         # Price formatted
         ws[f"{col_letter}{output_start_row + 3}"] = f"${total_costs[idx]:.2f}"
 

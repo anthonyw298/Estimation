@@ -37,11 +37,11 @@ from data.parts_data import parts_data  # assuming you saved parts_data.py
 def get_price_by_part(part_number):
     """
     Gets adjusted price per piece per foot for given part number.
-    Works with dict-based parts_data.
+    Returns tuple: (price, unit_type)
     """
     match = parts_data.get(part_number)
     if not match:
-        return None
+        return None, None
 
     list_price = match.get('List Price', 0)
     units_str = match.get('Units', None)
@@ -61,7 +61,11 @@ def get_price_by_part(part_number):
     length_str = match.get('Length', None)
     length_ft = parse_length_to_feet(length_str)
 
+    unit_type = "pcs"
+
     if length_ft > 1:
         list_price /= length_ft
+        unit_type = "ft"
 
-    return list_price
+    return list_price, unit_type
+
