@@ -21,6 +21,7 @@ from utils.formulas import (
     calculate_og_head_h,
     calculate_sill_flashing_h,
     calculate_glass_stop,
+    calculate_total_glass,
     calculate_fabrication_joints
 )
 
@@ -34,30 +35,41 @@ def calculate_yes45tu_quantities(
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
     by calling dedicated formula functions.
-    Returns a list of dictionaries with description, quantity, and part number.
+    Returns a list of dictionaries with description, quantity, part number, and type.
     """
 
     outputs = [
-        ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count)), 
-        ("E1-0199", calculate_end_dam(total_count)),                                                  
-        ("E2-0047", calculate_water_deflector(bays_wide, total_count)),                                       
-        ("PC-1220", calculate_assembly_screw(bays_wide, bays_tall, total_count)),                       
-        ("PM-1006-SS", calculate_sill_flash_screw(bays_wide, total_count)),                           
-        ("UA-1212", calculate_end_dam_screw(total_count)),                                 
-        ("E1-2530", calculate_setting_block_chair(bays_wide)),                                              
-        ("E2-0166", calculate_side_block(bays_wide, bays_tall, total_count)),                           
-        ("E2-0177", calculate_setting_block(bays_wide, total_count)),                             
-        ("E2-0545", calculate_anti_walk_block_deep(bays_tall, total_count)),                                 
-        ("E2-0154", calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count)),                 
-        ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),                             
-        ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),                                         
-        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count)),                          
-        ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),                   
-        ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),                           
-        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count)),                                  
-        ("BE9-2514", calculate_og_head_h(opening_width, total_count)),                                     
-        ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),                            
-        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),                    
+        ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count)),
+        ("E1-0199", calculate_end_dam(total_count)),
+        ("E2-0047", calculate_water_deflector(bays_wide, total_count)),
+        ("PC-1220", calculate_assembly_screw(bays_wide, bays_tall, total_count)),
+        ("PM-1006-SS", calculate_sill_flash_screw(bays_wide, total_count)),
+        ("UA-1212", calculate_end_dam_screw(total_count)),
+        ("E1-2530", calculate_setting_block_chair(bays_wide)),
+        ("E2-0166", calculate_side_block(bays_wide, bays_tall, total_count)),
+        ("E2-0177", calculate_setting_block(bays_wide, total_count)),
+        ("E2-0545", calculate_anti_walk_block_deep(bays_tall, total_count)),
+        ("E2-0154", calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count)),
+        ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),
+        ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),
+        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count)),
+        ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
+        ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),
+        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count)),
+        ("BE9-2514", calculate_og_head_h(opening_width, total_count)),
+        ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
+        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
+    ]
+
+    # Manual outputs: description, quantity, type, and no part number
+    manual_outputs = [
+        {
+            "description": "Total Glass1",
+            "quantity": calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall),
+            "part_number": "N/A",
+            "type": "Glass",
+            'price': 10.5
+        },
     ]
 
     results = []
@@ -66,14 +78,13 @@ def calculate_yes45tu_quantities(
         desc = None
         part_type = None
 
-        # Search in each category dictionary for the part_number
+        # Search for the part number in the map
         for category, parts_dict in PART_NUMBER_MAP.items():
             if part_number in parts_dict:
                 desc = parts_dict[part_number]
                 part_type = category
                 break
 
-        # If not found in any category
         if desc is None:
             desc = "UNKNOWN"
             part_type = "UNKNOWN"
@@ -86,4 +97,8 @@ def calculate_yes45tu_quantities(
             "type": part_type
         })
 
+    # Add manual outputs at the end
+    results.extend(manual_outputs)
+
     return results
+

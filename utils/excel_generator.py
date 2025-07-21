@@ -19,7 +19,6 @@ def generate_excel_report(
     calculated_outputs: list,
     completion_callback=None
 ):
-    # If system does not match, output an empty file with a message.
     if system_input != "YES 45TU FRONT SET(OG)":
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -29,7 +28,6 @@ def generate_excel_report(
             completion_callback("System not matched. Empty 'output.xlsx' created.", "orange")
         return
 
-    # Apply finish multiplier.
     finish_multiplier_map = {
         "clear": 1.0,
         "black": 1.1,
@@ -40,7 +38,6 @@ def generate_excel_report(
     wb = openpyxl.Workbook()
     ws = wb.active
 
-    # Inputs block in columns A & B
     inputs_headers = [
         "System Input", "Elevation Type", "Total Count",
         "# Bays Wide", "# Bays Tall",
@@ -58,20 +55,32 @@ def generate_excel_report(
         ws[f"A{idx}"] = header
         ws[f"B{idx}"] = value
 
-    # Split items into profiles and accessories
+    # Separate items into groups
     profiles = []
     accessories = []
+    manual_outputs = []
 
     for item in calculated_outputs:
-        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
-        if part_num in PART_NUMBER_MAP["profiles"]:
-            profiles.append(item)
+        part_num = item.get('part_number')
+        item_type = item.get('type', '').lower()
+
+        if part_num == "N/A" or not part_num:
+            if item_type == "profiles":
+                profiles.append(item)
+            elif item_type == "accessories":
+                accessories.append(item)
+            else:
+                manual_outputs.append(item)
         else:
-            accessories.append(item)
+            if part_num in PART_NUMBER_MAP.get("profiles", []):
+                profiles.append(item)
+            elif part_num in PART_NUMBER_MAP.get("accessories", []):
+                accessories.append(item)
+            else:
+                manual_outputs.append(item)
 
-    section_col_start = 5  # column E
+    section_col_start = 5  # E
     output_start_row = 1
-
     grand_total = 0.0
 
     def write_section(title, items, col_start, row_start, type_label):
@@ -82,16 +91,19 @@ def generate_excel_report(
         ws[f"{get_column_letter(col_start)}{row_start + 2}"] = "Quantity"
         ws[f"{get_column_letter(col_start)}{row_start + 3}"] = "Price"
 
-        output_col_idx = col_start + 1  # start writing next to labels
+        output_col_idx = col_start + 1
 
-        for idx, item in enumerate(items):
+        for item in items:
             col_letter = get_column_letter(output_col_idx)
-
-            part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
             qty = item['quantity']
-            unit_price, unit_type = get_price_by_part(part_num)
-            unit_price = unit_price or 0.0
-            unit_type = unit_type or "pcs"
+
+            if item.get('part_number') and item.get('part_number') != "N/A":
+                unit_price, unit_type = get_price_by_part(item['part_number'])
+                unit_price = unit_price or 0.0
+                unit_type = unit_type or "pcs"
+            else:
+                unit_price = item.get('price', 0.0)
+                unit_type = "units"
 
             if type_label == "profiles":
                 unit_price *= multiplier
@@ -99,40 +111,47 @@ def generate_excel_report(
             total_cost = qty * unit_price
             grand_total += total_cost
 
-            # Description at top
             ws[f"{col_letter}{row_start}"] = item['description']
-            # Part number under labels
-            ws[f"{col_letter}{row_start + 1}"] = part_num
-            # Quantity with unit
+            ws[f"{col_letter}{row_start + 1}"] = item.get('part_number', 'N/A')
             ws[f"{col_letter}{row_start + 2}"] = f"{qty} {unit_type}"
-            # Price
             ws[f"{col_letter}{row_start + 3}"] = f"${total_cost:.2f}"
 
             output_col_idx += 1
 
-    # Write profiles section
     write_section("PROFILES", profiles, section_col_start, output_start_row, "profiles")
 
-    # Write accessories section, shifted down by 6 rows
     accessories_row_start = output_start_row + 6
     write_section("ACCESSORIES", accessories, section_col_start, accessories_row_start, "accessories")
 
-    # GRAND TOTAL
-    grand_total_col = get_column_letter(section_col_start)
-    ws[f"{grand_total_col}{accessories_row_start + 6}"] = "GRAND TOTAL"
-    ws[f"{grand_total_col}{accessories_row_start + 7}"] = f"${grand_total:.2f}"
+    manual_grouped = {}
+    for item in manual_outputs:
+        type_key = item.get('type', 'MANUAL').upper()
+        manual_grouped.setdefault(type_key, []).append(item)
 
-    # Make column C wide for a gap
-    ws.column_dimensions['C'].width = 15
+    current_row = accessories_row_start + 6
+    for type_title, items in manual_grouped.items():
+        write_section(type_title, items, section_col_start, current_row, "manual")
+        current_row += 6
 
-    # Auto-size all columns except C
-    for col in ws.columns:
-        col_letter = get_column_letter(col[0].column)
-        if col_letter == 'C':
-            continue
-        max_length = max((len(str(cell.value)) if cell.value else 0) for cell in col)
-        ws.column_dimensions[col_letter].width = max(max_length + 2, 10)
+    ws[f"{get_column_letter(section_col_start)}{current_row}"] = "GRAND TOTAL"
+    ws[f"{get_column_letter(section_col_start)}{current_row + 1}"] = f"${grand_total:.2f}"
+
+    # --------- AUTO-FIT ALL COLUMNS -----------
+    for column_cells in ws.columns:
+        max_length = 0
+        column = column_cells[0].column_letter
+        for cell in column_cells:
+            try:
+                cell_length = len(str(cell.value))
+                if cell_length > max_length:
+                    max_length = cell_length
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column].width = adjusted_width
+    # -------------------------------------------
 
     wb.save("output.xlsx")
+
     if completion_callback:
-        completion_callback("Excel file 'output.xlsx' generated with profiles and accessories!", "green")
+        completion_callback("Generated with column widths auto-fitted!", "green")

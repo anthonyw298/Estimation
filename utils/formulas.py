@@ -81,3 +81,6 @@ def calculate_fabrication_joints(bays_wide: int, bays_tall: int, total_count: in
 def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int) -> float:
     """Calculate glass stop length."""
     return (opening_width / 12) * bays_tall * total_count
+
+def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
+    return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
