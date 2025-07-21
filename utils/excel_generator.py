@@ -58,69 +58,81 @@ def generate_excel_report(
         ws[f"A{idx}"] = header
         ws[f"B{idx}"] = value
 
-    # OUTPUT labels in D1 to D4
-    ws["D1"] = "OUTPUT"
-    ws["D2"] = "Part Number"
-    ws["D3"] = "Quantity"
-    ws["D4"] = "Price"
-
-    # Calculate total costs
-    total_costs = []
-    unit_types = []  # keep unit type for each item
+    # Split items into profiles and accessories
+    profiles = []
+    accessories = []
 
     for item in calculated_outputs:
         part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
-        qty = item['quantity']
-        unit_price, unit_type = get_price_by_part(part_num)
-        unit_price = unit_price or 0.0
-        unit_type = unit_type or "pcs"
-        unit_types.append(unit_type)
+        if part_num in PART_NUMBER_MAP["profiles"]:
+            profiles.append(item)
+        else:
+            accessories.append(item)
 
-        if item.get('type') == 'profiles':
-            unit_price *= multiplier
-
-        total_cost = qty * unit_price
-        total_costs.append(total_cost)
-
-    # Write output columns starting at E1, E2, ...
-    output_col_idx = 5  # E
+    section_col_start = 5  # column E
     output_start_row = 1
 
-    for idx, item in enumerate(calculated_outputs):
-        col_letter = get_column_letter(output_col_idx)
+    grand_total = 0.0
 
-        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
-        qty = item['quantity']
-        unit_type = unit_types[idx]
+    def write_section(title, items, col_start, row_start, type_label):
+        nonlocal grand_total
 
-        # Description at top
-        ws[f"{col_letter}{output_start_row}"] = item['description']
-        # Part number under OUTPUT labels
-        ws[f"{col_letter}{output_start_row + 1}"] = part_num
-        # Quantity with unit label
-        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {unit_type}"
-        # Price formatted
-        ws[f"{col_letter}{output_start_row + 3}"] = f"${total_costs[idx]:.2f}"
+        ws[f"{get_column_letter(col_start)}{row_start}"] = title
+        ws[f"{get_column_letter(col_start)}{row_start + 1}"] = "Part Number"
+        ws[f"{get_column_letter(col_start)}{row_start + 2}"] = "Quantity"
+        ws[f"{get_column_letter(col_start)}{row_start + 3}"] = "Price"
 
-        output_col_idx += 1
+        output_col_idx = col_start + 1  # start writing next to labels
 
-    # GRAND TOTAL: two rows up from previous
-    grand_total_col_letter = get_column_letter(output_col_idx)
-    grand_total_row = output_start_row + 2  # moved up by 2 more rows
-    ws[f"{grand_total_col_letter}{grand_total_row}"] = "GRAND TOTAL"
-    ws[f"{grand_total_col_letter}{grand_total_row + 1}"] = f"${sum(total_costs):.2f}"
+        for idx, item in enumerate(items):
+            col_letter = get_column_letter(output_col_idx)
 
-    # Make column C wide for a visual gap
+            part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
+            qty = item['quantity']
+            unit_price, unit_type = get_price_by_part(part_num)
+            unit_price = unit_price or 0.0
+            unit_type = unit_type or "pcs"
+
+            if type_label == "profiles":
+                unit_price *= multiplier
+
+            total_cost = qty * unit_price
+            grand_total += total_cost
+
+            # Description at top
+            ws[f"{col_letter}{row_start}"] = item['description']
+            # Part number under labels
+            ws[f"{col_letter}{row_start + 1}"] = part_num
+            # Quantity with unit
+            ws[f"{col_letter}{row_start + 2}"] = f"{qty} {unit_type}"
+            # Price
+            ws[f"{col_letter}{row_start + 3}"] = f"${total_cost:.2f}"
+
+            output_col_idx += 1
+
+    # Write profiles section
+    write_section("PROFILES", profiles, section_col_start, output_start_row, "profiles")
+
+    # Write accessories section, shifted down by 6 rows
+    accessories_row_start = output_start_row + 6
+    write_section("ACCESSORIES", accessories, section_col_start, accessories_row_start, "accessories")
+
+    # GRAND TOTAL
+    grand_total_col = get_column_letter(section_col_start)
+    ws[f"{grand_total_col}{accessories_row_start + 6}"] = "GRAND TOTAL"
+    ws[f"{grand_total_col}{accessories_row_start + 7}"] = f"${grand_total:.2f}"
+
+    # Make column C wide for a gap
     ws.column_dimensions['C'].width = 15
 
-    # Auto-size other columns
+    # Auto-size all columns except C
     for col in ws.columns:
         col_letter = get_column_letter(col[0].column)
         if col_letter == 'C':
-            continue  # skip gap column
+            continue
         max_length = max((len(str(cell.value)) if cell.value else 0) for cell in col)
         ws.column_dimensions[col_letter].width = max(max_length + 2, 10)
 
     wb.save("output.xlsx")
     if completion_callback:
-        completion_callback("Excel file 'output.xlsx' generated successfully!", "green")
+        completion_callback("Excel file 'output.xlsx' generated with profiles and accessories!", "green")
