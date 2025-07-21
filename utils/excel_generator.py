@@ -19,6 +19,7 @@ def generate_excel_report(
     calculated_outputs: list,
     completion_callback=None
 ):
+    # If system does not match, output an empty file with a message.
     if system_input != "YES 45TU FRONT SET(OG)":
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -28,6 +29,7 @@ def generate_excel_report(
             completion_callback("System not matched. Empty 'output.xlsx' created.", "orange")
         return
 
+    # Apply finish multiplier.
     finish_multiplier_map = {
         "clear": 1.0,
         "black": 1.1,
@@ -38,12 +40,13 @@ def generate_excel_report(
     wb = openpyxl.Workbook()
     ws = wb.active
 
-    # Inputs in A & B
+    # Inputs block in columns A & B
     inputs_headers = [
         "System Input", "Elevation Type", "Total Count",
         "# Bays Wide", "# Bays Tall",
         "Opening Width", "Opening Height",
-        "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
+        "Sq Ft per Type", "Total Sq Ft",
+        "Perimeter Ft", "Total Perimeter Ft"
     ]
     input_values = [
         system_input, elevation_type, total_count,
@@ -55,63 +58,59 @@ def generate_excel_report(
         ws[f"A{idx}"] = header
         ws[f"B{idx}"] = value
 
-    # OUTPUT label in D1, labels under it
+    # OUTPUT labels in D1 to D4
     ws["D1"] = "OUTPUT"
     ws["D2"] = "Part Number"
     ws["D3"] = "Quantity"
     ws["D4"] = "Price"
 
-    # Compute costs
+    # Calculate total costs
     total_costs = []
     for item in calculated_outputs:
-        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'])
+        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
         qty = item['quantity']
-        price = get_price_by_part(part_num) or 0.0
+        unit_price = get_price_by_part(part_num) or 0.0
         if item.get('type') == 'profiles':
-            price *= multiplier
-        total_cost = qty * price
+            unit_price *= multiplier
+        total_cost = qty * unit_price
         total_costs.append(total_cost)
 
-    # Outputs side-by-side starting at column E (no skipping)
+    # Write output columns starting at E1, E2, ...
     output_col_idx = 5  # E
     output_start_row = 1
 
     for idx, item in enumerate(calculated_outputs):
         col_letter = get_column_letter(output_col_idx)
 
+        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
+        qty = item['quantity']
+
         # Description at top
         ws[f"{col_letter}{output_start_row}"] = item['description']
-
         # Part number under OUTPUT labels
-        part_num = item.get('part_number') or PART_NUMBER_MAP.get(item['description'], "")
         ws[f"{col_letter}{output_start_row + 1}"] = part_num
-
         # Quantity with unit
-        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} {'pcs'}"
-
-        # Cost formatted
+        ws[f"{col_letter}{output_start_row + 2}"] = f"{qty} pcs"
+        # Price formatted
         ws[f"{col_letter}{output_start_row + 3}"] = f"${total_costs[idx]:.2f}"
 
-        output_col_idx += 1  # move to next column, no skipping
+        output_col_idx += 1
 
-    # Move GRAND TOTAL two more rows UP (4 rows up total from previous position)
+    # GRAND TOTAL: two rows up from previous
     grand_total_col_letter = get_column_letter(output_col_idx)
-    grand_total_row = output_start_row + 2  # Moved two more rows up (from 4 to 2)
+    grand_total_row = output_start_row + 2  # moved up by 2 more rows
     ws[f"{grand_total_col_letter}{grand_total_row}"] = "GRAND TOTAL"
     ws[f"{grand_total_col_letter}{grand_total_row + 1}"] = f"${sum(total_costs):.2f}"
 
-    # Widen blank column C
-    ws.column_dimensions['C'].width = 15  # wider gap
+    # Make column C wide for a visual gap
+    ws.column_dimensions['C'].width = 15
 
-    # Auto-size others
+    # Auto-size other columns
     for col in ws.columns:
-        max_length = 0
         col_letter = get_column_letter(col[0].column)
         if col_letter == 'C':
-            continue  # already set
-        for cell in col:
-            if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
+            continue  # skip gap column
+        max_length = max((len(str(cell.value)) if cell.value else 0) for cell in col)
         ws.column_dimensions[col_letter].width = max(max_length + 2, 10)
 
     wb.save("output.xlsx")
