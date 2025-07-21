@@ -14,4 +14,4 @@
 # 2. Main.Py calculates system specific outputsbased on inpurts and returns back a calculated_output with the format [{des,quan,part},....]
 # 3. Main.Py autocalculates other outputs(Area+Perimeter) and sends all input+outputs(the list of dics) to generate excel report
 
-# customfiller cannot find part/ pcs and length mixed on excel output / 
+# to insert new accessory/part --- 1. Add Formula 2. Add Calculation in System List
