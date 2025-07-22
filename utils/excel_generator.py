@@ -19,14 +19,6 @@ def generate_excel_report(
     calculated_outputs: list,
     completion_callback=None
 ):
-    if system_input != "YES 45TU FRONT SET(OG)":
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws['A1'] = f"System '{system_input}' not matched. Empty file created."
-        wb.save("output.xlsx")
-        if completion_callback:
-            completion_callback("System not matched. Empty 'output.xlsx' created.", "orange")
-        return
 
     finish_multiplier_map = {
         "clear": 1.0,
@@ -103,7 +95,7 @@ def generate_excel_report(
                 unit_type = unit_type or "pcs"
             else:
                 unit_price = item.get('price', 0.0)
-                unit_type = "units"
+                unit_type = item.get('unit', 'pcs')
 
             if type_label == "profiles":
                 unit_price *= multiplier
