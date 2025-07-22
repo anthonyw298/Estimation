@@ -1,149 +1,139 @@
 import openpyxl
-from openpyxl.utils import get_column_letter
+from openpyxl import load_workbook
+import os
+
 from data.part_number import PART_NUMBER_MAP
 from utils.pricing import get_price_by_part
 
 def generate_excel_report(
-    system_input: str,
-    finish_input: str,
-    elevation_type: str,
-    total_count: int,
-    bays_wide: int,
-    bays_tall: int,
-    opening_width: float,
-    opening_height: float,
-    sqft_per_type: float,
-    total_sqft: float,
-    perimeter_ft: float,
-    total_perimeter_ft: float,
-    calculated_outputs: list,
-    completion_callback=None
+    system_input, finish_input, elevation_type, total_count,
+    bays_wide, bays_tall, opening_width, opening_height,
+    sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
+    calculated_outputs, completion_callback=None, mode=None
 ):
+    multiplier = {"clear":1.0, "black":1.1, "paint":1.2}.get(finish_input.lower(), 1.0)
+    output_file = "output.xlsx"
+    colA, colB, colE = 1, 2, 5
 
-    finish_multiplier_map = {
-        "clear": 1.0,
-        "black": 1.1,
-        "paint": 1.2
-    }
-    multiplier = finish_multiplier_map.get(finish_input.lower(), 1.0)
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-
-    inputs_headers = [
+    headers = [
         "System Input", "Elevation Type", "Total Count",
-        "# Bays Wide", "# Bays Tall",
-        "Opening Width", "Opening Height",
-        "Sq Ft per Type", "Total Sq Ft",
-        "Perimeter Ft", "Total Perimeter Ft"
+        "# Bays Wide", "# Bays Tall", "Opening Width", "Opening Height",
+        "Sq Ft per Type", "Total Sq Ft", "Perimeter Ft", "Total Perimeter Ft"
     ]
-    input_values = [
+    values = [
         system_input, elevation_type, total_count,
         bays_wide, bays_tall, opening_width, opening_height,
         sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft
     ]
 
-    for idx, (header, value) in enumerate(zip(inputs_headers, input_values), 1):
-        ws[f"A{idx}"] = header
-        ws[f"B{idx}"] = value
+    if mode == "new" or not os.path.exists(output_file):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        start_row = 1
+    else:
+        wb = load_workbook(output_file)
+        ws = wb.active
+        running_gt_row = next(
+            (r for r in range(1, ws.max_row + 1) if ws.cell(r, colE).value == "RUNNING GRAND TOTAL"),
+            None
+        )
+        start_row = running_gt_row + 3 if running_gt_row else ws.max_row + 2
 
-    # Separate items into groups
-    profiles = []
-    accessories = []
-    manual_outputs = []
+    # Write inputs vertically
+    for i, (h, v) in enumerate(zip(headers, values)):
+        ws.cell(row=start_row + i, column=colA, value=h)
+        ws.cell(row=start_row + i, column=colB, value=v)
 
+    # Categorize outputs
+    profiles, accessories, manual_outputs = [], [], []
     for item in calculated_outputs:
-        part_num = item.get('part_number')
-        item_type = item.get('type', '').lower()
-
-        if part_num == "N/A" or not part_num:
-            if item_type == "profiles":
-                profiles.append(item)
-            elif item_type == "accessories":
-                accessories.append(item)
-            else:
-                manual_outputs.append(item)
+        pn = item.get('part_number')
+        typ = item.get('type', '').lower()
+        if not pn or pn == "N/A":
+            (profiles if typ == "profiles" else accessories if typ == "accessories" else manual_outputs).append(item)
         else:
-            if part_num in PART_NUMBER_MAP.get("profiles", []):
+            if pn in PART_NUMBER_MAP.get("profiles", []):
                 profiles.append(item)
-            elif part_num in PART_NUMBER_MAP.get("accessories", []):
+            elif pn in PART_NUMBER_MAP.get("accessories", []):
                 accessories.append(item)
             else:
                 manual_outputs.append(item)
 
-    section_col_start = 5  # E
-    output_start_row = 1
-    grand_total = 0.0
+    system_total = 0.0
 
-    def write_section(title, items, col_start, row_start, type_label):
-        nonlocal grand_total
+    def write_section(title, items, col_start, row_start, section_type):
+        nonlocal system_total
+        headers = ["Description", "Part Number", "Quantity", "Price"]
+        for i, h in enumerate([title] + headers):
+            ws.cell(row=row_start + i if i > 0 else row_start, column=col_start, value=h)
 
-        ws[f"{get_column_letter(col_start)}{row_start}"] = title
-        ws[f"{get_column_letter(col_start)}{row_start + 1}"] = "Part Number"
-        ws[f"{get_column_letter(col_start)}{row_start + 2}"] = "Quantity"
-        ws[f"{get_column_letter(col_start)}{row_start + 3}"] = "Price"
-
-        output_col_idx = col_start + 1
-
+        write_col = col_start + 1
         for item in items:
-            col_letter = get_column_letter(output_col_idx)
-            qty = item['quantity']
-
-            if item.get('part_number') and item.get('part_number') != "N/A":
-                unit_price, unit_type = get_price_by_part(item['part_number'])
+            qty = item.get('quantity', 0)
+            pn = item.get('part_number')
+            if pn and pn != "N/A":
+                unit_price, unit_type = get_price_by_part(pn)
                 unit_price = unit_price or 0.0
                 unit_type = unit_type or "pcs"
             else:
                 unit_price = item.get('price', 0.0)
                 unit_type = item.get('unit', 'pcs')
-
-            if type_label == "profiles":
+            if section_type == "profiles":
                 unit_price *= multiplier
+            total_price = qty * unit_price
+            system_total += total_price
 
-            total_cost = qty * unit_price
-            grand_total += total_cost
+            ws.cell(row=row_start, column=write_col, value=item.get('description', ''))
+            ws.cell(row=row_start + 1, column=write_col, value=pn or 'N/A')
+            ws.cell(row=row_start + 2, column=write_col, value=f"{qty} {unit_type}")
+            ws.cell(row=row_start + 3, column=write_col, value=f"${total_price:.2f}")
+            write_col += 1
 
-            ws[f"{col_letter}{row_start}"] = item['description']
-            ws[f"{col_letter}{row_start + 1}"] = item.get('part_number', 'N/A')
-            ws[f"{col_letter}{row_start + 2}"] = f"{qty} {unit_type}"
-            ws[f"{col_letter}{row_start + 3}"] = f"${total_cost:.2f}"
+    cur_row = start_row
+    cur_col = colE
 
-            output_col_idx += 1
+    if profiles:
+        write_section("PROFILES", profiles, cur_col, cur_row, "profiles")
+        cur_row += 6
+    if accessories:
+        write_section("ACCESSORIES", accessories, cur_col, cur_row, "accessories")
+        cur_row += 6
+    if manual_outputs:
+        grouped = {}
+        for item in manual_outputs:
+            grouped.setdefault(item.get('type', 'MANUAL').upper(), []).append(item)
+        for grp_title, grp_items in grouped.items():
+            write_section(grp_title, grp_items, cur_col, cur_row, "manual")
+            cur_row += 6
 
-    write_section("PROFILES", profiles, section_col_start, output_start_row, "profiles")
+    ws.cell(row=cur_row + 1, column=colE, value="SYSTEM TOTAL")
+    ws.cell(row=cur_row + 2, column=colE, value=f"${system_total:.2f}")
 
-    accessories_row_start = output_start_row + 6
-    write_section("ACCESSORIES", accessories, section_col_start, accessories_row_start, "accessories")
+    # Remove old running grand totals
+    for r in range(ws.max_row, 0, -1):
+        if ws.cell(row=r, column=colE).value == "RUNNING GRAND TOTAL":
+            ws.delete_rows(r, 2)
 
-    manual_grouped = {}
-    for item in manual_outputs:
-        type_key = item.get('type', 'MANUAL').upper()
-        manual_grouped.setdefault(type_key, []).append(item)
+    running_grand_total = 0.0
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(row=r, column=colE).value == "SYSTEM TOTAL":
+            val = ws.cell(row=r + 1, column=colE).value
+            if isinstance(val, str) and val.startswith("$"):
+                running_grand_total += float(val.strip("$"))
 
-    current_row = accessories_row_start + 6
-    for type_title, items in manual_grouped.items():
-        write_section(type_title, items, section_col_start, current_row, "manual")
-        current_row += 6
+    bottom_row = ws.max_row + 3
+    ws.cell(row=bottom_row, column=colE, value="RUNNING GRAND TOTAL")
+    ws.cell(row=bottom_row + 1, column=colE, value=f"${running_grand_total:.2f}")
 
-    ws[f"{get_column_letter(section_col_start)}{current_row}"] = "GRAND TOTAL"
-    ws[f"{get_column_letter(section_col_start)}{current_row + 1}"] = f"${grand_total:.2f}"
+    # Auto-fit columns
+    for col_cells in ws.columns:
+        max_len = max((len(str(c.value)) for c in col_cells if c.value), default=0)
+        ws.column_dimensions[col_cells[0].column_letter].width = max_len + 2
 
-    # --------- AUTO-FIT ALL COLUMNS -----------
-    for column_cells in ws.columns:
-        max_length = 0
-        column = column_cells[0].column_letter
-        for cell in column_cells:
-            try:
-                cell_length = len(str(cell.value))
-                if cell_length > max_length:
-                    max_length = cell_length
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        ws.column_dimensions[column].width = adjusted_width
-    # -------------------------------------------
-
-    wb.save("output.xlsx")
+    wb.save(output_file)
 
     if completion_callback:
-        completion_callback("Generated with column widths auto-fitted!", "green")
+        completion_callback(
+            "Created new output file!" if mode == "new" else "Appended to existing file!",
+            "green"
+        )
