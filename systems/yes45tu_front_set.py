@@ -64,12 +64,21 @@ def calculate_yes45tu_quantities(
     # Manual outputs: description, quantity, type, and no part number
     manual_outputs = [
         {
-            "description": "Total Glass1",
+            "description": "Glass Area",
             "quantity": calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall),
             "part_number": "N/A",
             "type": "Glass",
-            'price': 10.5
+            'price': 10.5,
+            'unit': 'sqft'
         },
+        {
+            "description": "Joints Fabrication Labor",
+            "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
+            "part_number": "N/A",
+            "type": "Fabrication",
+            'price': 15.0,
+            'unit': 'joints'
+        }
     ]
 
     results = []
