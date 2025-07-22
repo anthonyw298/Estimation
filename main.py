@@ -14,11 +14,11 @@ class App(ctk.CTk):
 
         # SYSTEM OPTIONS
         self.system_options = ["YES 45TU FRONT SET(OG)", "Other"]
-        self.finish_options = ["Clear", "Black", "Paint"]  # New finish options
+        self.finish_options = ["Clear", "Black", "Paint"]
 
         # Variables for inputs
         self.var_system = tk.StringVar(value=self.system_options[0])
-        self.var_finish = tk.StringVar(value=self.finish_options[0])  # New finish variable
+        self.var_finish = tk.StringVar(value=self.finish_options[0])
         self.var_elevation_type = tk.StringVar()
         self.var_total_count = tk.StringVar()
         self.var_bays_wide = tk.StringVar()
@@ -31,13 +31,24 @@ class App(ctk.CTk):
         self.main_frame.pack(fill="both", expand=True, padx=30, pady=30)
 
         # System Dropdown
-        ctk.CTkLabel(self.main_frame, text="Select System:", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, sticky="w", pady=(0, 15))
-        self.system_dropdown = ctk.CTkOptionMenu(self.main_frame, values=self.system_options, variable=self.var_system, command=self.on_system_change)
+        ctk.CTkLabel(
+            self.main_frame, text="Select System:", font=ctk.CTkFont(size=18, weight="bold")
+        ).grid(row=0, column=0, sticky="w", pady=(0, 15))
+        self.system_dropdown = ctk.CTkOptionMenu(
+            self.main_frame,
+            values=self.system_options,
+            variable=self.var_system,
+            command=self.on_system_change
+        )
         self.system_dropdown.grid(row=0, column=1, sticky="ew", pady=(0, 15))
 
-        # Finish Dropdown (new)
-        ctk.CTkLabel(self.main_frame, text="Select Finish:", font=ctk.CTkFont(size=18, weight="bold")).grid(row=1, column=0, sticky="w", pady=(0, 15))
-        self.finish_dropdown = ctk.CTkOptionMenu(self.main_frame, values=self.finish_options, variable=self.var_finish)
+        # Finish Dropdown
+        ctk.CTkLabel(
+            self.main_frame, text="Select Finish:", font=ctk.CTkFont(size=18, weight="bold")
+        ).grid(row=1, column=0, sticky="w", pady=(0, 15))
+        self.finish_dropdown = ctk.CTkOptionMenu(
+            self.main_frame, values=self.finish_options, variable=self.var_finish
+        )
         self.finish_dropdown.grid(row=1, column=1, sticky="ew", pady=(0, 15))
 
         # Elevation Type
@@ -59,20 +70,38 @@ class App(ctk.CTk):
         self.entry_bays_tall = ctk.CTkEntry(self.main_frame, textvariable=self.var_bays_tall)
 
         # Opening Width
-        ctk.CTkLabel(self.main_frame, text="Opening Width (in inches):   ").grid(row=6, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(
+            self.main_frame, text="Opening Width (in inches):"
+        ).grid(row=6, column=0, sticky="w", pady=5)
         self.entry_opening_width = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_width)
         self.entry_opening_width.grid(row=6, column=1, sticky="ew", pady=5)
 
         # Opening Height
-        ctk.CTkLabel(self.main_frame, text="Opening Height (in inches):   ").grid(row=7, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(
+            self.main_frame, text="Opening Height (in inches):"
+        ).grid(row=7, column=0, sticky="w", pady=5)
         self.entry_opening_height = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_height)
         self.entry_opening_height.grid(row=7, column=1, sticky="ew", pady=5)
 
-        # Submit button
-        self.submit_button = ctk.CTkButton(self.main_frame, text="Generate Excel Report", command=self.submit_data)
-        self.submit_button.grid(row=8, column=0, columnspan=2, pady=20)
+        # Buttons Frame
+        self.buttons_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.buttons_frame.grid(row=8, column=0, columnspan=2, sticky="e", pady=20, padx=(0, 30))
 
-        # Status label
+        self.submit_button = ctk.CTkButton(
+            self.buttons_frame,
+            text="Generate New Excel Report",
+            command=lambda: self.submit_data(mode="new")
+        )
+        self.submit_button.pack(side="left", padx=(0, 20))
+
+        self.add_elevation_button = ctk.CTkButton(
+            self.buttons_frame,
+            text="Add New Elevation Type to Current Excel",
+            command=lambda: self.submit_data(mode="append")
+        )
+        self.add_elevation_button.pack(side="left")
+
+        # Status Label
         self.status_label = ctk.CTkLabel(self.main_frame, text="", text_color="red")
         self.status_label.grid(row=9, column=0, columnspan=2)
 
@@ -83,7 +112,6 @@ class App(ctk.CTk):
         self.on_system_change(self.var_system.get())
 
     def on_system_change(self, selected_system):
-        # Show/hide bays wide and bays tall fields based on system
         if selected_system == "YES 45TU FRONT SET(OG)":
             self.label_bays_wide.grid(row=4, column=0, sticky="w", pady=5)
             self.entry_bays_wide.grid(row=4, column=1, sticky="ew", pady=5)
@@ -95,10 +123,10 @@ class App(ctk.CTk):
             self.label_bays_tall.grid_forget()
             self.entry_bays_tall.grid_forget()
 
-    def submit_data(self):
+    def submit_data(self, mode="new"):
         try:
             system_input = self.var_system.get()
-            finish_input = self.var_finish.get()  # new finish input
+            finish_input = self.var_finish.get()
             elevation_type = self.var_elevation_type.get().strip()
             total_count = int(self.var_total_count.get())
             opening_width_inches = float(self.var_opening_width.get())
@@ -125,7 +153,7 @@ class App(ctk.CTk):
 
             generate_excel_report(
                 system_input,
-                finish_input,                # Pass finish here
+                finish_input,
                 elevation_type,
                 total_count,
                 bays_wide,
@@ -137,9 +165,13 @@ class App(ctk.CTk):
                 perimeter_ft,
                 total_perimeter_ft,
                 calculated_outputs,
-                self.update_status
+                completion_callback=self.update_status,
+                mode=mode
             )
-            self.update_status("Excel report generated successfully!", "green")
+            self.update_status(
+                "Excel report generated successfully!" if mode == "new" else "Elevation type added successfully!",
+                "green"
+            )
 
         except ValueError as e:
             self.update_status(f"Input error: {e}. Please enter valid numbers.", "red")
