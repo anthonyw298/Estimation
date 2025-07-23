@@ -112,12 +112,12 @@ class App(ctk.CTk):
         )
         self.submit_button.pack(side="left", padx=(0, 20))
 
-        self.reset_button = ctk.CTkButton(
+        self.delete_button = ctk.CTkButton(
             self.buttons_frame,
-            text="Reset All Elevations",
-            command=self.reset_all_elevations
+            text="Delete Elevation",
+            command=self.delete_elevation_type
         )
-        self.reset_button.pack(side="left", padx=(0, 20))
+        self.delete_button.pack(side="left", padx=(0, 20))
 
         # Status Label
         self.status_label = ctk.CTkLabel(self.main_frame, text="", text_color="red")
@@ -131,25 +131,21 @@ class App(ctk.CTk):
 
     def on_system_change(self, selected_system):
         if selected_system == "YES 45TU FRONT SET(OG)":
-            # Show bays inputs
             self.label_bays_wide.grid(row=5, column=0, sticky="w", pady=5)
             self.entry_bays_wide.grid(row=5, column=1, sticky="ew", pady=5)
             self.label_bays_tall.grid(row=6, column=0, sticky="w", pady=5)
             self.entry_bays_tall.grid(row=6, column=1, sticky="ew", pady=5)
         else:
-            # Hide bays inputs
             self.label_bays_wide.grid_forget()
             self.entry_bays_wide.grid_forget()
             self.label_bays_tall.grid_forget()
             self.entry_bays_tall.grid_forget()
 
     def on_saved_elevation_select(self, elevation_type):
-        """Load the saved elevation data into the form for editing."""
         if not elevation_type or elevation_type not in self.saved_elevations:
             return
         data = self.saved_elevations[elevation_type]
 
-        # Load data into form variables
         self.var_elevation_type.set(elevation_type)
         self.var_system.set(data.get("system", self.system_options[0]))
         self.var_finish.set(data.get("finish", self.finish_options[0]))
@@ -160,11 +156,9 @@ class App(ctk.CTk):
         self.var_opening_height.set(str(data.get("opening_height_inches", "")))
 
         self.on_system_change(self.var_system.get())
-
         self.update_status(f"Loaded elevation '{elevation_type}' for editing.", "green")
 
     def save_elevation_type(self):
-        """Validate inputs and save/update the elevation type in saved_elevations dict, then regenerate excel."""
         try:
             elevation_type = self.var_elevation_type.get().strip()
             if not elevation_type:
@@ -182,18 +176,12 @@ class App(ctk.CTk):
             calculated_outputs = []
 
             if system_input == "YES 45TU FRONT SET(OG)":
-                try:
-                    bays_wide = int(self.var_bays_wide.get())
-                    bays_tall = int(self.var_bays_tall.get())
-                except ValueError:
-                    self.update_status("Please enter valid integers for bays wide and bays tall.", "red")
-                    return
-
+                bays_wide = int(self.var_bays_wide.get())
+                bays_tall = int(self.var_bays_tall.get())
                 calculated_outputs = calculate_yes45tu_quantities(
                     bays_wide, bays_tall, total_count, opening_width_inches, opening_height_inches
                 )
 
-            # Convert dimensions from inches to feet for calculations
             opening_width_feet = opening_width_inches / 12.0
             opening_height_feet = opening_height_inches / 12.0
 
@@ -202,7 +190,6 @@ class App(ctk.CTk):
             perimeter_ft = calculate_perimeter(opening_width_feet, opening_height_feet)
             total_perimeter_ft = perimeter_ft * total_count
 
-            # Save the elevation type data in the dictionary
             self.saved_elevations[elevation_type] = {
                 "system": system_input,
                 "finish": finish_input,
@@ -218,74 +205,92 @@ class App(ctk.CTk):
                 "calculated_outputs": calculated_outputs,
             }
 
-            # Update saved elevation types dropdown values
             self.update_saved_elevation_dropdown()
+            self.var_saved_elevation_types.set(elevation_type)  # Select saved elevation
+            self.update_status(f"Saved elevation '{elevation_type}' successfully.", "green")
 
-            # Regenerate full Excel report with all saved elevations
+            # Regenerate Excel report with all saved elevations
             all_elevations_data = list(self.saved_elevations.values())
             generate_excel_report(
-                system_input,
-                finish_input,
-                elevation_type,
-                total_count,
-                bays_wide,
-                bays_tall,
-                opening_width_inches,
-                opening_height_inches,
-                sqft_per_type,
-                total_sqft,
-                perimeter_ft,
-                total_perimeter_ft,
-                calculated_outputs,
-                all_elevations=all_elevations_data,  # Pass all for full regeneration
+                system_input=system_input,
+                finish_input=finish_input,
+                elevation_type=elevation_type,
+                total_count=total_count,
+                bays_wide=bays_wide,
+                bays_tall=bays_tall,
+                opening_width=opening_width_inches,
+                opening_height=opening_height_inches,
+                sqft_per_type=sqft_per_type,
+                total_sqft=total_sqft,
+                perimeter_ft=perimeter_ft,
+                total_perimeter_ft=total_perimeter_ft,
+                calculated_outputs=calculated_outputs,
+                all_elevations=all_elevations_data,
                 completion_callback=self.update_status,
                 mode="regenerate"
             )
-            self.update_status(f"Saved and updated elevation '{elevation_type}' successfully!", "green")
 
         except ValueError as e:
-            self.update_status(f"Input error: {e}. Please enter valid numeric values.", "red")
+            self.update_status(f"Invalid input: {e}", "red")
+
+    def delete_elevation_type(self):
+        elevation_type = self.var_saved_elevation_types.get()
+        if elevation_type and elevation_type in self.saved_elevations:
+            del self.saved_elevations[elevation_type]
+            self.update_saved_elevation_dropdown()
+            self.clear_form()
+            self.update_status(f"Deleted elevation '{elevation_type}'.", "green")
+
+            # Pass all elevations except deleted to regenerate the Excel report
+            all_elevations_data = list(self.saved_elevations.values())
+            generate_excel_report(
+                system_input="",
+                finish_input="",
+                elevation_type="",
+                total_count=0,
+                bays_wide=0,
+                bays_tall=0,
+                opening_width=0.0,
+                opening_height=0.0,
+                sqft_per_type=0.0,
+                total_sqft=0.0,
+                perimeter_ft=0.0,
+                total_perimeter_ft=0.0,
+                calculated_outputs=[],
+                all_elevations=all_elevations_data,
+                completion_callback=self.update_status,
+                mode="regenerate",
+                delete_elevation_type=elevation_type  # Tell Excel generator which was deleted
+            )
+        else:
+            self.update_status("No elevation selected to delete.", "red")
 
     def update_saved_elevation_dropdown(self):
-        """Update the saved elevation types dropdown menu with current keys."""
-        elevation_types = list(self.saved_elevations.keys())
-        if not elevation_types:
-            elevation_types = [""]
-
+        elevation_types = sorted(self.saved_elevations.keys())
         self.saved_elevation_dropdown.configure(values=elevation_types)
-
-        # If currently selected elevation no longer exists, clear selection
-        if self.var_saved_elevation_types.get() not in elevation_types:
+        if elevation_types:
+            # Keep selection if possible
+            current = self.var_saved_elevation_types.get()
+            if current not in elevation_types:
+                self.var_saved_elevation_types.set(elevation_types[0])
+        else:
             self.var_saved_elevation_types.set("")
 
-    def reset_all_elevations(self):
-        self.saved_elevations.clear()
-        self.update_saved_elevation_dropdown()
-        self.clear_form()
-        self.update_status("All elevations have been reset.", "green")
-
-        generate_excel_report(
-            system_input="", finish_input="", elevation_type="", total_count=0,
-            bays_wide=0, bays_tall=0, opening_width=0.0, opening_height=0.0,
-            sqft_per_type=0.0, total_sqft=0.0, perimeter_ft=0.0, total_perimeter_ft=0.0,
-            calculated_outputs=[], completion_callback=self.update_status,
-            mode="regenerate", reset=True, all_elevations=[]
-        )
-
     def clear_form(self):
-        """Reset all input fields."""
         self.var_elevation_type.set("")
         self.var_total_count.set("")
         self.var_bays_wide.set("")
         self.var_bays_tall.set("")
         self.var_opening_width.set("")
         self.var_opening_height.set("")
+        self.var_system.set(self.system_options[0])
+        self.var_finish.set(self.finish_options[0])
+        self.on_system_change(self.var_system.get())
 
-    def update_status(self, message, color="black"):
+    def update_status(self, message=' Sucessfully Deleted Elevation Type', color='white'):
         self.status_label.configure(text=message, text_color=color)
 
 
 if __name__ == "__main__":
     app = App()
-    app.after(10, lambda: app.state('zoomed'))
     app.mainloop()
