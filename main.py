@@ -1,248 +1,207 @@
 import customtkinter as ctk
 import tkinter as tk
+import json
+import os
+
 from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter
 
 
+SAVE_FILE = "saved_elevations.json"
+
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-
         self.title("United Glass Estimation Calculation Tool")
-        self.state('zoomed')  # Maximize window
+        self.state('zoomed')
 
-        # SYSTEM OPTIONS
+        # Constants
         self.system_options = ["YES 45TU FRONT SET(OG)", "Other"]
         self.finish_options = ["Clear", "Black", "Paint"]
-
-        # Saved elevations dictionary: elevation_type -> data dict
         self.saved_elevations = {}
 
-        # Variables for inputs
-        self.var_system = tk.StringVar(value=self.system_options[0])
-        self.var_finish = tk.StringVar(value=self.finish_options[0])
-        self.var_elevation_type = tk.StringVar()
-        self.var_total_count = tk.StringVar()
-        self.var_bays_wide = tk.StringVar()
-        self.var_bays_tall = tk.StringVar()
-        self.var_opening_width = tk.StringVar()
-        self.var_opening_height = tk.StringVar()
+        # Tk variables
+        vars_ = dict(
+            system=tk.StringVar(value=self.system_options[0]),
+            finish=tk.StringVar(value=self.finish_options[0]),
+            elevation_type=tk.StringVar(),
+            total_count=tk.StringVar(),
+            bays_wide=tk.StringVar(),
+            bays_tall=tk.StringVar(),
+            opening_width=tk.StringVar(),
+            opening_height=tk.StringVar(),
+            saved_elevation_types=tk.StringVar(),
+        )
+        self.vars = vars_
 
-        # Variable for saved elevation types dropdown
-        self.var_saved_elevation_types = tk.StringVar()
-
-        # Main Frame
+        # UI setup
         self.main_frame = ctk.CTkFrame(self, corner_radius=20)
         self.main_frame.pack(fill="both", expand=True, padx=30, pady=30)
+        self.main_frame.grid_columnconfigure(1, weight=1)
 
-        # System Dropdown
-        ctk.CTkLabel(
-            self.main_frame, text="Select System:", font=ctk.CTkFont(size=18, weight="bold")
-        ).grid(row=0, column=0, sticky="w", pady=(0, 15))
+        labels = [
+            ("Select System:", 0),
+            ("Select Finish:", 1),
+            ("Saved Elevation Types:", 2),
+            ("Elevation Type:", 3),
+            ("Total Count:", 4),
+            ("# Bays Wide:", 5),
+            ("# Bays Tall:", 6),
+            ("Opening Width (in inches):", 7),
+            ("Opening Height (in inches):", 8),
+        ]
+        self.widgets = {}
+        for text, row in labels:
+            lbl = ctk.CTkLabel(self.main_frame, text=text)
+            lbl.grid(row=row, column=0, sticky="w", pady=5)
+            self.widgets[f"label_{row}"] = lbl
+
         self.system_dropdown = ctk.CTkOptionMenu(
             self.main_frame,
             values=self.system_options,
-            variable=self.var_system,
+            variable=vars_['system'],
             command=self.on_system_change
         )
-        self.system_dropdown.grid(row=0, column=1, sticky="ew", pady=(0, 15))
+        self.system_dropdown.grid(row=0, column=1, sticky="ew", pady=5)
 
-        # Finish Dropdown
-        ctk.CTkLabel(
-            self.main_frame, text="Select Finish:", font=ctk.CTkFont(size=18, weight="bold")
-        ).grid(row=1, column=0, sticky="w", pady=(0, 15))
         self.finish_dropdown = ctk.CTkOptionMenu(
-            self.main_frame, values=self.finish_options, variable=self.var_finish
+            self.main_frame, values=self.finish_options, variable=vars_['finish']
         )
-        self.finish_dropdown.grid(row=1, column=1, sticky="ew", pady=(0, 15))
+        self.finish_dropdown.grid(row=1, column=1, sticky="ew", pady=5)
 
-        # Saved Elevation Types Dropdown (for selecting/editing)
-        ctk.CTkLabel(
-            self.main_frame, text="Saved Elevation Types:", font=ctk.CTkFont(size=14)
-        ).grid(row=2, column=0, sticky="w", pady=(5, 15))
         self.saved_elevation_dropdown = ctk.CTkOptionMenu(
             self.main_frame,
             values=[],
-            variable=self.var_saved_elevation_types,
+            variable=vars_['saved_elevation_types'],
             command=self.on_saved_elevation_select
         )
-        self.saved_elevation_dropdown.grid(row=2, column=1, sticky="ew", pady=(5, 15))
+        self.saved_elevation_dropdown.grid(row=2, column=1, sticky="ew", pady=5)
 
-        # Elevation Type Entry (for new or editing)
-        ctk.CTkLabel(self.main_frame, text="Elevation Type:").grid(row=3, column=0, sticky="w", pady=5)
-        self.entry_elevation_type = ctk.CTkEntry(self.main_frame, textvariable=self.var_elevation_type)
-        self.entry_elevation_type.grid(row=3, column=1, sticky="ew", pady=5)
+        entry_fields = ['elevation_type', 'total_count', 'bays_wide', 'bays_tall', 'opening_width', 'opening_height']
+        for idx, field in enumerate(entry_fields, start=3):
+            entry = ctk.CTkEntry(self.main_frame, textvariable=vars_[field])
+            entry.grid(row=idx, column=1, sticky="ew", pady=5)
+            self.widgets[f"entry_{field}"] = entry
 
-        # Total Count
-        ctk.CTkLabel(self.main_frame, text="Total Count:").grid(row=4, column=0, sticky="w", pady=5)
-        self.entry_total_count = ctk.CTkEntry(self.main_frame, textvariable=self.var_total_count)
-        self.entry_total_count.grid(row=4, column=1, sticky="ew", pady=5)
-
-        # Bays Wide (only for YES 45TU)
-        self.label_bays_wide = ctk.CTkLabel(self.main_frame, text="# Bays Wide:")
-        self.entry_bays_wide = ctk.CTkEntry(self.main_frame, textvariable=self.var_bays_wide)
-
-        # Bays Tall (only for YES 45TU)
-        self.label_bays_tall = ctk.CTkLabel(self.main_frame, text="# Bays Tall:")
-        self.entry_bays_tall = ctk.CTkEntry(self.main_frame, textvariable=self.var_bays_tall)
-
-        # Opening Width
-        ctk.CTkLabel(
-            self.main_frame, text="Opening Width (in inches):"
-        ).grid(row=7, column=0, sticky="w", pady=5)
-        self.entry_opening_width = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_width)
-        self.entry_opening_width.grid(row=7, column=1, sticky="ew", pady=5)
-
-        # Opening Height
-        ctk.CTkLabel(
-            self.main_frame, text="Opening Height (in inches):"
-        ).grid(row=8, column=0, sticky="w", pady=5)
-        self.entry_opening_height = ctk.CTkEntry(self.main_frame, textvariable=self.var_opening_height)
-        self.entry_opening_height.grid(row=8, column=1, sticky="ew", pady=5)
-
-        # Buttons Frame
-        self.buttons_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.buttons_frame.grid(row=9, column=0, columnspan=2, sticky="e", pady=20, padx=(0, 30))
-
-        self.submit_button = ctk.CTkButton(
-            self.buttons_frame,
-            text="Save Elevation Type",
-            command=self.save_elevation_type
-        )
+        btn_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        btn_frame.grid(row=9, column=0, columnspan=2, sticky="e", pady=20, padx=(0, 30))
+        self.submit_button = ctk.CTkButton(btn_frame, text="Save Elevation Type", command=self.save_elevation_type)
         self.submit_button.pack(side="left", padx=(0, 20))
-
-        self.delete_button = ctk.CTkButton(
-            self.buttons_frame,
-            text="Delete Elevation",
-            command=self.delete_elevation_type
-        )
+        self.delete_button = ctk.CTkButton(btn_frame, text="Delete Elevation", command=self.delete_elevation_type)
         self.delete_button.pack(side="left", padx=(0, 20))
 
-        # Status Label
         self.status_label = ctk.CTkLabel(self.main_frame, text="", text_color="red")
         self.status_label.grid(row=10, column=0, columnspan=2)
 
-        # Configure grid weights for responsiveness
-        self.main_frame.grid_columnconfigure(1, weight=1)
+        self.load_saved_elevations()
+        self.on_system_change(vars_['system'].get())
 
-        # Initialize UI based on default system selection
-        self.on_system_change(self.var_system.get())
+    def on_system_change(self, selected):
+        show_bays = selected == "YES 45TU FRONT SET(OG)"
+        for field, row in [('bays_wide', 5), ('bays_tall', 6)]:
+            widget = self.widgets[f"label_{row}"]
+            entry = self.widgets[f"entry_{field}"]
+            if show_bays:
+                widget.grid(row=row, column=0, sticky="w", pady=5)
+                entry.grid(row=row, column=1, sticky="ew", pady=5)
+            else:
+                widget.grid_forget()
+                entry.grid_forget()
 
-    def on_system_change(self, selected_system):
-        if selected_system == "YES 45TU FRONT SET(OG)":
-            self.label_bays_wide.grid(row=5, column=0, sticky="w", pady=5)
-            self.entry_bays_wide.grid(row=5, column=1, sticky="ew", pady=5)
-            self.label_bays_tall.grid(row=6, column=0, sticky="w", pady=5)
-            self.entry_bays_tall.grid(row=6, column=1, sticky="ew", pady=5)
-        else:
-            self.label_bays_wide.grid_forget()
-            self.entry_bays_wide.grid_forget()
-            self.label_bays_tall.grid_forget()
-            self.entry_bays_tall.grid_forget()
-
-    def on_saved_elevation_select(self, elevation_type):
-        if not elevation_type or elevation_type not in self.saved_elevations:
+    def on_saved_elevation_select(self, elev_type):
+        if elev_type not in self.saved_elevations:
             return
-        data = self.saved_elevations[elevation_type]
-
-        self.var_elevation_type.set(elevation_type)
-        self.var_system.set(data.get("system", self.system_options[0]))
-        self.var_finish.set(data.get("finish", self.finish_options[0]))
-        self.var_total_count.set(str(data.get("total_count", "")))
-        self.var_bays_wide.set(str(data.get("bays_wide", "")))
-        self.var_bays_tall.set(str(data.get("bays_tall", "")))
-        self.var_opening_width.set(str(data.get("opening_width_inches", "")))
-        self.var_opening_height.set(str(data.get("opening_height_inches", "")))
-
-        self.on_system_change(self.var_system.get())
-        self.update_status(f"Loaded elevation '{elevation_type}' for editing.", "green")
+        data = self.saved_elevations[elev_type]
+        for key, var_key in [
+            ('system', 'system'),
+            ('finish', 'finish'),
+            ('total_count', 'total_count'),
+            ('bays_wide', 'bays_wide'),
+            ('bays_tall', 'bays_tall'),
+            ('opening_width_inches', 'opening_width'),
+            ('opening_height_inches', 'opening_height'),
+        ]:
+            self.vars[var_key].set(str(data.get(key, '')))
+        self.vars['elevation_type'].set(elev_type)
+        self.on_system_change(self.vars['system'].get())
+        self.update_status("Loaded", elev_type, "green")
 
     def save_elevation_type(self):
         try:
-            elevation_type = self.var_elevation_type.get().strip()
-            if not elevation_type:
-                self.update_status("Please enter an elevation type.", "red")
+            v = self.vars
+            elev = v['elevation_type'].get().strip()
+            if not elev:
+                self.update_status("Error", "Please enter an elevation type.", "red")
                 return
+            system = v['system'].get()
+            finish = v['finish'].get()
+            total = int(v['total_count'].get())
+            ow = float(v['opening_width'].get())
+            oh = float(v['opening_height'].get())
+            bays_wide = int(v['bays_wide'].get()) if system == self.system_options[0] else 0
+            bays_tall = int(v['bays_tall'].get()) if system == self.system_options[0] else 0
 
-            system_input = self.var_system.get()
-            finish_input = self.var_finish.get()
-            total_count = int(self.var_total_count.get())
-            opening_width_inches = float(self.var_opening_width.get())
-            opening_height_inches = float(self.var_opening_height.get())
+            calculated = []
+            if system == self.system_options[0]:
+                calculated = calculate_yes45tu_quantities(bays_wide, bays_tall, total, ow, oh)
 
-            bays_wide = 0
-            bays_tall = 0
-            calculated_outputs = []
+            sqft_per = calculate_rectangle_area(ow / 12, oh / 12)
+            total_sqft = sqft_per * total
+            perimeter = calculate_perimeter(ow / 12, oh / 12)
+            total_perimeter = perimeter * total
 
-            if system_input == "YES 45TU FRONT SET(OG)":
-                bays_wide = int(self.var_bays_wide.get())
-                bays_tall = int(self.var_bays_tall.get())
-                calculated_outputs = calculate_yes45tu_quantities(
-                    bays_wide, bays_tall, total_count, opening_width_inches, opening_height_inches
-                )
-
-            opening_width_feet = opening_width_inches / 12.0
-            opening_height_feet = opening_height_inches / 12.0
-
-            sqft_per_type = calculate_rectangle_area(opening_width_feet, opening_height_feet)
-            total_sqft = sqft_per_type * total_count
-            perimeter_ft = calculate_perimeter(opening_width_feet, opening_height_feet)
-            total_perimeter_ft = perimeter_ft * total_count
-
-            self.saved_elevations[elevation_type] = {
-                "system": system_input,
-                "finish": finish_input,
-                "total_count": total_count,
+            self.saved_elevations[elev] = {
+                "system": system,
+                "finish": finish,
+                "total_count": total,
                 "bays_wide": bays_wide,
                 "bays_tall": bays_tall,
-                "opening_width_inches": opening_width_inches,
-                "opening_height_inches": opening_height_inches,
-                "sqft_per_type": sqft_per_type,
+                "opening_width_inches": ow,
+                "opening_height_inches": oh,
+                "sqft_per_type": sqft_per,
                 "total_sqft": total_sqft,
-                "perimeter_ft": perimeter_ft,
-                "total_perimeter_ft": total_perimeter_ft,
-                "calculated_outputs": calculated_outputs,
+                "perimeter_ft": perimeter,
+                "total_perimeter_ft": total_perimeter,
+                "calculated_outputs": calculated,
             }
 
             self.update_saved_elevation_dropdown()
-            self.var_saved_elevation_types.set(elevation_type)  # Select saved elevation
-            self.update_status(f"Saved elevation '{elevation_type}' successfully.", "green")
+            self.vars['saved_elevation_types'].set(elev)
+            self.save_elevations_to_disk()
 
-            # Regenerate Excel report with all saved elevations
-            all_elevations_data = list(self.saved_elevations.values())
             generate_excel_report(
-                system_input=system_input,
-                finish_input=finish_input,
-                elevation_type=elevation_type,
-                total_count=total_count,
+                system_input=system,
+                finish_input=finish,
+                elevation_type=elev,
+                total_count=total,
                 bays_wide=bays_wide,
                 bays_tall=bays_tall,
-                opening_width=opening_width_inches,
-                opening_height=opening_height_inches,
-                sqft_per_type=sqft_per_type,
+                opening_width=ow,
+                opening_height=oh,
+                sqft_per_type=sqft_per,
                 total_sqft=total_sqft,
-                perimeter_ft=perimeter_ft,
-                total_perimeter_ft=total_perimeter_ft,
-                calculated_outputs=calculated_outputs,
-                all_elevations=all_elevations_data,
-                completion_callback=self.update_status,
+                perimeter_ft=perimeter,
+                total_perimeter_ft=total_perimeter,
+                calculated_outputs=calculated,
+                all_elevations=list(self.saved_elevations.values()),
+                completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
                 mode="regenerate"
             )
-
+            self.update_status("Saved", elev, "green")
         except ValueError as e:
-            self.update_status(f"Invalid input: {e}", "red")
+            self.update_status("Error", str(e), "red")
 
     def delete_elevation_type(self):
-        elevation_type = self.var_saved_elevation_types.get()
-        if elevation_type and elevation_type in self.saved_elevations:
-            del self.saved_elevations[elevation_type]
+        elev = self.vars['saved_elevation_types'].get()
+        if elev in self.saved_elevations:
+            self.saved_elevations.pop(elev)
             self.update_saved_elevation_dropdown()
             self.clear_form()
-            self.update_status(f"Deleted elevation '{elevation_type}'.", "green")
+            self.update_status("Deleted", elev, "green")
+            self.save_elevations_to_disk()
 
-            # Pass all elevations except deleted to regenerate the Excel report
-            all_elevations_data = list(self.saved_elevations.values())
             generate_excel_report(
                 system_input="",
                 finish_input="",
@@ -257,40 +216,49 @@ class App(ctk.CTk):
                 perimeter_ft=0.0,
                 total_perimeter_ft=0.0,
                 calculated_outputs=[],
-                all_elevations=all_elevations_data,
-                completion_callback=self.update_status,
+                all_elevations=list(self.saved_elevations.values()),
+                completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
                 mode="regenerate",
-                delete_elevation_type=elevation_type  # Tell Excel generator which was deleted
+                delete_elevation_type=elev
             )
+            self.update_status("Deleted", elev, "green")
         else:
-            self.update_status("No elevation selected to delete.", "red")
+            self.update_status("Error", "No elevation selected to delete.", "red")
 
     def update_saved_elevation_dropdown(self):
-        elevation_types = sorted(self.saved_elevations.keys())
-        self.saved_elevation_dropdown.configure(values=elevation_types)
-        if elevation_types:
-            # Keep selection if possible
-            current = self.var_saved_elevation_types.get()
-            if current not in elevation_types:
-                self.var_saved_elevation_types.set(elevation_types[0])
-        else:
-            self.var_saved_elevation_types.set("")
+        keys = sorted(self.saved_elevations.keys())
+        self.saved_elevation_dropdown.configure(values=keys)
+        current = self.vars['saved_elevation_types'].get()
+        if current not in keys:
+            self.vars['saved_elevation_types'].set(keys[0] if keys else "")
 
     def clear_form(self):
-        self.var_elevation_type.set("")
-        self.var_total_count.set("")
-        self.var_bays_wide.set("")
-        self.var_bays_tall.set("")
-        self.var_opening_width.set("")
-        self.var_opening_height.set("")
-        self.var_system.set(self.system_options[0])
-        self.var_finish.set(self.finish_options[0])
-        self.on_system_change(self.var_system.get())
+        for var in ['elevation_type', 'total_count', 'bays_wide', 'bays_tall', 'opening_width', 'opening_height']:
+            self.vars[var].set("")
+        self.vars['system'].set(self.system_options[0])
+        self.vars['finish'].set(self.finish_options[0])
+        self.on_system_change(self.vars['system'].get())
 
-    def update_status(self, message=' Sucessfully Deleted Elevation Type', color='white'):
+    def update_status(self, action, elevation_name, color="red"):
+        message = f"{action} '{elevation_name}'"
         self.status_label.configure(text=message, text_color=color)
+
+    def save_elevations_to_disk(self):
+        with open(SAVE_FILE, 'w') as f:
+            json.dump(self.saved_elevations, f, indent=4)
+
+    def load_saved_elevations(self):
+        if os.path.exists(SAVE_FILE):
+            try:
+                with open(SAVE_FILE, 'r') as f:
+                    self.saved_elevations = json.load(f)
+                self.update_saved_elevation_dropdown()
+                self.update_status("Loaded", "saved elevations", "green")
+            except Exception as e:
+                self.update_status("Error", f"Could not load saved elevations: {e}", "red")
 
 
 if __name__ == "__main__":
     app = App()
+    app.after(10, lambda: app.state('zoomed'))
     app.mainloop()

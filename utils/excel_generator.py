@@ -117,11 +117,18 @@ def generate_excel_report(
         return
 
     # Determine start row for writing new data
-    if reset or not all_elevations:
+    has_elevations = False
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(row=r, column=colA).value == "Elevation Type":
+            has_elevations = True
+            break
+
+    if reset or not has_elevations:
         ws.delete_rows(1, ws.max_row)
         start_row = 1
     else:
         start_row = None
+
         # Try to find existing elevation header
         for r in range(1, ws.max_row + 1):
             if ws.cell(row=r, column=colA).value == "Elevation Type" and ws.cell(row=r, column=colB).value == elevation_type:
