@@ -22,7 +22,8 @@ from utils.formulas import (
     calculate_sill_flashing_h,
     calculate_glass_stop,
     calculate_total_glass,
-    calculate_fabrication_joints
+    calculate_fabrication_joints,
+    calculate_door_size
 )
 
 def calculate_yes45tu_quantities(
@@ -30,7 +31,8 @@ def calculate_yes45tu_quantities(
     bays_tall: int,
     total_count: int,
     opening_width: float,
-    opening_height: float
+    opening_height: float,
+    door_size: float
 ) -> list:
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
@@ -61,25 +63,8 @@ def calculate_yes45tu_quantities(
         ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
     ]
 
-    # Manual outputs: description, quantity, type, and no part number
-    manual_outputs = [
-        {
-            "description": "Glass Area",
-            "quantity": calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall),
-            "part_number": "N/A",
-            "type": "Glass",
-            'price': 10.5,
-            'unit': 'sqft'
-        },
-        {
-            "description": "Joints Fabrication Labor",
-            "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
-            "part_number": "N/A",
-            "type": "Fabrication",
-            'price': 15.0,
-            'unit': 'joints'
-        }
-    ]
+    total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
+    door_area = calculate_door_size(door_size,total_count)
 
     results = []
 
@@ -87,7 +72,6 @@ def calculate_yes45tu_quantities(
         desc = None
         part_type = None
 
-        # Search for the part number in the map
         for category, parts_dict in PART_NUMBER_MAP.items():
             if part_number in parts_dict:
                 desc = parts_dict[part_number]
@@ -106,8 +90,44 @@ def calculate_yes45tu_quantities(
             "type": part_type
         })
 
-    # Add manual outputs at the end
+    # Determine if the door size exceeds total glass
+    if door_area >= total_glass_area:
+        glass_area_qty = total_glass_area
+        door_area_qty = 0
+        door_desc = "Door size exceeds total glass area"
+    else:
+        glass_area_qty = total_glass_area - door_area
+        door_area_qty = door_area
+        door_desc = "Door"
+
+    # Add manual outputs with possible override
+    manual_outputs = [
+        {
+            "description": "Glass Area",
+            "quantity": glass_area_qty,
+            "part_number": "N/A",
+            "type": "Glass",
+            'price': 10.5,
+            'unit': 'sqft'
+        },
+        {
+            "description": door_desc,
+            "quantity": door_area_qty,
+            "part_number": "N/A",
+            "type": "Door",
+            'price': 10,
+            'unit': 'sqft'
+        },
+        {
+            "description": "Joints Fabrication Labor",
+            "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
+            "part_number": "N/A",
+            "type": "Fabrication",
+            'price': 15.0,
+            'unit': 'joints'
+        }
+    ]
+
     results.extend(manual_outputs)
 
     return results
-

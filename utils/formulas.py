@@ -83,4 +83,24 @@ def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int)
     return (opening_width / 12) * bays_tall * total_count
 
 def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
+
+
     return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
+
+def calculate_door_size(door_size, total_count):
+    try:
+        # Remove spaces, split on 'X'
+        parts = door_size.upper().replace(" ", "").split("X")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid format: {door_size}")
+
+        # Remove the apostrophe and convert to float
+        width_ft = float(parts[0].replace("'", ""))
+        height_ft = float(parts[1].replace("'", ""))
+
+        area = width_ft * height_ft * total_count
+        return area
+
+    except Exception as e:
+        print(f"Error calculating door area: {e}")
+        return 0.0

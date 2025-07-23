@@ -7,7 +7,6 @@ from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter
 
-
 SAVE_FILE = "saved_elevations.json"
 
 
@@ -20,12 +19,14 @@ class App(ctk.CTk):
         # Constants
         self.system_options = ["YES 45TU FRONT SET(OG)", "Other"]
         self.finish_options = ["Clear", "Black", "Paint"]
+        self.door_options = ["3' X 7'", "3' X 8'", "3' X 9'", "6' X 7'", "6' X 8'", "6' X 9'"]
         self.saved_elevations = {}
 
         # Tk variables
         vars_ = dict(
             system=tk.StringVar(value=self.system_options[0]),
             finish=tk.StringVar(value=self.finish_options[0]),
+            door=tk.StringVar(value=self.door_options[0]),
             elevation_type=tk.StringVar(),
             total_count=tk.StringVar(),
             bays_wide=tk.StringVar(),
@@ -44,13 +45,14 @@ class App(ctk.CTk):
         labels = [
             ("Select System:", 0),
             ("Select Finish:", 1),
-            ("Saved Elevation Types:", 2),
-            ("Elevation Type:", 3),
-            ("Total Count:", 4),
-            ("# Bays Wide:", 5),
-            ("# Bays Tall:", 6),
-            ("Opening Width (in inches):", 7),
-            ("Opening Height (in inches):", 8),
+            ("Select Door Size:", 2),
+            ("Saved Elevation Types:", 3),
+            ("Elevation Type:", 4),
+            ("Total Count:", 5),
+            ("# Bays Wide:", 6),
+            ("# Bays Tall:", 7),
+            ("Opening Width (in inches):", 8),
+            ("Opening Height (in inches):", 9),
         ]
         self.widgets = {}
         for text, row in labels:
@@ -71,36 +73,41 @@ class App(ctk.CTk):
         )
         self.finish_dropdown.grid(row=1, column=1, sticky="ew", pady=5)
 
+        self.door_dropdown = ctk.CTkOptionMenu(
+            self.main_frame, values=self.door_options, variable=vars_['door']
+        )
+        self.door_dropdown.grid(row=2, column=1, sticky="ew", pady=5)
+
         self.saved_elevation_dropdown = ctk.CTkOptionMenu(
             self.main_frame,
             values=[],
             variable=vars_['saved_elevation_types'],
             command=self.on_saved_elevation_select
         )
-        self.saved_elevation_dropdown.grid(row=2, column=1, sticky="ew", pady=5)
+        self.saved_elevation_dropdown.grid(row=3, column=1, sticky="ew", pady=5)
 
         entry_fields = ['elevation_type', 'total_count', 'bays_wide', 'bays_tall', 'opening_width', 'opening_height']
-        for idx, field in enumerate(entry_fields, start=3):
+        for idx, field in enumerate(entry_fields, start=4):
             entry = ctk.CTkEntry(self.main_frame, textvariable=vars_[field])
             entry.grid(row=idx, column=1, sticky="ew", pady=5)
             self.widgets[f"entry_{field}"] = entry
 
         btn_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        btn_frame.grid(row=9, column=0, columnspan=2, sticky="e", pady=20, padx=(0, 30))
+        btn_frame.grid(row=10, column=0, columnspan=2, sticky="e", pady=20, padx=(0, 30))
         self.submit_button = ctk.CTkButton(btn_frame, text="Save Elevation Type", command=self.save_elevation_type)
         self.submit_button.pack(side="left", padx=(0, 20))
         self.delete_button = ctk.CTkButton(btn_frame, text="Delete Elevation", command=self.delete_elevation_type)
         self.delete_button.pack(side="left", padx=(0, 20))
 
         self.status_label = ctk.CTkLabel(self.main_frame, text="", text_color="red")
-        self.status_label.grid(row=10, column=0, columnspan=2)
+        self.status_label.grid(row=11, column=0, columnspan=2)
 
         self.load_saved_elevations()
         self.on_system_change(vars_['system'].get())
 
     def on_system_change(self, selected):
         show_bays = selected == "YES 45TU FRONT SET(OG)"
-        for field, row in [('bays_wide', 5), ('bays_tall', 6)]:
+        for field, row in [('bays_wide', 6), ('bays_tall', 7)]:
             widget = self.widgets[f"label_{row}"]
             entry = self.widgets[f"entry_{field}"]
             if show_bays:
@@ -117,6 +124,7 @@ class App(ctk.CTk):
         for key, var_key in [
             ('system', 'system'),
             ('finish', 'finish'),
+            ('door_size', 'door'),
             ('total_count', 'total_count'),
             ('bays_wide', 'bays_wide'),
             ('bays_tall', 'bays_tall'),
@@ -137,6 +145,7 @@ class App(ctk.CTk):
                 return
             system = v['system'].get()
             finish = v['finish'].get()
+            door_size = v['door'].get()
             total = int(v['total_count'].get())
             ow = float(v['opening_width'].get())
             oh = float(v['opening_height'].get())
@@ -145,7 +154,7 @@ class App(ctk.CTk):
 
             calculated = []
             if system == self.system_options[0]:
-                calculated = calculate_yes45tu_quantities(bays_wide, bays_tall, total, ow, oh)
+                calculated = calculate_yes45tu_quantities(bays_wide, bays_tall, total, ow, oh, door_size)
 
             sqft_per = calculate_rectangle_area(ow / 12, oh / 12)
             total_sqft = sqft_per * total
@@ -155,6 +164,7 @@ class App(ctk.CTk):
             self.saved_elevations[elev] = {
                 "system": system,
                 "finish": finish,
+                "door_size": door_size,
                 "total_count": total,
                 "bays_wide": bays_wide,
                 "bays_tall": bays_tall,
@@ -187,7 +197,7 @@ class App(ctk.CTk):
                 calculated_outputs=calculated,
                 all_elevations=list(self.saved_elevations.values()),
                 completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
-                mode="regenerate"
+                mode="regenerate",
             )
             self.update_status("Saved", elev, "green")
         except ValueError as e:
@@ -221,7 +231,6 @@ class App(ctk.CTk):
                 mode="regenerate",
                 delete_elevation_type=elev
             )
-            self.update_status("Deleted", elev, "green")
         else:
             self.update_status("Error", "No elevation selected to delete.", "red")
 
@@ -237,6 +246,7 @@ class App(ctk.CTk):
             self.vars[var].set("")
         self.vars['system'].set(self.system_options[0])
         self.vars['finish'].set(self.finish_options[0])
+        self.vars['door'].set(self.door_options[0])
         self.on_system_change(self.vars['system'].get())
 
     def update_status(self, action, elevation_name, color="red"):
