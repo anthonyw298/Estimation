@@ -139,5 +139,4 @@ def calculate_yes45tu_quantities(
 
 
     results.extend(manual_outputs)
-    print(manual_outputs)
     return results

@@ -1,9 +1,116 @@
-from openpyxl import load_workbook, Workbook
 import os
+import json
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Font, numbers
+from openpyxl.utils import get_column_letter
 
 from data.part_number import PART_NUMBER_MAP
 from utils.pricing import get_price_by_part
 
+output_file = "output.xlsx"
+
+
+def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.json'):
+    """
+    Reads saved elevation data, aggregates quantities by part number,
+    calculates total prices, and writes a summary section into the Excel file.
+    """
+    try:
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"⚠️ JSON file '{json_path}' not found. Skipping summary sheet creation.")
+        return
+
+    try:
+        wb = load_workbook(excel_path)
+    except FileNotFoundError:
+        print(f"⚠️ Excel file '{excel_path}' not found. Cannot update summary sheet.")
+        return
+
+    ws = wb.active
+
+    # Check if summary exists by scanning column A for "Part Number"
+    summary_start_row = None
+    for r in range(1, ws.max_row + 1):
+        val = ws.cell(row=r, column=1).value
+        if val == "Part Number":
+            summary_start_row = r
+            break
+
+    # If summary exists and data length <= 1, delete all summary rows until a blank row
+    if summary_start_row and len(data) <= 1:
+        current_row = summary_start_row
+        # Keep deleting rows while column A is not empty
+        while current_row <= ws.max_row and ws.cell(row=current_row, column=1).value not in (None, ""):
+            ws.delete_rows(current_row, 1)
+            # Don't increment current_row here because rows shift up after deletion
+        wb.save(excel_path)
+        print("ℹ️ Only one or zero elevations found. Existing Summary sheet deleted.")
+        return
+    elif len(data) <= 1:
+        print("ℹ️ Only one or zero elevations found. No summary created.")
+        return
+
+    # Otherwise continue to build summary if more than 1 data entry
+    # Aggregate quantities by part_number
+    summary = {}
+    for elev_data in data.values():
+        outputs = elev_data.get('calculated_outputs', [])
+        for output in outputs:
+            part_number = output.get('part_number')
+            quantity = output.get('quantity', 0)
+            if part_number:
+                summary[part_number] = summary.get(part_number, 0) + quantity
+
+    # Calculate prices and totals
+    summary_rows = []
+    for part, qty in summary.items():
+        price_per_unit, _ = get_price_by_part(part)
+        price_per_unit = price_per_unit or 0
+        total_price = price_per_unit * qty
+        summary_rows.append((part, qty, total_price))
+
+    # Remove old summary section if exists (search for header "Part Number")
+    if summary_start_row:
+        ws.delete_rows(summary_start_row, ws.max_row - summary_start_row + 1)
+
+    # Find last "System Total" row to insert summary below it
+    last_sys_total = None
+    for r in range(ws.max_row, 0, -1):
+        cell_val = ws.cell(row=r, column=1).value
+        if cell_val and "System Total" in str(cell_val):
+            last_sys_total = r
+            break
+    if not last_sys_total:
+        last_sys_total = ws.max_row
+
+    start_row = last_sys_total + 2
+
+    # Write headers for summary table
+    ws.cell(row=start_row, column=1, value="Part Number").font = Font(bold=True)
+    ws.cell(row=start_row, column=2, value="Total Quantity").font = Font(bold=True)
+    ws.cell(row=start_row, column=3, value="Total Price").font = Font(bold=True)
+
+    # Write summary rows
+    for idx, (part, qty, total) in enumerate(summary_rows, start=start_row + 1):
+        ws.cell(row=idx, column=1, value=part)
+        ws.cell(row=idx, column=2, value=qty)
+        price_cell = ws.cell(row=idx, column=3, value=total)
+        price_cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+
+    # Autofit columns (safe check for None values)
+    for col in range(1, 4):
+        col_letter = get_column_letter(col)
+        max_len = 0
+        for r in range(start_row, ws.max_row + 1):
+            val = ws.cell(row=r, column=col).value
+            if val is not None:
+                max_len = max(max_len, len(str(val)))
+        ws.column_dimensions[col_letter].width = max_len + 2
+
+    wb.save(excel_path)
+    print(f"✅ Summary sheet updated in {excel_path}.")
 
 def generate_excel_report(
     system_input, finish_input, elevation_type, total_count,
@@ -91,6 +198,7 @@ def generate_excel_report(
     if delete_elevation_type:
         delete_elevation(ws, delete_elevation_type)
         wb.save(output_file)
+        create_summary_sheet(excel_path=output_file)
         if completion_callback:
             completion_callback()
         return
@@ -151,7 +259,7 @@ def generate_excel_report(
             ws.cell(row=row_start, column=colE, value=title)
             for i, h in enumerate(headers):
                 ws.cell(row=row_start + 1, column=colE + i, value=h)
-            cur_row = row_start + 2
+            cur_row = row_start 
             for item in items:
                 qty = item.get('quantity', 0)
                 pn = item.get('part_number')
@@ -225,5 +333,6 @@ def generate_excel_report(
         ws.column_dimensions[col_cells[0].column_letter].width = max_len + 2
 
     wb.save(output_file)
+    create_summary_sheet(excel_path=output_file)
     if completion_callback:
         completion_callback()
