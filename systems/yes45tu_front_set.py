@@ -64,7 +64,10 @@ def calculate_yes45tu_quantities(
     ]
 
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
-    door_area = calculate_door_size(door_size,total_count)
+    if door_size == 'None':
+        door_area = 'None'
+    else:
+        door_area = calculate_door_size(door_size,total_count)
 
     results = []
 
@@ -91,7 +94,11 @@ def calculate_yes45tu_quantities(
         })
 
     # Determine if the door size exceeds total glass
-    if door_area >= total_glass_area:
+    if door_area == 'None':
+        glass_area_qty = total_glass_area
+        door_area_qty = 'None'
+        door_desc = "No door size provided" 
+    elif door_area >= total_glass_area:
         glass_area_qty = total_glass_area
         door_area_qty = 0
         door_desc = "Door size exceeds total glass area"
@@ -111,14 +118,6 @@ def calculate_yes45tu_quantities(
             'unit': 'sqft'
         },
         {
-            "description": door_desc,
-            "quantity": door_area_qty,
-            "part_number": "N/A",
-            "type": "Door",
-            'price': 10,
-            'unit': 'sqft'
-        },
-        {
             "description": "Joints Fabrication Labor",
             "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
             "part_number": "N/A",
@@ -128,6 +127,17 @@ def calculate_yes45tu_quantities(
         }
     ]
 
-    results.extend(manual_outputs)
+    if door_area_qty != 'None':
+        manual_outputs.insert(1, {
+            "description": door_desc,
+            "quantity": door_area_qty,
+            "part_number": "N/A",
+            "type": "Door",
+            'price': 10,
+            'unit': 'sqft'
+        })
 
+
+    results.extend(manual_outputs)
+    print(manual_outputs)
     return results

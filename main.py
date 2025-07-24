@@ -19,7 +19,7 @@ class App(ctk.CTk):
         # Constants
         self.system_options = ["YES 45TU FRONT SET(OG)", "Other"]
         self.finish_options = ["Clear", "Black", "Paint"]
-        self.door_options = ["3' X 7'", "3' X 8'", "3' X 9'", "6' X 7'", "6' X 8'", "6' X 9'"]
+        self.door_options = ['None', "3' X 7'", "3' X 8'", "3' X 9'", "6' X 7'", "6' X 8'", "6' X 9'"]
         self.saved_elevations = {}
 
         # Tk variables
