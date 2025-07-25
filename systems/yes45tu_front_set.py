@@ -41,7 +41,6 @@ def calculate_yes45tu_quantities(
     """
 
     outputs = [
-        ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count)),
         ("E1-0199", calculate_end_dam(total_count)),
         ("E2-0047", calculate_water_deflector(bays_wide, total_count)),
         ("PC-1220", calculate_assembly_screw(bays_wide, bays_tall, total_count)),
@@ -115,7 +114,8 @@ def calculate_yes45tu_quantities(
             "part_number": "N/A",
             "type": "Glass",
             'price': 10.5,
-            'unit': 'sqft'
+            'unit': 'sqft',
+            'manual':True
         },
         {
             "description": "Joints Fabrication Labor",
@@ -123,7 +123,16 @@ def calculate_yes45tu_quantities(
             "part_number": "N/A",
             "type": "Fabrication",
             'price': 15.0,
-            'unit': 'joints'
+            'unit': 'joints',
+            'manual':True
+        },
+        {
+            "description": "Gasket",
+            "quantity": calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count),
+            "part_number": "E2-0052",
+            "type": "Glazing Gasket",
+            'unit': 'ft',
+            'manual':True
         }
     ]
 

@@ -1,0 +1,83 @@
+{
+    "BE9-2513": {
+        "quantity": 0,
+        "length_pieces": [
+            8.0,
+            8.0,
+            8.0,
+            8.0
+        ]
+    },
+    "E9-2512": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2511": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2515": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2514": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2578": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "E9-2519": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "E1-0199": {
+        "quantity": 12,
+        "length_pieces": []
+    },
+    "E2-0047": {
+        "quantity": 18,
+        "length_pieces": []
+    },
+    "PC-1220": {
+        "quantity": 76,
+        "length_pieces": []
+    },
+    "PM-1006-SS": {
+        "quantity": 52,
+        "length_pieces": []
+    },
+    "UA-1212": {
+        "quantity": 84,
+        "length_pieces": []
+    },
+    "E1-2530": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "E2-0166": {
+        "quantity": 26,
+        "length_pieces": []
+    },
+    "E2-0177": {
+        "quantity": 18,
+        "length_pieces": []
+    },
+    "E2-0545": {
+        "quantity": 34,
+        "length_pieces": []
+    },
+    "E2-0154": {
+        "quantity": 26,
+        "length_pieces": []
+    },
+    "E2-0611": {
+        "quantity": 18,
+        "length_pieces": []
+    },
+    "E2-0052": {
+        "quantity": 0.0,
+        "length_pieces": []
+    }
+}
