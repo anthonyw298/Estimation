@@ -1,8 +1,8 @@
 {
-    "111": {
+    "11": {
         "system": "YES 45TU FRONT SET(OG)",
-        "finish": "Clear",
-        "door_size": "None",
+        "finish": "Black",
+        "door_size": "3' X 8'",
         "total_count": 1,
         "bays_wide": 1,
         "bays_tall": 1,
@@ -139,6 +139,14 @@
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
+                "unit": "sqft"
+            },
+            {
+                "description": "Door size exceeds total glass area",
+                "quantity": 0,
+                "part_number": "N/A",
+                "type": "Door",
+                "price": 10,
                 "unit": "sqft"
             },
             {
@@ -303,7 +311,7 @@
             }
         ]
     },
-    "11111": {
+    "111111": {
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
         "door_size": "None",
@@ -455,10 +463,10 @@
             }
         ]
     },
-    "1111111": {
+    "111111111": {
         "system": "YES 45TU FRONT SET(OG)",
-        "finish": "Clear",
-        "door_size": "None",
+        "finish": "Black",
+        "door_size": "3' X 8'",
         "total_count": 1,
         "bays_wide": 1,
         "bays_tall": 1,
@@ -595,6 +603,14 @@
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
+                "unit": "sqft"
+            },
+            {
+                "description": "Door size exceeds total glass area",
+                "quantity": 0,
+                "part_number": "N/A",
+                "type": "Door",
+                "price": 10,
                 "unit": "sqft"
             },
             {
