@@ -4,21 +4,15 @@
         "finish": "Clear",
         "door_size": "None",
         "total_count": 1,
-        "bays_wide": 1,
-        "bays_tall": 1,
-        "opening_width_inches": 1.0,
-        "opening_height_inches": 1.0,
-        "sqft_per_type": 0.006944444444444444,
-        "total_sqft": 0.006944444444444444,
-        "perimeter_ft": 0.3333333333333333,
-        "total_perimeter_ft": 0.3333333333333333,
+        "bays_wide": 4,
+        "bays_tall": 2,
+        "opening_width_inches": 144.0,
+        "opening_height_inches": 96.0,
+        "sqft_per_type": 96.0,
+        "total_sqft": 96.0,
+        "perimeter_ft": 40.0,
+        "total_perimeter_ft": 40.0,
         "calculated_outputs": [
-            {
-                "description": "Glazing Gasket For 1\u201d Glazing",
-                "quantity": 0.6666666666666666,
-                "part_number": "E2-0052",
-                "type": "accessories"
-            },
             {
                 "description": "End Dam For Sill Flashing",
                 "quantity": 2,
@@ -27,19 +21,19 @@
             },
             {
                 "description": "Water Deflector",
-                "quantity": 2,
+                "quantity": 8,
                 "part_number": "E2-0047",
                 "type": "accessories"
             },
             {
                 "description": "#12 x 1-1/4\u201d PHSMS Type AB, Zinc Plated Steel, For Screw Spline Attachment",
-                "quantity": 8,
+                "quantity": 56,
                 "part_number": "PC-1220",
                 "type": "accessories"
             },
             {
                 "description": "#10-24 x 3/8\u201d PHMS, Stainless Steel, For Attachment of Sill to Sill Flashing",
-                "quantity": 3,
+                "quantity": 12,
                 "part_number": "PM-1006-SS",
                 "type": "accessories"
             },
@@ -51,103 +45,269 @@
             },
             {
                 "description": "Setting Block Chair Use with E2-0177 Setting Block at Sill",
-                "quantity": 2,
+                "quantity": 8,
                 "part_number": "E1-2530",
                 "type": "accessories"
             },
             {
                 "description": "Side Block For Intermediate Vertical Shallow Pocket",
-                "quantity": 0,
+                "quantity": 6,
                 "part_number": "E2-0166",
                 "type": "accessories"
             },
             {
                 "description": "Setting Block For Sill",
-                "quantity": 2,
+                "quantity": 8,
                 "part_number": "E2-0177",
                 "type": "accessories"
             },
             {
                 "description": "1-1/8\u201d \u201cW\u201d Side Block For Jamb",
-                "quantity": 2,
+                "quantity": 4,
                 "part_number": "E2-0545",
                 "type": "accessories"
             },
             {
                 "description": "1/2\u201d \u201cW\u201d Side Block For Intermediate Vertical Deep Pocket",
-                "quantity": 0,
+                "quantity": 6,
                 "part_number": "E2-0154",
                 "type": "accessories"
             },
             {
                 "description": "Setting Block For Intermediate Horizontal",
-                "quantity": 2,
+                "quantity": 8,
                 "part_number": "E2-0611",
                 "type": "accessories"
             },
             {
                 "description": "Sill/Jamb Screw Spline Assembly",
-                "quantity": 0.16666666666666666,
+                "quantity": 16.0,
                 "part_number": "BE9-2513",
                 "type": "profiles"
             },
             {
                 "description": "Sill/Jamb Screw Spline Assembly",
-                "quantity": 0.08333333333333333,
+                "quantity": 12.0,
                 "part_number": "BE9-2513",
                 "type": "profiles"
             },
             {
                 "description": "Flush Filler",
-                "quantity": 0.0,
+                "quantity": 24.0,
                 "part_number": "E9-2512",
                 "type": "profiles"
             },
             {
                 "description": "Two Piece Mullion Screw Spline Assembly",
-                "quantity": 0.0,
+                "quantity": 24.0,
                 "part_number": "BE9-2511",
                 "type": "profiles"
             },
             {
                 "description": "Horizontal Screw Spline Assembly",
-                "quantity": 0.08333333333333333,
+                "quantity": 12.0,
                 "part_number": "BE9-2515",
                 "type": "profiles"
             },
             {
                 "description": "Head",
-                "quantity": 0.08333333333333333,
+                "quantity": 12.0,
                 "part_number": "BE9-2514",
                 "type": "profiles"
             },
             {
                 "description": "Thermal Sill Flashing",
-                "quantity": 0.08333333333333333,
+                "quantity": 12.0,
                 "part_number": "BE9-2578",
                 "type": "profiles"
             },
             {
                 "description": "Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
-                "quantity": 0.08333333333333333,
+                "quantity": 24.0,
                 "part_number": "E9-2519",
                 "type": "profiles"
             },
             {
                 "description": "Glass Area",
-                "quantity": 0.0625,
+                "quantity": 83.75,
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
-                "unit": "sqft"
+                "unit": "sqft",
+                "manual": true
             },
             {
                 "description": "Joints Fabrication Labor",
-                "quantity": 4,
+                "quantity": 24,
                 "part_number": "N/A",
                 "type": "Fabrication",
                 "price": 15.0,
-                "unit": "joints"
+                "unit": "joints",
+                "manual": true
+            },
+            {
+                "description": "Gasket",
+                "quantity": 224.0,
+                "part_number": "E2-0052",
+                "type": "Glazing Gasket",
+                "unit": "ft",
+                "manual": true
+            }
+        ]
+    },
+    "11": {
+        "system": "YES 45TU FRONT SET(OG)",
+        "finish": "Clear",
+        "door_size": "None",
+        "total_count": 1,
+        "bays_wide": 4,
+        "bays_tall": 2,
+        "opening_width_inches": 144.0,
+        "opening_height_inches": 96.0,
+        "sqft_per_type": 96.0,
+        "total_sqft": 96.0,
+        "perimeter_ft": 40.0,
+        "total_perimeter_ft": 40.0,
+        "calculated_outputs": [
+            {
+                "description": "End Dam For Sill Flashing",
+                "quantity": 2,
+                "part_number": "E1-0199",
+                "type": "accessories"
+            },
+            {
+                "description": "Water Deflector",
+                "quantity": 8,
+                "part_number": "E2-0047",
+                "type": "accessories"
+            },
+            {
+                "description": "#12 x 1-1/4\u201d PHSMS Type AB, Zinc Plated Steel, For Screw Spline Attachment",
+                "quantity": 56,
+                "part_number": "PC-1220",
+                "type": "accessories"
+            },
+            {
+                "description": "#10-24 x 3/8\u201d PHMS, Stainless Steel, For Attachment of Sill to Sill Flashing",
+                "quantity": 12,
+                "part_number": "PM-1006-SS",
+                "type": "accessories"
+            },
+            {
+                "description": "#12 x 3/4\u201d UFHSMS Type A, Zinc Plated Steel For End Dam Attachment",
+                "quantity": 4,
+                "part_number": "UA-1212",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block Chair Use with E2-0177 Setting Block at Sill",
+                "quantity": 8,
+                "part_number": "E1-2530",
+                "type": "accessories"
+            },
+            {
+                "description": "Side Block For Intermediate Vertical Shallow Pocket",
+                "quantity": 6,
+                "part_number": "E2-0166",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block For Sill",
+                "quantity": 8,
+                "part_number": "E2-0177",
+                "type": "accessories"
+            },
+            {
+                "description": "1-1/8\u201d \u201cW\u201d Side Block For Jamb",
+                "quantity": 4,
+                "part_number": "E2-0545",
+                "type": "accessories"
+            },
+            {
+                "description": "1/2\u201d \u201cW\u201d Side Block For Intermediate Vertical Deep Pocket",
+                "quantity": 6,
+                "part_number": "E2-0154",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block For Intermediate Horizontal",
+                "quantity": 8,
+                "part_number": "E2-0611",
+                "type": "accessories"
+            },
+            {
+                "description": "Sill/Jamb Screw Spline Assembly",
+                "quantity": 16.0,
+                "part_number": "BE9-2513",
+                "type": "profiles"
+            },
+            {
+                "description": "Sill/Jamb Screw Spline Assembly",
+                "quantity": 12.0,
+                "part_number": "BE9-2513",
+                "type": "profiles"
+            },
+            {
+                "description": "Flush Filler",
+                "quantity": 24.0,
+                "part_number": "E9-2512",
+                "type": "profiles"
+            },
+            {
+                "description": "Two Piece Mullion Screw Spline Assembly",
+                "quantity": 24.0,
+                "part_number": "BE9-2511",
+                "type": "profiles"
+            },
+            {
+                "description": "Horizontal Screw Spline Assembly",
+                "quantity": 12.0,
+                "part_number": "BE9-2515",
+                "type": "profiles"
+            },
+            {
+                "description": "Head",
+                "quantity": 12.0,
+                "part_number": "BE9-2514",
+                "type": "profiles"
+            },
+            {
+                "description": "Thermal Sill Flashing",
+                "quantity": 12.0,
+                "part_number": "BE9-2578",
+                "type": "profiles"
+            },
+            {
+                "description": "Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
+                "quantity": 24.0,
+                "part_number": "E9-2519",
+                "type": "profiles"
+            },
+            {
+                "description": "Glass Area",
+                "quantity": 83.75,
+                "part_number": "N/A",
+                "type": "Glass",
+                "price": 10.5,
+                "unit": "sqft",
+                "manual": true
+            },
+            {
+                "description": "Joints Fabrication Labor",
+                "quantity": 24,
+                "part_number": "N/A",
+                "type": "Fabrication",
+                "price": 15.0,
+                "unit": "joints",
+                "manual": true
+            },
+            {
+                "description": "Gasket",
+                "quantity": 224.0,
+                "part_number": "E2-0052",
+                "type": "Glazing Gasket",
+                "unit": "ft",
+                "manual": true
             }
         ]
     }
