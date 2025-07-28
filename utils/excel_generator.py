@@ -3,10 +3,12 @@ import json
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
-from utils.pricing import get_price_by_part
+# Import the updated pricing functions
+from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials
 from data.part_number import PART_NUMBER_MAP
 
 output_file = "output.xlsx"
+SAVED_ELEVATIONS_FILE = 'saved_elevations.json' # Define the JSON file path
 
 # --- Helper Functions ---
 
@@ -34,30 +36,21 @@ def _clean_trailing_blank_rows(ws, start_row):
     current_row = start_row
     while current_row <= ws.max_row:
         if all(ws.cell(row=current_row, column=c).value is None for c in range(1, ws.max_column + 1)):
-            ws.delete_rows(current_row, 1); rows_deleted += 1
+            ws.delete_rows(current_row, 1)
+            rows_deleted += 1
         else: current_row += 1
     if rows_deleted > 0: print(f"🧹 Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
 
-def _delete_elevation_block(ws, elevation_name, colA, price_col):
-    """Deletes a specific elevation data block from the worksheet."""
-    delete_start_row = _find_row_by_value(ws, colA, "Elevation Type", end_row=ws.max_row)
-    if delete_start_row and ws.cell(row=delete_start_row, column=colA + 1).value == elevation_name:
-        delete_start_row -= 1
-    else: print(f"ℹ️ Elevation '{elevation_name}' not found for deletion."); return
-
-    delete_end_row = (_find_row_by_value(ws, price_col, "SYSTEM TOTAL", start_row=delete_start_row + 1) or delete_start_row + 10) + 1
-    delete_end_row = min(delete_end_row, ws.max_row)
-
-    if delete_end_row >= delete_start_row:
-        ws.delete_rows(delete_start_row, delete_end_row - delete_start_row + 1)
-        print(f"🗑️ Elevation '{elevation_name}' block deleted from report."); _clean_trailing_blank_rows(ws, delete_start_row)
-    else: print(f"⚠️ Deletion range for '{elevation_name}' is invalid ({delete_start_row}-{delete_end_row}). No rows deleted.")
-
 def _recalculate_running_grand_total(ws, price_col):
     """Recalculates and updates the 'RUNNING GRAND TOTAL' in the worksheet."""
+    # Find and delete existing RUNNING GRAND TOTAL
     for r in range(ws.max_row, 0, -1):
-        if ws.cell(row=r, column=price_col).value == "RUNNING GRAND TOTAL":
-            ws.delete_rows(r, 2); break
+        cell_value = ws.cell(row=r, column=price_col).value
+        if isinstance(cell_value, str) and cell_value.strip() == "RUNNING GRAND TOTAL":
+            # Delete RUNNING GRAND TOTAL and its value
+            ws.delete_rows(r, 2)
+            print("🗑️ Existing RUNNING GRAND TOTAL removed for recalculation.")
+            break
 
     running_grand_total = 0.0
     last_system_total_row = None
@@ -66,55 +59,80 @@ def _recalculate_running_grand_total(ws, price_col):
             last_system_total_row = r
             val = ws.cell(row=r + 1, column=price_col).value
             if isinstance(val, (float, int)): running_grand_total += val
-            elif isinstance(val, str) and val.startswith("$"):
+            elif isinstance(val, str) and val.strip().startswith("$"):
                 try: running_grand_total += float(val.strip("$"))
                 except ValueError: print(f"⚠️ Could not parse SYSTEM TOTAL value: {val}")
+            else:
+                print(f"⚠️ SYSTEM TOTAL value at row {r+1}, column {price_col} is not a number: {val}")
 
-    new_gt_row = (last_system_total_row + 3) if last_system_total_row else (ws.max_row + 1)
-    ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
-    ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    print("📈 Running Grand Total recalculated and updated.")
+    new_gt_row = (last_system_total_row + 3) if last_system_total_row else (ws.max_row + 2)
+    
+    # Only write RUNNING GRAND TOTAL if there are any system totals
+    if running_grand_total > 0 or last_system_total_row is not None:
+        ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
+        ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        print(f"📈 Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
+    else:
+        print("ℹ️ No system totals found. RUNNING GRAND TOTAL not written.")
 
-def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row):
-    """Writes a section of calculated outputs (e.g., PROFILES, ACCESSORIES) to the worksheet."""
-    if not items: return start_output_row
 
-    current_row = start_output_row
+def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row, current_extra_materials_state):
+    """
+    Writes a section of calculated outputs (e.g., PROFILES, ACCESSORIES) to the worksheet.
+    Returns the next available row and the material impacts for the current section.
+    `current_extra_materials_state` is passed to get_price_by_part for simulation.
+    """
+    if not items: return start_output_row, [] # Return current row + 1 and empty impacts
+
+    current_row = start_output_row # Start section at the provided start_output_row
+    
     ws.cell(row=current_row, column=colE, value=title).font = Font(bold=True)
     for i, h in enumerate(["Description", "Part Number", "Quantity", "Price"]):
         ws.cell(row=current_row + 1, column=colE + i, value=h).font = Font(bold=True)
     current_row += 2
 
+    section_material_impacts = [] # This will collect impacts for this section
+
     for item in items:
         qty = item.get('quantity', 0)
         pn = item.get('part_number')
-        manual = item.get('manual', False) # Explicitly get the manual flag
+        manual = item.get('manual', False)
 
         total_item_price = 0.0
         unit_type = "pcs"
+        material_impact_details = None # Initialize to None
 
         if manual: # If it's explicitly marked as manual
             if pn and pn != "N/A": # If manual and has a part number, try to get price from part data
-                try:
-                    # Pass the 'manual' flag to get_price_by_part if its logic needs to differ for manual items
-                    price_from_part, unit = get_price_by_part(pn, qty, group=True) 
-                    # If get_price_by_part returns a valid price, use it, otherwise fall back to 'price' in item
-                    # No longer multiply by qty here, get_price_by_part should return total for manual items
-                    total_item_price = (price_from_part if price_from_part is not None else item.get('price', 0.0) * qty)
-                    unit_type = unit or item.get('unit', 'pcs')
-                except Exception as e:
-                    print(f"⚠️ Error getting price for manual item with PN '{pn}': {e}. Using provided price.")
-                    total_item_price = item.get('price', 0.0) * qty
-                    unit_type = item.get('unit', 'pcs')
+                # Pass current_extra_materials_state for accurate simulation AND group=True for length-based pricing
+                price_calculated, unit_calculated, material_impact_details = \
+                    get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False, group=True) 
+                # For manual, if get_price_by_part returns a valid price, use it, otherwise fall back to 'price' in item
+                total_item_price = (price_calculated if price_calculated is not None else item.get('price', 0.0) * qty)
+                unit_type = unit_calculated or item.get('unit', 'pcs')
             else: # Manual entry without a part number (or "N/A")
                 total_item_price = item.get('price', 0.0) * qty
                 unit_type = item.get('unit', 'pcs')
+                # For pure manual items without PN, create a generic impact for tracking if needed for summary
+                material_impact_details = {
+                    'part_number': "N/A - Manual", # Use a distinct PN for manual items without real PN
+                    'requested_qty': qty,
+                    'purchased_qty_or_length': 0.0,
+                    'leftover_generated_qty_or_length': 0.0,
+                    'used_from_leftover_qty_or_length': 0.0,
+                    'cost_incurred': total_item_price
+                }
         else: # Not a manual entry, always get price from part data
-            # get_price_by_part now returns the total cost for the requested qty and unit_type
-            total_item_price, unit_type = get_price_by_part(pn, qty)
+            # get_price_by_part now returns the total cost for the requested qty and unit_type, plus material_impact_details
+            total_item_price, unit_type, material_impact_details = \
+                get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False) # Not summary here
             total_item_price = total_item_price or 0.0
             unit_type = unit_type or "pcs"
         
+        # Add a check for None in material_impact_details for robustness
+        if material_impact_details:
+             section_material_impacts.append(material_impact_details)
+
         # Apply multiplier for profiles to the total calculated item price
         if title == "PROFILES":
             total_item_price *= multiplier
@@ -126,7 +144,8 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
         ws.cell(row=current_row, column=colE + 2, value=f"{qty} {unit_type}")
         ws.cell(row=current_row, column=colE + 3, value=total_item_price).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         current_row += 1
-    return current_row + 1
+    return current_row + 1, section_material_impacts
+
 
 def _delete_summary_section(ws):
     """Deletes the existing summary section from the worksheet."""
@@ -138,17 +157,27 @@ def _delete_summary_section(ws):
     summary_start_row = _find_row_by_value(ws, 1, "Part Number / Description")
     if summary_start_row:
         current_row_to_delete = summary_start_row
-        while current_row_to_delete <= ws.max_row and ws.cell(row=current_row_to_delete, column=1).value is not None:
+        # Find the end of the summary section (first blank row after header or end of sheet)
+        while current_row_to_delete <= ws.max_row:
+            # Check if the row is entirely empty or if it's the start of another section
+            # A simple check for the first column being None is usually sufficient
+            if ws.cell(row=current_row_to_delete, column=1).value is None and \
+               ws.cell(row=current_row_to_delete, column=2).value is None and \
+               ws.cell(row=current_row_to_delete, column=3).value is None:
+                break
             current_row_to_delete += 1
+        
         if current_row_to_delete > summary_start_row:
-            ws.delete_rows(summary_start_row, current_row_to_delete - summary_start_row)
-            print("🗑️ Existing summary section cleared."); _clean_trailing_blank_rows(ws, summary_start_row)
+            rows_to_delete = current_row_to_delete - summary_start_row
+            ws.delete_rows(summary_start_row, rows_to_delete)
+            print(f"🗑️ Existing summary section cleared ({rows_to_delete} rows) starting at row {summary_start_row}.");
+            _clean_trailing_blank_rows(ws, summary_start_row)
         else: print("ℹ️ Summary header found but no data rows to delete.")
     else: print("ℹ️ No existing summary section found to delete.")
 
 # --- Main Functions ---
 
-def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.json'):
+def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE):
     """Reads elevation data, aggregates quantities and prices by part number (or description for manual),
     and writes a clean summary section into the Excel file."""
     try:
@@ -160,26 +189,24 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
     try:
         wb = load_workbook(excel_path)
         ws = wb.active
+        ws.title = "Report"
     except Exception as e:
         print(f"⚠️ Excel file '{excel_path}' not found or corrupted for summary: {e}. Cannot update summary sheet.")
         return
     
-    # Only attempt to delete summary section if the workbook is not newly created/reset (already has content)
-    # This check is less direct here than in generate_excel_report, as create_summary_sheet is called independently.
-    # We can rely on _delete_summary_section's internal check.
     _delete_summary_section(ws) 
     
-    if len(data) <= 1:
+    if len(data) == 0: # If no elevations, just clear summary and save
         try:
             if wb: wb.save(excel_path)
-            print("ℹ️ Only one or zero elevations found. No summary sheet created/updated.")
+            print("ℹ️ No elevations found. Summary sheet cleared (if existed) and not re-created.")
         except Exception as save_err:
-            print(f"❌ Error saving workbook after summary check: {save_err}")
+            print(f"❌ Error saving workbook after no summary data: {save_err}")
         return
 
 # === FIRST: Aggregate all quantities by part number or description ===
-
     aggregated_summary = {}
+    # No need to load extra_materials here, as get_price_by_part with summary=True will ignore it.
 
     for elev_data in data.values():
         for output in elev_data.get('calculated_outputs', []):
@@ -188,87 +215,89 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
             quantity = output.get('quantity', 0)
             manual = output.get('manual', False)
 
-            # Decide the key: part_number if valid and not manual, else description
             if manual or not part_number or part_number == "N/A":
-                key = description
+                key = f"MANUAL_{description}_{part_number}" # Unique key for manual items
+                display_key_base = description
+                if manual and part_number and part_number != "N/A":
+                    display_key_base = f"{description} ({part_number})"
+
             else:
                 key = part_number
+                display_key_base = part_number
 
             if key not in aggregated_summary:
                 aggregated_summary[key] = {
                     'quantity': 0,
-                    'description': description,
+                    'description': description, # Original description
+                    'display_key': display_key_base, # Key for display in summary
                     'part_number': part_number,
                     'manual': manual,
-                    'price': output.get('price', 0.0)  # Save any manual price for later
+                    'price': output.get('price', 0.0), # Stored per-unit price for manual calculations
+                    'unit': output.get('unit', 'pcs') # Original unit from output
                 }
 
             aggregated_summary[key]['quantity'] += quantity
 
-    # === SECOND: For each unique item, run get_price_by_part ===
+    # === SECOND: For each unique item, run get_price_by_part for final cost ===
+    final_summary_data = []
 
     for key, item in aggregated_summary.items():
         quantity = item['quantity']
         manual = item['manual']
         part_number = item['part_number']
+        display_key = item['display_key'] # Use the prepared display key
+        original_unit = item['unit']
+
+        total_cost_for_item = 0.0
+        calculated_unit_type = original_unit # Default unit for display
 
         if manual:
-            # If manual, use saved price or get price by part if a valid part number exists
             if part_number and part_number != "N/A":
-                print('hello world')
-                try:
-                    total_price, _ = get_price_by_part(part_number, quantity, group=True,summary=True)
-                    print('helloworld')
-                    item['total_cost'] = total_price if total_price is not None else item['price']
-                except Exception:
-                    print('1234565')
-                    item['total_cost'] = item['price'] * quantity
+                # For manual items with PN, always use get_price_by_part for the cost.
+                # If get_price_by_part returns None, it means the part number wasn't found in the database.
+                price_from_part, unit_type_from_pricing, _ = \
+                    get_price_by_part(part_number, quantity, summary=True, group=True) # Pass group=True here
+                
+                total_cost_for_item = price_from_part if price_from_part is not None else 0.0 # If part not found, cost is 0
+                calculated_unit_type = unit_type_from_pricing or original_unit
             else:
-                item['total_cost'] = item['price'] * quantity
-        else:
-            # Auto items — always call get_price_by_part
-            print(quantity,part_number)
-            total_price, _ = get_price_by_part(part_number, quantity,summary=True)
-            print(total_price)
-            item['total_cost'] = total_price if total_price is not None else 0.0
+                # For truly manual entries without a part number, use the stored price * quantity
+                total_cost_for_item = item['price'] * quantity
+                calculated_unit_type = original_unit # Use original unit for pure manual
 
-    # ✅ Now aggregated_summary has:
-    # {
-    #   key: {
-    #     'quantity': total_qty,
-    #     'description': ...,
-    #     'part_number': ...,
-    #     'manual': ...,
-    #     'price': ...,
-    #     'total_cost': ... <-- Final cost
-    #   }
-    # }
+            final_summary_data.append((display_key, f"{quantity} {calculated_unit_type}", total_cost_for_item))
+        else: # Auto items
+            total_price, unit_type_from_pricing, _ = \
+                get_price_by_part(part_number, quantity, summary=True) # Pass summary=True
+            total_cost_for_item = total_price if total_price is not None else 0.0
+            calculated_unit_type = unit_type_from_pricing or original_unit # Get from pricing, fallback to original
 
-    # === OPTIONAL: Print or return it ===
-
-
-    summary_rows_to_write = []
-    for key, entry in aggregated_summary.items():
-        # The total cost is already aggregated in 'total_cost'
-        summary_rows_to_write.append((key, entry['quantity'], entry['total_cost']))
+            final_summary_data.append((display_key, f"{quantity} {calculated_unit_type}", total_cost_for_item))
 
     last_gt_row = _find_row_by_value(ws, 8, "RUNNING GRAND TOTAL", reverse=True)
     start_row = (last_gt_row + 3) if last_gt_row else (ws.max_row + 2)
+
+    if not final_summary_data: # If no data to summarize, don't write headers
+        print("ℹ️ No data to summarize. Summary section not written.")
+        try:
+            wb.save(excel_path)
+        except Exception as save_err:
+            print(f"❌ Error saving workbook after no summary data: {save_err}")
+        return
 
     ws.cell(row=start_row, column=1, value="Part Number / Description").font = Font(bold=True)
     ws.cell(row=start_row, column=2, value="Total Quantity").font = Font(bold=True)
     ws.cell(row=start_row, column=3, value="Total Price").font = Font(bold=True)
 
-    for idx, (item_key, qty, total) in enumerate(summary_rows_to_write, start=start_row + 1):
+    for idx, (item_key, qty_with_unit, total_cost) in enumerate(final_summary_data, start=start_row + 1):
         ws.cell(row=idx, column=1, value=item_key)
-        ws.cell(row=idx, column=2, value=qty)
-        price_cell = ws.cell(row=idx, column=3, value=total)
+        ws.cell(row=idx, column=2, value=qty_with_unit)
+        price_cell = ws.cell(row=idx, column=3, value=total_cost)
         price_cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-    _autofit_columns(ws, 1, 3, start_row, start_row + len(summary_rows_to_write))
+    _autofit_columns(ws, 1, 3, start_row, start_row + len(final_summary_data))
     _clean_trailing_blank_rows(ws, 1)
     try:
-        print(aggregated_summary)
         wb.save(excel_path); print(f"✅ Summary sheet updated in {excel_path}.")
     except Exception as save_err:
         print(f"❌ Error saving summary sheet to '{excel_path}': {save_err}")
@@ -277,128 +306,239 @@ def generate_excel_report(
     system_input, finish_input, elevation_type, total_count,
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
-    calculated_outputs, completion_callback=None, mode=None, reset=False, all_elevations=None,
-    delete_elevation_type=None
+    calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
+    door_size=None # Added door_size as an optional parameter
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 8
-    multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(finish_input.lower(), 1.0)
-
-    wb = None
-    try:
-        is_new_workbook = False # Flag to track if a new workbook is created
-
-        if reset or mode == "new":
-            wb = Workbook()
-            is_new_workbook = True
-            print(f"📄 Created new Excel workbook for reset/new mode: {output_file}")
-        elif os.path.exists(output_file):
-            try:
-                wb = load_workbook(output_file)
-                print(f"📂 Loaded existing Excel workbook: {output_file}")
-            except Exception as e:
-                print(f"⚠️ Error loading existing Excel file '{output_file}': {e}. Creating a new one as fallback.")
-                wb = Workbook()
-                is_new_workbook = True
-                print(f"📄 Created new Excel workbook as fallback: {output_file}")
-        else:
-            wb = Workbook()
-            is_new_workbook = True
-            print(f"📄 Created new Excel workbook (file not found): {output_file}")
-        
-        ws = wb.active
-        ws.title = "Report"
-
-        # Skip deletion routines if it's a new or reset workbook
-        if not is_new_workbook:
-            if delete_elevation_type:
-                _delete_summary_section(ws)
-                _delete_elevation_block(ws, delete_elevation_type, COL_A, PRICE_COL)
-                _recalculate_running_grand_total(ws, PRICE_COL)
-                _clean_trailing_blank_rows(ws, 1)
-                try:
-                    wb.save(output_file); create_summary_sheet(excel_path=output_file)
-                except Exception as save_err:
-                    print(f"❌ Error saving workbook during delete operation: {save_err}")
-                    if completion_callback: completion_callback(f"Error saving report during delete: {save_err}")
-                if completion_callback: completion_callback()
-                return
-
-            _delete_summary_section(ws)
-            if not reset and elevation_type: _delete_elevation_block(ws, elevation_type, COL_A, PRICE_COL)
-            
-            _clean_trailing_blank_rows(ws, 1)
-        
-        start_row_for_new_block = 1
-        if reset: # If reset, explicitly clear the worksheet. This is already handled by new Workbook creation for 'mode=new'
-            # If wb was loaded and reset is true, we need to clear it. If it was a new workbook, it's already empty.
-            if not is_new_workbook: # Only clear if we loaded an existing workbook and then reset it
-                ws.delete_rows(1, ws.max_row) 
-            print("🧹 Worksheet cleared for new report.")
-        elif ws.max_row > 0 and not is_new_workbook: # Only find last row if it's an existing workbook with content
-            last_gt_row = _find_row_by_value(ws, PRICE_COL, "RUNNING GRAND TOTAL", reverse=True)
-            start_row_for_new_block = (last_gt_row + 3) if last_gt_row else (ws.max_row + 2)
-        else: # For a truly new workbook or after a reset of an existing one, start from row 1
-            start_row_for_new_block = 1
-
-
-        input_data = [
-            ("System Input", system_input), ("Elevation Type", elevation_type), ("Total Count", total_count),
-            ("# Bays Wide", bays_wide), ("# Bays Tall", bays_tall), ("Opening Width", opening_width),
-            ("Opening Height", opening_height), ("Sq Ft per Type", sqft_per_type), ("Total Sq Ft", total_sqft),
-            ("Perimeter Ft", perimeter_ft), ("Total Perimeter Ft", total_perimeter_ft)
-        ]
-        for i, (header, value) in enumerate(input_data):
-            ws.cell(row=start_row_for_new_block + i, column=COL_A, value=header).font = Font(bold=True)
-            ws.cell(row=start_row_for_new_block + i, column=COL_B, value=value)
-
-        current_system_total = [0.0]
-        # This block should execute whether it's a new or existing report
-        if all_elevations: # Renamed from `all_elevations and not reset` to ensure output for new reports
-            profiles, accessories, other_manual_outputs = [], [], []
-            for item in calculated_outputs:
-                pn = item.get('part_number')
-                manual = item.get('manual', False) # Get the manual flag
-
-                if manual: # If the item is explicitly manual, group it with other manual outputs
-                    other_manual_outputs.append(item)
-                elif pn and pn != "N/A": # Otherwise, categorize based on part number mapping
-                    if pn in PART_NUMBER_MAP.get("profiles", []): profiles.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", []): accessories.append(item)
-                    else: other_manual_outputs.append(item) # Fallback for non-manual items not in profiles/accessories
-                else: # Items without a part number and not explicitly manual (should ideally be handled by 'manual' flag)
-                    other_manual_outputs.append(item)
-
-            output_section_current_row = start_row_for_new_block
-            output_section_current_row = _write_output_section(ws, "PROFILES", profiles, COL_E, multiplier, current_system_total, output_section_current_row)
-            output_section_current_row = _write_output_section(ws, "ACCESSORIES", accessories, COL_E, multiplier, current_system_total, output_section_current_row)
-
-            grouped_other = {}; 
-            for item in other_manual_outputs:
-                # Use the 'type' field from the item for grouping, defaulting to 'MANUAL ITEMS'
-                grouped_other.setdefault(item.get('type', 'MANUAL ITEMS').upper(), []).append(item)
-            
-            for grp_title, grp_items in grouped_other.items():
-                output_section_current_row = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, current_system_total, output_section_current_row)
-
-        system_total_row = ws.max_row + 2
-        ws.cell(row=system_total_row, column=PRICE_COL, value="SYSTEM TOTAL").font = Font(bold=True)
-        ws.cell(row=system_total_row + 1, column=PRICE_COL, value=current_system_total[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        print(f"📊 System Total for '{elevation_type}': ${current_system_total[0]:.2f}")
-
-        _recalculate_running_grand_total(ws, PRICE_COL)
-        _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
-        _clean_trailing_blank_rows(ws, 1)
+    
+    # --- Always load current saved elevations from JSON at the start ---
+    current_saved_elevations = {}
+    if os.path.exists(SAVED_ELEVATIONS_FILE):
         try:
-            wb.save(output_file); print(f"✅ Excel report '{output_file}' updated successfully.")
-        except Exception as save_err:
-            print(f"❌ Error saving Excel report to '{output_file}': {save_err}")
-            if completion_callback: completion_callback(f"Error saving report: {save_err}")
+            with open(SAVED_ELEVATIONS_FILE, 'r') as f:
+                current_saved_elevations = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"❌ Error loading {SAVED_ELEVATIONS_FILE}: {e}. Starting with empty elevations in memory.")
+
+    # --- Handle Deletion First (if requested) ---
+    if delete_elevation_type:
+        print(f"🚀 Processing deletion request for '{delete_elevation_type}'.")
+        
+        # 1. Get the material_impact data for the elevation being deleted from memory
+        elevation_to_delete_data = current_saved_elevations.get(delete_elevation_type)
+        if elevation_to_delete_data and 'material_impact' in elevation_to_delete_data:
+            print(f"Attempting to reverse material impact for '{delete_elevation_type}'.")
+            reverse_material_impact(elevation_to_delete_data['material_impact'])
+            print(f"✅ Material impact for '{delete_elevation_type}' reversed in extra_materials.json.")
+        else:
+            print(f"ℹ️ No material impact data found for '{delete_elevation_type}' in saved data to reverse.")
+
+        # 2. Delete the elevation from saved_elevations.json (in memory)
+        if delete_elevation_type in current_saved_elevations:
+            del current_saved_elevations[delete_elevation_type]
+            print(f"Deleted '{delete_elevation_type}' from saved_elevations.json in memory.")
+        else:
+            print(f"⚠️ '{delete_elevation_type}' not found in {SAVED_ELEVATIONS_FILE}. Nothing to delete from JSON.")
+
+        # 3. Save the updated saved_elevations.json to persist the deletion
+        try:
+            with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+                json.dump(current_saved_elevations, f, indent=4)
+            print(f"✅ {SAVED_ELEVATIONS_FILE} updated after deletion.")
+        except IOError as e:
+            print(f"❌ Error saving updated {SAVED_ELEVATIONS_FILE} during delete: {e}")
+            if completion_callback: completion_callback(f"Error saving updated elevations after delete: {e}")
+            return # Critical error, cannot proceed
+
+        # After deletion, proceed to rebuild the entire Excel report from the remaining elevations
+        print("🔄 Rebuilding entire Excel report after elevation deletion...")
+        
+    else: # Handle New/Update Elevation
+        # If this elevation already exists in saved_elevations.json, reverse its old impact first.
+        if elevation_type in current_saved_elevations and not reset: 
+            print(f"🔄 Detected update for '{elevation_type}'. Reversing old material impact before applying new.")
+            old_elevation_data = current_saved_elevations[elevation_type]
+            if 'material_impact' in old_elevation_data:
+                reverse_material_impact(old_elevation_data['material_impact'])
+            else:
+                print(f"ℹ️ No old material impact data found for '{elevation_type}' to reverse (might be a very old entry).")
+        
+        # Update the current elevation data in memory
+        current_saved_elevations[elevation_type] = {
+            "system": system_input,
+            "finish": finish_input,
+            "total_count": total_count,
+            "bays_wide": bays_wide,
+            "bays_tall": bays_tall,
+            "opening_width_inches": opening_width,
+            "opening_height_inches": opening_height,
+            "sqft_per_type": sqft_per_type,
+            "total_sqft": total_sqft,
+            "perimeter_ft": perimeter_ft,
+            "total_perimeter_ft": total_perimeter_ft,
+            "calculated_outputs": calculated_outputs,
+            "material_impact": [] # This will be populated during the rebuild process
+        }
+        if door_size is not None:
+            current_saved_elevations[elevation_type]['door_size'] = door_size
+
+        # Save the updated saved_elevations.json to persist the add/update
+        try:
+            with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+                json.dump(current_saved_elevations, f, indent=4)
+            print(f"✅ Elevation '{elevation_type}' saved to {SAVED_ELEVATIONS_FILE}.")
+        except IOError as e:
+            print(f"❌ Error saving elevation to {SAVED_ELEVATIONS_FILE}: {e}")
+            if completion_callback: completion_callback(f"Error saving elevation: {e}")
             return
 
-        create_summary_sheet(excel_path=output_file)
-        if completion_callback: completion_callback()
-    except Exception as e:
-        print(f"❌ An unexpected error occurred during Excel report generation: {e}")
-        if completion_callback:
-            completion_callback(f"Error generating report: {e}")
+    # --- Consolidated Excel Rebuild Logic ---
+    wb = Workbook() # Always start with a completely new workbook for rebuild
+    ws = wb.active
+    ws.title = "Report"
+    
+    # Reset extra_materials.json for a clean rebuild process.
+    # This is CRUCIAL to ensure that all remaining elevations are priced
+    # and impact extra_materials.json as if they were added sequentially
+    # starting from an empty material state.
+    save_extra_materials({}) # Wipe extra_materials.json
+    overall_current_extra_materials_state = load_extra_materials() # Reload as empty for first calculation
+
+    current_excel_row = 1
+    
+    # To maintain a stable order in Excel, get sorted keys
+    sorted_elev_names = sorted(current_saved_elevations.keys())
+
+    if not sorted_elev_names:
+        print("ℹ️ No elevations remaining. Excel report will be empty.")
+        _clean_trailing_blank_rows(ws, 1) # Clean any initial blank rows
+    else:
+        for elev_name in sorted_elev_names:
+            elev_data = current_saved_elevations[elev_name]
+            print(f"🛠️ Re-adding '{elev_name}' to the report during rebuild...")
+            
+            # Extract all necessary parameters from `elev_data`
+            current_system_input = elev_data.get("system")
+            current_finish_input = elev_data.get("finish")
+            current_total_count = elev_data.get("total_count")
+            current_bays_wide = elev_data.get("bays_wide")
+            current_bays_tall = elev_data.get("bays_tall")
+            current_opening_width = elev_data.get("opening_width_inches")
+            current_opening_height = elev_data.get("opening_height_inches")
+            current_sqft_per_type = elev_data.get("sqft_per_type")
+            current_total_sqft = elev_data.get("total_sqft")
+            current_perimeter_ft = elev_data.get("perimeter_ft")
+            current_total_perimeter_ft = elev_data.get("total_perimeter_ft")
+            current_calculated_outputs = elev_data.get("calculated_outputs")
+            current_door_size = elev_data.get("door_size") # Get door_size from saved data
+
+            multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(current_finish_input.lower(), 1.0)
+            
+            system_total_for_this_block = [0.0]
+            newly_calculated_material_impacts_for_this_elevation = []
+
+            # Write elevation input data for this block
+            input_data = [
+                ("System Input", current_system_input), ("Elevation Type", elev_name), ("Total Count", current_total_count),
+                ("Bays Wide", current_bays_wide), ("Bays Tall", current_bays_tall), ("Opening Width", current_opening_width),
+                ("Opening Height", current_opening_height), ("Sq Ft per Type", current_sqft_per_type), ("Total Sq Ft", current_total_sqft),
+                ("Perimeter Ft", current_perimeter_ft), ("Total Perimeter Ft", current_total_perimeter_ft)
+            ]
+            if current_door_size is not None: # Add door_size to input_data if it exists
+                input_data.append(("Door Size", current_door_size))
+
+            for i, (header, value) in enumerate(input_data):
+                ws.cell(row=current_excel_row + i, column=COL_A, value=header).font = Font(bold=True)
+                ws.cell(row=current_excel_row + i, column=COL_B, value=value)
+                # Column C remains empty here, providing visual separation before COL_E
+
+            # Calculate the starting row for the output sections
+            # This ensures "PROFILES" starts directly on the same row as the input data, in column E
+            output_section_current_row = current_excel_row 
+            
+            # Initialize lists for outputs before populating them to prevent UnboundLocalError
+            profiles_for_section = []
+            accessories_for_section = []
+            other_manual_outputs_for_section = []
+
+            for item in current_calculated_outputs:
+                pn = item.get('part_number')
+                manual = item.get('manual', False)
+
+                if manual:
+                    other_manual_outputs_for_section.append(item)
+                elif pn and pn != "N/A":
+                    if pn in PART_NUMBER_MAP.get("profiles", []): profiles_for_section.append(item)
+                    elif pn in PART_NUMBER_MAP.get("accessories", []): accessories_for_section.append(item)
+                    else: other_manual_outputs_for_section.append(item)
+                else:
+                    other_manual_outputs_for_section.append(item)
+            
+            # Write output sections and collect material impacts
+            # Pass the output_section_current_row and update it for subsequent sections
+            next_row_after_profiles, impacts = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts)
+            
+            next_row_after_accessories, impacts = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts)
+            
+            grouped_other = {}; 
+            for item in other_manual_outputs_for_section:
+                grouped_other.setdefault(item.get('type', 'MANUAL ITEMS').upper(), []).append(item)
+            
+            current_section_row = next_row_after_accessories
+            for grp_title, grp_items in grouped_other.items():
+                next_row_after_group, impacts = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state)
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts)
+                current_section_row = next_row_after_group # Update for the next group
+
+            # After collecting all impacts for this elevation, apply them to extra_materials.json
+            # This happens *after* all calculations for the elevation are done and impacts are collected.
+            for impact_detail in newly_calculated_material_impacts_for_this_elevation:
+                apply_material_impact_to_extra_materials(impact_detail)
+            print(f"✅ Material impacts for '{elev_name}' applied during rebuild.")
+
+            # IMPORTANT: Reload the overall_current_extra_materials_state after applying impacts for the current elevation.
+            # This ensures the next iteration of the loop (for the next elevation) uses the most up-to-date inventory.
+            overall_current_extra_materials_state = load_extra_materials()
+            print(f"🔄 Reloaded extra_materials for next elevation: {overall_current_extra_materials_state}")
+
+
+            # Update the `material_impact` in the in-memory `current_saved_elevations` for this elevation
+            # with the newly calculated impacts during this rebuild phase. This is important
+            # if you ever delete THIS elevation later.
+            current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
+
+            # Write SYSTEM TOTAL for this elevation
+            system_total_row = ws.max_row + 2 
+            ws.cell(row=system_total_row, column=PRICE_COL, value="SYSTEM TOTAL").font = Font(bold=True)
+            ws.cell(row=system_total_row + 1, column=PRICE_COL, value=system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            print(f"📊 Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
+            
+            current_excel_row = system_total_row + 3 # Move to the next block start
+
+    # After rebuilding all elevations
+    _recalculate_running_grand_total(ws, PRICE_COL) # Recalculate based on the rebuilt sheet
+    _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
+    _clean_trailing_blank_rows(ws, 1)
+    
+    try:
+        wb.save(output_file)
+        print(f"✅ Excel report '{output_file}' fully rebuilt.")
+    except Exception as save_err:
+        print(f"❌ Error saving Excel report during full rebuild: {save_err}")
+        if completion_callback: completion_callback(f"Error saving report: {save_err}")
+        return
+
+    # Save the `current_saved_elevations` again to ensure the `material_impact` field is updated
+    # with the newly calculated impacts during the rebuild process.
+    try:
+        with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+            json.dump(current_saved_elevations, f, indent=4)
+        print(f"✅ All elevations in {SAVED_ELEVATIONS_FILE} updated with rebuilt material impacts.")
+    except IOError as e:
+        print(f"❌ Error saving all elevations to {SAVED_ELEVATIONS_FILE} after rebuild: {e}")
+
+    create_summary_sheet(excel_path=output_file) # Rebuild summary based on the final JSON
+    if completion_callback: completion_callback()

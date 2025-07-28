@@ -161,26 +161,8 @@ class App(ctk.CTk):
             perimeter = calculate_perimeter(ow / 12, oh / 12)
             total_perimeter = perimeter * total
 
-            self.saved_elevations[elev] = {
-                "system": system,
-                "finish": finish,
-                "door_size": door_size,
-                "total_count": total,
-                "bays_wide": bays_wide,
-                "bays_tall": bays_tall,
-                "opening_width_inches": ow,
-                "opening_height_inches": oh,
-                "sqft_per_type": sqft_per,
-                "total_sqft": total_sqft,
-                "perimeter_ft": perimeter,
-                "total_perimeter_ft": total_perimeter,
-                "calculated_outputs": calculated,
-            }
-
-            self.update_saved_elevation_dropdown()
-            self.vars['saved_elevation_types'].set(elev)
-            self.save_elevations_to_disk()
-
+            # Call generate_excel_report with the current elevation data.
+            # It will handle updating saved_elevations.json and extra_materials.json internally.
             generate_excel_report(
                 system_input=system,
                 finish_input=finish,
@@ -195,42 +177,51 @@ class App(ctk.CTk):
                 perimeter_ft=perimeter,
                 total_perimeter_ft=total_perimeter,
                 calculated_outputs=calculated,
-                all_elevations=list(self.saved_elevations.values()),
                 completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
-                mode="regenerate",
+                # Removed 'all_elevations' and 'mode' parameters
             )
+            
+            # After generate_excel_report completes, reload saved_elevations to reflect changes
+            self.load_saved_elevations() # This will also update the dropdown
+            self.vars['saved_elevation_types'].set(elev) # Select the newly saved/updated elevation
             self.update_status("Saved", elev, "green")
+
         except ValueError as e:
             self.update_status("Error", str(e), "red")
+        except Exception as e:
+            self.update_status("Error", f"An unexpected error occurred: {e}", "red")
+
 
     def delete_elevation_type(self):
         elev = self.vars['saved_elevation_types'].get()
-        if elev in self.saved_elevations:
-            self.saved_elevations.pop(elev)
-            self.update_saved_elevation_dropdown()
-            self.clear_form()
-            self.update_status("Deleted", elev, "green")
-            self.save_elevations_to_disk()
-
-            generate_excel_report(
-                system_input="",
-                finish_input="",
-                elevation_type="",
-                total_count=0,
-                bays_wide=0,
-                bays_tall=0,
-                opening_width=0.0,
-                opening_height=0.0,
-                sqft_per_type=0.0,
-                total_sqft=0.0,
-                perimeter_ft=0.0,
-                total_perimeter_ft=0.0,
-                calculated_outputs=[],
-                all_elevations=list(self.saved_elevations.values()),
-                completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
-                mode="regenerate",
-                delete_elevation_type=elev
-            )
+        if elev: # Ensure an elevation is selected
+            if elev in self.saved_elevations:
+                # Call generate_excel_report with delete_elevation_type
+                generate_excel_report(
+                    system_input="", # These inputs are ignored during deletion mode
+                    finish_input="",
+                    elevation_type="",
+                    total_count=0,
+                    bays_wide=0,
+                    bays_tall=0,
+                    opening_width=0.0,
+                    opening_height=0.0,
+                    sqft_per_type=0.0,
+                    total_sqft=0.0,
+                    perimeter_ft=0.0,
+                    total_perimeter_ft=0.0,
+                    calculated_outputs=[],
+                    completion_callback=lambda msg=None: self.update_status("Report", msg, "green"),
+                    delete_elevation_type=elev # This is the key parameter for deletion
+                    # Removed 'all_elevations' and 'mode' parameters
+                )
+                
+                # After generate_excel_report completes, reload saved_elevations to reflect changes
+                self.load_saved_elevations() # This will also update the dropdown
+                self.clear_form() # Clear the form after deletion
+                self.update_status("Deleted", elev, "green")
+            else:
+                self.update_status("Error", f"Elevation '{elev}' not found to delete.", "red")
         else:
             self.update_status("Error", "No elevation selected to delete.", "red")
 
@@ -254,6 +245,10 @@ class App(ctk.CTk):
         self.status_label.configure(text=message, text_color=color)
 
     def save_elevations_to_disk(self):
+        # This function is now effectively managed by generate_excel_report
+        # which saves SAVED_ELEVATIONS_FILE after any change.
+        # However, keeping it here for clarity if other parts of the app
+        # might call it directly.
         with open(SAVE_FILE, 'w') as f:
             json.dump(self.saved_elevations, f, indent=4)
 
