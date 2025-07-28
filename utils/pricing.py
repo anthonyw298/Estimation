@@ -56,7 +56,7 @@ def save_extra_materials(materials):
     except IOError as e:
         print(f"Error: Could not save {EXTRA_MATERIALS_FILE}: {e}")
 
-def get_price_by_part(part_number, requested_qty):
+def get_price_by_part(part_number, requested_qty,group=None):
     """
     Calculate price using:
       - profiles_group: length-based
@@ -78,7 +78,7 @@ def get_price_by_part(part_number, requested_qty):
     actual_purchased_qty = 0
     actual_purchased_length = 0.0
 
-    if part_number in PART_NUMBER_MAP['profiles']:
+    if part_number in PART_NUMBER_MAP['profiles'] or group==True:
         # Length-based
         unit_type = "ft"
         min_purchase_length = parse_length_to_feet(length_str)
@@ -149,5 +149,5 @@ def get_price_by_part(part_number, requested_qty):
 
     extra_materials[part_number] = part_extra
     save_extra_materials(extra_materials)
-
+    print(part_number,total_price,unit_type)
     return total_price, unit_type

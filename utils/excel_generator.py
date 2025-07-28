@@ -3,21 +3,8 @@ import json
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
-
-# Import actual dependencies
 from utils.pricing import get_price_by_part
-# Assuming data.part_number exists and contains PART_NUMBER_MAP
-try:
-    from data.part_number import PART_NUMBER_MAP
-except ImportError:
-    print("Warning: data.part_number not found. Using mock PART_NUMBER_MAP.")
-    PART_NUMBER_MAP = {
-        "profiles": ["PN001", "PN002", "PN003"],
-        "accessories": ["ACC001", "ACC002"],
-        "glass": ["GLS001"],
-        "hardware": ["HRD001"]
-    }
-
+from data.part_number import PART_NUMBER_MAP
 
 output_file = "output.xlsx"
 
@@ -101,19 +88,32 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
     for item in items:
         qty = item.get('quantity', 0)
         pn = item.get('part_number')
-        
+        manual = item.get('manual', False) # Explicitly get the manual flag
+
         total_item_price = 0.0
         unit_type = "pcs"
 
-        if pn and pn != "N/A":
+        if manual: # If it's explicitly marked as manual
+            if pn and pn != "N/A": # If manual and has a part number, try to get price from part data
+                try:
+                    # Pass the 'manual' flag to get_price_by_part if its logic needs to differ for manual items
+                    price_from_part, unit = get_price_by_part(pn, qty, True) 
+                    # If get_price_by_part returns a valid price, use it, otherwise fall back to 'price' in item
+                    # No longer multiply by qty here, get_price_by_part should return total for manual items
+                    total_item_price = (price_from_part if price_from_part is not None else item.get('price', 0.0) * qty)
+                    unit_type = unit or item.get('unit', 'pcs')
+                except Exception as e:
+                    print(f"⚠️ Error getting price for manual item with PN '{pn}': {e}. Using provided price.")
+                    total_item_price = item.get('price', 0.0) * qty
+                    unit_type = item.get('unit', 'pcs')
+            else: # Manual entry without a part number (or "N/A")
+                total_item_price = item.get('price', 0.0) * qty
+                unit_type = item.get('unit', 'pcs')
+        else: # Not a manual entry, always get price from part data
             # get_price_by_part now returns the total cost for the requested qty and unit_type
             total_item_price, unit_type = get_price_by_part(pn, qty)
             total_item_price = total_item_price or 0.0
             unit_type = unit_type or "pcs"
-        else: # Manual entries without a part number (or explicitly "N/A")
-            # For manual items, the 'price' in the item dict is assumed to be per unit
-            total_item_price = item.get('price', 0.0) * qty
-            unit_type = item.get('unit', 'pcs')
         
         # Apply multiplier for profiles to the total calculated item price
         if title == "PROFILES":
@@ -130,6 +130,11 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
 
 def _delete_summary_section(ws):
     """Deletes the existing summary section from the worksheet."""
+    # Only attempt to delete if there's more than one row (i.e., not a completely empty sheet)
+    if ws.max_row <= 1: # A new sheet often has 1 row by default, which is empty.
+        print("ℹ️ Worksheet is largely empty. Skipping summary section deletion.")
+        return
+
     summary_start_row = _find_row_by_value(ws, 1, "Part Number / Description")
     if summary_start_row:
         current_row_to_delete = summary_start_row
@@ -159,7 +164,11 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
         print(f"⚠️ Excel file '{excel_path}' not found or corrupted for summary: {e}. Cannot update summary sheet.")
         return
     
-    _delete_summary_section(ws)
+    # Only attempt to delete summary section if the workbook is not newly created/reset (already has content)
+    # This check is less direct here than in generate_excel_report, as create_summary_sheet is called independently.
+    # We can rely on _delete_summary_section's internal check.
+    _delete_summary_section(ws) 
+    
     if len(data) <= 1:
         try:
             if wb: wb.save(excel_path)
@@ -174,18 +183,25 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
             part_number = output.get('part_number')
             description = output.get('description', '').strip()
             quantity = output.get('quantity', 0)
-            price_per_unit_manual = output.get('price') # Price only for manual items
+            manual = output.get('manual', False) # Get the manual flag
 
-            is_manual_entry = not part_number or part_number == "N/A"
+            is_manual_entry = manual # Use the explicit manual flag
             key = description if is_manual_entry else part_number
 
             item_total_cost = 0.0
             if is_manual_entry:
-                item_total_cost = (price_per_unit_manual or 0.0) * quantity
+                if part_number and part_number != "N/A": # Manual with a part number
+                    try:
+                        # Pass manual=True to get_price_by_part if its logic needs to differ
+                        price_from_part, _ = get_price_by_part(part_number, quantity, True) 
+                        # get_price_by_part for manual items should return the total price, not per unit
+                        item_total_cost = (price_from_part if price_from_part is not None else output.get('price', 0.0) * quantity)
+                    except Exception:
+                        item_total_cost = output.get('price', 0.0) * quantity
+                else: # Manual without a part number (or N/A)
+                    item_total_cost = output.get('price', 0.0) * quantity
             else:
-                # For items with a part number, get the total cost from get_price_by_part
-                # Note: get_price_by_part handles excess materials internally.
-                # Here we just need the total cost for the requested quantity for summary.
+                # For items with a part number and not explicitly manual, get the total cost from get_price_by_part
                 temp_cost, _ = get_price_by_part(part_number, quantity)
                 item_total_cost = temp_cost or 0.0
 
@@ -237,8 +253,11 @@ def generate_excel_report(
 
     wb = None
     try:
+        is_new_workbook = False # Flag to track if a new workbook is created
+
         if reset or mode == "new":
             wb = Workbook()
+            is_new_workbook = True
             print(f"📄 Created new Excel workbook for reset/new mode: {output_file}")
         elif os.path.exists(output_file):
             try:
@@ -247,36 +266,48 @@ def generate_excel_report(
             except Exception as e:
                 print(f"⚠️ Error loading existing Excel file '{output_file}': {e}. Creating a new one as fallback.")
                 wb = Workbook()
+                is_new_workbook = True
                 print(f"📄 Created new Excel workbook as fallback: {output_file}")
         else:
             wb = Workbook()
+            is_new_workbook = True
             print(f"📄 Created new Excel workbook (file not found): {output_file}")
         
         ws = wb.active
         ws.title = "Report"
 
-        if delete_elevation_type:
-            _delete_summary_section(ws)
-            _delete_elevation_block(ws, delete_elevation_type, COL_A, PRICE_COL)
-            _recalculate_running_grand_total(ws, PRICE_COL)
-            _clean_trailing_blank_rows(ws, 1)
-            try:
-                wb.save(output_file); create_summary_sheet(excel_path=output_file)
-            except Exception as save_err:
-                print(f"❌ Error saving workbook during delete operation: {save_err}")
-                if completion_callback: completion_callback(f"Error saving report during delete: {save_err}")
-            if completion_callback: completion_callback()
-            return
+        # Skip deletion routines if it's a new or reset workbook
+        if not is_new_workbook:
+            if delete_elevation_type:
+                _delete_summary_section(ws)
+                _delete_elevation_block(ws, delete_elevation_type, COL_A, PRICE_COL)
+                _recalculate_running_grand_total(ws, PRICE_COL)
+                _clean_trailing_blank_rows(ws, 1)
+                try:
+                    wb.save(output_file); create_summary_sheet(excel_path=output_file)
+                except Exception as save_err:
+                    print(f"❌ Error saving workbook during delete operation: {save_err}")
+                    if completion_callback: completion_callback(f"Error saving report during delete: {save_err}")
+                if completion_callback: completion_callback()
+                return
 
-        _delete_summary_section(ws)
-        if not reset and elevation_type: _delete_elevation_block(ws, elevation_type, COL_A, PRICE_COL)
+            _delete_summary_section(ws)
+            if not reset and elevation_type: _delete_elevation_block(ws, elevation_type, COL_A, PRICE_COL)
+            
+            _clean_trailing_blank_rows(ws, 1)
         
-        _clean_trailing_blank_rows(ws, 1)
         start_row_for_new_block = 1
-        if reset: ws.delete_rows(1, ws.max_row); print("🧹 Worksheet cleared for new report.")
-        elif ws.max_row > 0:
+        if reset: # If reset, explicitly clear the worksheet. This is already handled by new Workbook creation for 'mode=new'
+            # If wb was loaded and reset is true, we need to clear it. If it was a new workbook, it's already empty.
+            if not is_new_workbook: # Only clear if we loaded an existing workbook and then reset it
+                ws.delete_rows(1, ws.max_row) 
+            print("🧹 Worksheet cleared for new report.")
+        elif ws.max_row > 0 and not is_new_workbook: # Only find last row if it's an existing workbook with content
             last_gt_row = _find_row_by_value(ws, PRICE_COL, "RUNNING GRAND TOTAL", reverse=True)
             start_row_for_new_block = (last_gt_row + 3) if last_gt_row else (ws.max_row + 2)
+        else: # For a truly new workbook or after a reset of an existing one, start from row 1
+            start_row_for_new_block = 1
+
 
         input_data = [
             ("System Input", system_input), ("Elevation Type", elevation_type), ("Total Count", total_count),
@@ -289,21 +320,31 @@ def generate_excel_report(
             ws.cell(row=start_row_for_new_block + i, column=COL_B, value=value)
 
         current_system_total = [0.0]
-        if all_elevations and not reset:
+        # This block should execute whether it's a new or existing report
+        if all_elevations: # Renamed from `all_elevations and not reset` to ensure output for new reports
             profiles, accessories, other_manual_outputs = [], [], []
             for item in calculated_outputs:
-                pn, item_type = item.get('part_number'), item.get('type', '').lower()
-                if pn and pn != "N/A":
+                pn = item.get('part_number')
+                manual = item.get('manual', False) # Get the manual flag
+
+                if manual: # If the item is explicitly manual, group it with other manual outputs
+                    other_manual_outputs.append(item)
+                elif pn and pn != "N/A": # Otherwise, categorize based on part number mapping
                     if pn in PART_NUMBER_MAP.get("profiles", []): profiles.append(item)
                     elif pn in PART_NUMBER_MAP.get("accessories", []): accessories.append(item)
-                    else: other_manual_outputs.append(item)
-                else: other_manual_outputs.append(item)
+                    else: other_manual_outputs.append(item) # Fallback for non-manual items not in profiles/accessories
+                else: # Items without a part number and not explicitly manual (should ideally be handled by 'manual' flag)
+                    other_manual_outputs.append(item)
 
             output_section_current_row = start_row_for_new_block
             output_section_current_row = _write_output_section(ws, "PROFILES", profiles, COL_E, multiplier, current_system_total, output_section_current_row)
             output_section_current_row = _write_output_section(ws, "ACCESSORIES", accessories, COL_E, multiplier, current_system_total, output_section_current_row)
 
-            grouped_other = {}; [grouped_other.setdefault(item.get('type', 'MANUAL ITEMS').upper(), []).append(item) for item in other_manual_outputs]
+            grouped_other = {}; 
+            for item in other_manual_outputs:
+                # Use the 'type' field from the item for grouping, defaulting to 'MANUAL ITEMS'
+                grouped_other.setdefault(item.get('type', 'MANUAL ITEMS').upper(), []).append(item)
+            
             for grp_title, grp_items in grouped_other.items():
                 output_section_current_row = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, current_system_total, output_section_current_row)
 

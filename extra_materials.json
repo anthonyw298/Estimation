@@ -77,7 +77,10 @@
         "length_pieces": []
     },
     "E2-0052": {
-        "quantity": 0.0,
-        "length_pieces": []
+        "quantity": 0,
+        "length_pieces": [
+            52.0,
+            52.0
+        ]
     }
 }
