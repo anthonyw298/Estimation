@@ -2,7 +2,6 @@
     "1": {
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
-        "door_size": "None",
         "total_count": 1,
         "bays_wide": 4,
         "bays_tall": 2,
@@ -153,12 +152,189 @@
                 "unit": "ft",
                 "manual": true
             }
+        ],
+        "material_impact": [
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 16.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 8.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 419.0
+            },
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 419.0
+            },
+            {
+                "part_number": "E9-2512",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 150.0
+            },
+            {
+                "part_number": "BE9-2511",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 497.0
+            },
+            {
+                "part_number": "BE9-2515",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 527.0
+            },
+            {
+                "part_number": "BE9-2514",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 444.0
+            },
+            {
+                "part_number": "BE9-2578",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 264.0
+            },
+            {
+                "part_number": "E9-2519",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 85.05
+            },
+            {
+                "part_number": "E1-0199",
+                "requested_qty": 2,
+                "purchased_qty_or_length": 20,
+                "leftover_generated_qty_or_length": 18,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 64.8
+            },
+            {
+                "part_number": "E2-0047",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 42,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 119.0
+            },
+            {
+                "part_number": "PC-1220",
+                "requested_qty": 56,
+                "purchased_qty_or_length": 100,
+                "leftover_generated_qty_or_length": 44,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 18.3
+            },
+            {
+                "part_number": "PM-1006-SS",
+                "requested_qty": 12,
+                "purchased_qty_or_length": 100,
+                "leftover_generated_qty_or_length": 88,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 46.65
+            },
+            {
+                "part_number": "UA-1212",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 100,
+                "leftover_generated_qty_or_length": 96,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 48.6
+            },
+            {
+                "part_number": "E1-2530",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 8,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 36.0
+            },
+            {
+                "part_number": "E2-0166",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 44,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 76.95
+            },
+            {
+                "part_number": "E2-0177",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 42,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 76.95
+            },
+            {
+                "part_number": "E2-0545",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 46,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 147.0
+            },
+            {
+                "part_number": "E2-0154",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 44,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 56.7
+            },
+            {
+                "part_number": "E2-0611",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 50,
+                "leftover_generated_qty_or_length": 42,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 95.25
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 83.75,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 879.375
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 24,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 360.0
+            },
+            {
+                "part_number": "E2-0052",
+                "requested_qty": 224.0,
+                "purchased_qty_or_length": 500.0,
+                "leftover_generated_qty_or_length": 276.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 405.0
+            }
         ]
     },
     "11": {
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
-        "door_size": "None",
         "total_count": 1,
         "bays_wide": 4,
         "bays_tall": 2,
@@ -308,6 +484,184 @@
                 "type": "Glazing Gasket",
                 "unit": "ft",
                 "manual": true
+            }
+        ],
+        "material_impact": [
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 16.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 8.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 419.0
+            },
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 12.0,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E9-2512",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 150.0
+            },
+            {
+                "part_number": "BE9-2511",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 497.0
+            },
+            {
+                "part_number": "BE9-2515",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 12.0,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "BE9-2514",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 12.0,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "BE9-2578",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 12.0,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E9-2519",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 85.05
+            },
+            {
+                "part_number": "E1-0199",
+                "requested_qty": 2,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 2,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E2-0047",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "PC-1220",
+                "requested_qty": 56,
+                "purchased_qty_or_length": 100,
+                "leftover_generated_qty_or_length": 88,
+                "used_from_leftover_qty_or_length": 44,
+                "cost_incurred": 18.3
+            },
+            {
+                "part_number": "PM-1006-SS",
+                "requested_qty": 12,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 12,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "UA-1212",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 4,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E1-2530",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 8,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 36.0
+            },
+            {
+                "part_number": "E2-0166",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 6,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E2-0177",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E2-0545",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 4,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E2-0154",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 6,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "E2-0611",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 83.75,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 879.375
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 24,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 360.0
+            },
+            {
+                "part_number": "E2-0052",
+                "requested_qty": 224.0,
+                "purchased_qty_or_length": 500.0,
+                "leftover_generated_qty_or_length": 276.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 405.0
             }
         ]
     }
