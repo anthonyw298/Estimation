@@ -3,8 +3,6 @@
         "quantity": 0,
         "length_pieces": [
             8.0,
-            8.0,
-            8.0,
             8.0
         ]
     },
@@ -33,23 +31,23 @@
         "length_pieces": []
     },
     "E1-0199": {
-        "quantity": 12,
+        "quantity": 16,
         "length_pieces": []
     },
     "E2-0047": {
-        "quantity": 18,
+        "quantity": 34,
         "length_pieces": []
     },
     "PC-1220": {
-        "quantity": 76,
+        "quantity": 88,
         "length_pieces": []
     },
     "PM-1006-SS": {
-        "quantity": 52,
+        "quantity": 76,
         "length_pieces": []
     },
     "UA-1212": {
-        "quantity": 84,
+        "quantity": 92,
         "length_pieces": []
     },
     "E1-2530": {
@@ -57,29 +55,28 @@
         "length_pieces": []
     },
     "E2-0166": {
-        "quantity": 26,
+        "quantity": 38,
         "length_pieces": []
     },
     "E2-0177": {
-        "quantity": 18,
-        "length_pieces": []
-    },
-    "E2-0545": {
         "quantity": 34,
         "length_pieces": []
     },
+    "E2-0545": {
+        "quantity": 42,
+        "length_pieces": []
+    },
     "E2-0154": {
-        "quantity": 26,
+        "quantity": 38,
         "length_pieces": []
     },
     "E2-0611": {
-        "quantity": 18,
+        "quantity": 34,
         "length_pieces": []
     },
     "E2-0052": {
         "quantity": 0,
         "length_pieces": [
-            52.0,
             52.0
         ]
     }
