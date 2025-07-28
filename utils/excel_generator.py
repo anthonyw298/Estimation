@@ -97,7 +97,7 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
             if pn and pn != "N/A": # If manual and has a part number, try to get price from part data
                 try:
                     # Pass the 'manual' flag to get_price_by_part if its logic needs to differ for manual items
-                    price_from_part, unit = get_price_by_part(pn, qty, True) 
+                    price_from_part, unit = get_price_by_part(pn, qty, group=True) 
                     # If get_price_by_part returns a valid price, use it, otherwise fall back to 'price' in item
                     # No longer multiply by qty here, get_price_by_part should return total for manual items
                     total_item_price = (price_from_part if price_from_part is not None else item.get('price', 0.0) * qty)
@@ -177,43 +177,75 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
             print(f"❌ Error saving workbook after summary check: {save_err}")
         return
 
+# === FIRST: Aggregate all quantities by part number or description ===
+
     aggregated_summary = {}
+
     for elev_data in data.values():
         for output in elev_data.get('calculated_outputs', []):
-            part_number = output.get('part_number')
+            part_number = output.get('part_number', '').strip()
             description = output.get('description', '').strip()
             quantity = output.get('quantity', 0)
-            manual = output.get('manual', False) # Get the manual flag
+            manual = output.get('manual', False)
 
-            is_manual_entry = manual # Use the explicit manual flag
-            key = description if is_manual_entry else part_number
-
-            item_total_cost = 0.0
-            if is_manual_entry:
-                if part_number and part_number != "N/A": # Manual with a part number
-                    try:
-                        # Pass manual=True to get_price_by_part if its logic needs to differ
-                        price_from_part, _ = get_price_by_part(part_number, quantity, True) 
-                        # get_price_by_part for manual items should return the total price, not per unit
-                        item_total_cost = (price_from_part if price_from_part is not None else output.get('price', 0.0) * quantity)
-                    except Exception:
-                        item_total_cost = output.get('price', 0.0) * quantity
-                else: # Manual without a part number (or N/A)
-                    item_total_cost = output.get('price', 0.0) * quantity
+            # Decide the key: part_number if valid and not manual, else description
+            if manual or not part_number or part_number == "N/A":
+                key = description
             else:
-                # For items with a part number and not explicitly manual, get the total cost from get_price_by_part
-                temp_cost, _ = get_price_by_part(part_number, quantity)
-                item_total_cost = temp_cost or 0.0
+                key = part_number
 
-            # Aggregate quantity and total cost
             if key not in aggregated_summary:
                 aggregated_summary[key] = {
                     'quantity': 0,
-                    'total_cost': 0.0,
-                    'description': description
+                    'description': description,
+                    'part_number': part_number,
+                    'manual': manual,
+                    'price': output.get('price', 0.0)  # Save any manual price for later
                 }
+
             aggregated_summary[key]['quantity'] += quantity
-            aggregated_summary[key]['total_cost'] += item_total_cost
+
+    # === SECOND: For each unique item, run get_price_by_part ===
+
+    for key, item in aggregated_summary.items():
+        quantity = item['quantity']
+        manual = item['manual']
+        part_number = item['part_number']
+
+        if manual:
+            # If manual, use saved price or get price by part if a valid part number exists
+            if part_number and part_number != "N/A":
+                print('hello world')
+                try:
+                    total_price, _ = get_price_by_part(part_number, quantity, group=True,summary=True)
+                    print('helloworld')
+                    item['total_cost'] = total_price if total_price is not None else item['price']
+                except Exception:
+                    print('1234565')
+                    item['total_cost'] = item['price'] * quantity
+            else:
+                item['total_cost'] = item['price'] * quantity
+        else:
+            # Auto items — always call get_price_by_part
+            print(quantity,part_number)
+            total_price, _ = get_price_by_part(part_number, quantity,summary=True)
+            print(total_price)
+            item['total_cost'] = total_price if total_price is not None else 0.0
+
+    # ✅ Now aggregated_summary has:
+    # {
+    #   key: {
+    #     'quantity': total_qty,
+    #     'description': ...,
+    #     'part_number': ...,
+    #     'manual': ...,
+    #     'price': ...,
+    #     'total_cost': ... <-- Final cost
+    #   }
+    # }
+
+    # === OPTIONAL: Print or return it ===
+
 
     summary_rows_to_write = []
     for key, entry in aggregated_summary.items():
@@ -236,6 +268,7 @@ def create_summary_sheet(excel_path=output_file, json_path='saved_elevations.jso
     _autofit_columns(ws, 1, 3, start_row, start_row + len(summary_rows_to_write))
     _clean_trailing_blank_rows(ws, 1)
     try:
+        print(aggregated_summary)
         wb.save(excel_path); print(f"✅ Summary sheet updated in {excel_path}.")
     except Exception as save_err:
         print(f"❌ Error saving summary sheet to '{excel_path}': {save_err}")
