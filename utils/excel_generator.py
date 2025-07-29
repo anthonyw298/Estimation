@@ -366,31 +366,38 @@ def generate_excel_report(
             for item in elev_data.get('calculated_outputs', []):
                 pn, manual = item.get('part_number'), item.get('manual', False)
                 if manual:
-                    if pn and pn != "N/A": manual_pn_items_for_section.append(item)
-                    else: other_items_for_section.append(item)
+                    # Instead of splitting manual items by whether they have a part number,
+                    # put all manual items in other_items_for_section for grouped output later
+                    other_items_for_section.append(item)
                 elif pn and pn != "N/A":
-                    if pn in PART_NUMBER_MAP.get("profiles", []): profiles_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", []): accessories_for_section.append(item)
-                    else: other_items_for_section.append(item)
-                else: other_items_for_section.append(item)
-            
+                    if pn in PART_NUMBER_MAP.get("profiles", []):
+                        profiles_for_section.append(item)
+                    elif pn in PART_NUMBER_MAP.get("accessories", []):
+                        accessories_for_section.append(item)
+                    else:
+                        other_items_for_section.append(item)
+                else:
+                    other_items_for_section.append(item)
+
+            # No more manual_pn_items_for_section, so remove that part
+
             multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(elev_data.get("finish").lower(), 1.0)
             system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
 
             next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state)
             next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state)
-            next_row_after_manual_pn, impacts_mpn = _write_output_section(ws, "MANUAL PART-NUMBERED ITEMS", manual_pn_items_for_section, COL_E, 1.0, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state)
-            
+
+            # Skip "OTHER PART-NUMBERED ITEMS" section entirely
+
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-            newly_calculated_material_impacts_for_this_elevation.extend(impacts_mpn)
 
-            current_section_row = next_row_after_manual_pn
-            grouped_other_misc = {}; 
+            current_section_row = next_row_after_accessories
+            grouped_other_misc = {}
             for item in other_items_for_section:
                 grouped_other_misc.setdefault(item.get('type', 'MISCELLANEOUS ITEMS').upper(), []).append(item)
-            
+
             for grp_title, grp_items in grouped_other_misc.items():
                 next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state)
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
@@ -402,7 +409,7 @@ def generate_excel_report(
             ws.cell(row=system_total_row, column=PRICE_COL, value="SYSTEM TOTAL").font = Font(bold=True)
             ws.cell(row=system_total_row + 1, column=PRICE_COL, value=system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             print(f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
-            
+
             current_excel_row = system_total_row + 3
 
     save_extra_materials(overall_current_extra_materials_state)
