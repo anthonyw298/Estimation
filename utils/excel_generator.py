@@ -1,14 +1,13 @@
 import os
 import json
-from openpyxl import  Workbook
+from openpyxl import Workbook
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
-from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory,get_unit_price_by_part
+
+# Removed global constants for file paths, as they will now be passed as arguments
+from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part
 from data.part_number import PART_NUMBER_MAP
 
-output_file = "output.xlsx"
-SAVED_ELEVATIONS_FILE = 'saved_elevations.json'
-EXTRA_MATERIALS_FILE = 'extra_materials.json'
 # --- Helper Functions ---
 
 def _find_row_by_value(ws, column, value, start_row=1, end_row=None, reverse=False):
@@ -66,7 +65,7 @@ def _recalculate_running_grand_total(ws, price_col):
         print(f"Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
 
 
-def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row, current_extra_materials_state):
+def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path):
     """Writes a section of calculated outputs to the worksheet."""
     if not items: return start_output_row, []
 
@@ -85,7 +84,7 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
         if manual:
             if pn and pn != "N/A":
                 price_calculated, unit_calculated, material_impact_details = \
-                    get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False, group=True) 
+                    get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True) 
                 total_item_price = (price_calculated if price_calculated is not None else item.get('price', 0.0) * qty)
                 unit_type = unit_calculated or item.get('unit', 'pcs')
             else:
@@ -98,13 +97,13 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
                 }
         else:
             total_price, unit_type, material_impact_details = \
-                get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False)
+                get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
             total_item_price = total_price or 0.0
             unit_type = unit_type or "pcs"
         
         if material_impact_details:
-             section_material_impacts.append(material_impact_details)
-             apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
+            section_material_impacts.append(material_impact_details)
+            apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
         if title == "PROFILES": total_item_price *= multiplier
         system_total_ref[0] += total_item_price
@@ -147,7 +146,7 @@ def _delete_summary_section(ws):
 
 # --- Main Functions ---
 
-def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE, extra_materials_path=EXTRA_MATERIALS_FILE):
+def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_path):
     """Reads elevation data, aggregates quantities and prices by part number,
     and writes a clean summary section into the Excel file, including reusable material data."""
 
@@ -157,16 +156,16 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
 
     # === Load elevations data ===
     try:
-        data = json.load(open(json_path, 'r'))
+        data = json.load(open(elevations_json_path, 'r'))
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"⚠️ Error loading JSON file '{json_path}': {e}. Skipping summary.")
+        print(f"⚠️ Error loading JSON file '{elevations_json_path}': {e}. Skipping summary.")
         return
 
     # === Load extra materials properly ===
     try:
-        extra_materials = json.load(open(extra_materials_path, 'r'))
+        extra_materials = load_extra_materials(extra_materials_json_path) # Pass the path here
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"⚠️ Error loading Extra Materials file '{extra_materials_path}': {e}. Reusable data will be skipped.")
+        print(f"⚠️ Error loading Extra Materials file '{extra_materials_json_path}': {e}. Reusable data will be skipped.")
         extra_materials = {}
 
     # === Load Excel workbook ===
@@ -242,7 +241,7 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
 
         if manual:
             if part_number and part_number != "N/A":
-                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, summary=True, group=True)
+                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True, group=True) # Pass extra_materials_file
                 total_cost_for_item = price_from_part if price_from_part else 0.0
                 calculated_unit_type = unit_type_from_pricing or original_unit
             else:
@@ -260,7 +259,7 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
                 total_cost_for_item = price * qty_float
                 calculated_unit_type = original_unit
         else:
-            total_price, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, summary=True)
+            total_price, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True) # Pass extra_materials_file
             total_cost_for_item = total_price if total_price else 0.0
             calculated_unit_type = unit_type_from_pricing or original_unit
 
@@ -292,7 +291,7 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
             reusable_percentage = (reusable_qty_f / quantity_f) * 100
 
         reusable_cost_saved_val = 0.0
-        unit_price, unit_type = get_unit_price_by_part(part_number)
+        unit_price, unit_type = get_unit_price_by_part(part_number, extra_materials_file=extra_materials_json_path) # Pass extra_materials_file
 
         print(part_number, type(unit_price), unit_price)  # Debug print without float()
 
@@ -356,44 +355,50 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
         print(f"❌ Error saving summary sheet to '{excel_path}': {save_err}")
 
 def generate_excel_report(
+    excel_path, elevations_json_path, extra_materials_json_path, # New parameters
     system_input, finish_input, elevation_type, total_count,
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
     calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    door_size=None
+    door_size=None, mode=None # Added mode to handle "export_all" from main.py
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 8
     
     current_saved_elevations = {}
-    if os.path.exists(SAVED_ELEVATIONS_FILE):
+    if os.path.exists(elevations_json_path): # Use elevations_json_path
         try:
-            with open(SAVED_ELEVATIONS_FILE, 'r') as f:
+            with open(elevations_json_path, 'r') as f:
                 current_saved_elevations = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading {SAVED_ELEVATIONS_FILE}: {e}. Starting with empty elevations in memory.")
+            print(f"Error loading {elevations_json_path}: {e}. Starting with empty elevations in memory.")
 
+    # --- Handle Deletion or Update/Save Mode ---
     if delete_elevation_type:
         elevation_to_delete_data = current_saved_elevations.get(delete_elevation_type)
         if elevation_to_delete_data and 'material_impact' in elevation_to_delete_data:
-            reverse_material_impact(elevation_to_delete_data['material_impact'])
+            reverse_material_impact(elevation_to_delete_data['material_impact'], extra_materials_file=extra_materials_json_path) # Pass extra_materials_file
 
         if delete_elevation_type in current_saved_elevations:
             del current_saved_elevations[delete_elevation_type]
 
         try:
-            with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+            with open(elevations_json_path, 'w') as f: # Use elevations_json_path
                 json.dump(current_saved_elevations, f, indent=4)
         except IOError as e:
-            print(f"Error saving updated {SAVED_ELEVATIONS_FILE} during delete: {e}")
+            print(f"Error saving updated {elevations_json_path} during delete: {e}")
             if completion_callback: completion_callback(f"Error saving updated elevations after delete: {e}")
             return
         
-    else:
+    elif mode == "export_all":
+        # In export_all mode, we don't modify current_saved_elevations here.
+        # We just proceed to rebuild the Excel based on the existing JSON.
+        pass
+    else: # This is the "save_or_update" mode, or default behavior
         if elevation_type in current_saved_elevations and not reset: 
             old_elevation_data = current_saved_elevations[elevation_type]
             if 'material_impact' in old_elevation_data:
-                reverse_material_impact(old_elevation_data['material_impact'])
+                reverse_material_impact(old_elevation_data['material_impact'], extra_materials_file=extra_materials_json_path) # Pass extra_materials_file
         
         current_saved_elevations[elevation_type] = {
             "system": system_input, "finish": finish_input, "total_count": total_count,
@@ -405,10 +410,10 @@ def generate_excel_report(
         if door_size is not None: current_saved_elevations[elevation_type]['door_size'] = door_size
 
         try:
-            with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+            with open(elevations_json_path, 'w') as f: # Use elevations_json_path
                 json.dump(current_saved_elevations, f, indent=4)
         except IOError as e:
-            print(f"Error saving elevation to {SAVED_ELEVATIONS_FILE}: {e}")
+            print(f"Error saving elevation to {elevations_json_path}: {e}")
             if completion_callback: completion_callback(f"Error saving elevation: {e}")
             return
 
@@ -416,8 +421,10 @@ def generate_excel_report(
     ws = wb.active
     ws.title = "Report"
     
-    save_extra_materials({})
-    overall_current_extra_materials_state = load_extra_materials()
+    # Reset extra materials to an empty state at the beginning of a full report rebuild
+    # Then load them to ensure we start calculations with a clean slate for impacts
+    save_extra_materials({}, extra_materials_json_path) # Pass extra_materials_json_path
+    overall_current_extra_materials_state = load_extra_materials(extra_materials_json_path) # Pass extra_materials_json_path
 
     current_excel_row = 1
     sorted_elev_names = sorted(current_saved_elevations.keys())
@@ -459,9 +466,9 @@ def generate_excel_report(
             system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
 
-            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state)
-            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state)
-            next_row_after_manual_pn, impacts_mpn = _write_output_section(ws, "MANUAL PART-NUMBERED ITEMS", manual_pn_items_for_section, COL_E, 1.0, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state)
+            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
+            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
+            next_row_after_manual_pn, impacts_mpn = _write_output_section(ws, "MANUAL PART-NUMBERED ITEMS", manual_pn_items_for_section, COL_E, 1.0, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
             
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
@@ -473,7 +480,7 @@ def generate_excel_report(
                 grouped_other_misc.setdefault(item.get('type', 'MISCELLANEOUS ITEMS').upper(), []).append(item)
             
             for grp_title, grp_items in grouped_other_misc.items():
-                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state)
+                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
                 current_section_row = next_row_after_group
 
@@ -486,25 +493,25 @@ def generate_excel_report(
             
             current_excel_row = system_total_row + 3
 
-    save_extra_materials(overall_current_extra_materials_state)
+    save_extra_materials(overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
 
     _recalculate_running_grand_total(ws, PRICE_COL)
     _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
     _clean_trailing_blank_rows(ws, 1)
     
     try:
-        wb.save(output_file)
-        print(f"Excel report '{output_file}' fully rebuilt.")
+        wb.save(excel_path) # Use excel_path
+        print(f"Excel report '{excel_path}' fully rebuilt.")
     except Exception as save_err:
         print(f"Error saving Excel report during full rebuild: {save_err}")
         if completion_callback: completion_callback(f"Error saving report: {save_err}")
         return
 
     try:
-        with open(SAVED_ELEVATIONS_FILE, 'w') as f:
+        with open(elevations_json_path, 'w') as f: # Use elevations_json_path
             json.dump(current_saved_elevations, f, indent=4)
     except IOError as e:
-        print(f"Error saving all elevations to {SAVED_ELEVATIONS_FILE} after rebuild: {e}")
+        print(f"Error saving all elevations to {elevations_json_path} after rebuild: {e}")
 
-    create_summary_sheet(excel_path=output_file)
+    create_summary_sheet(excel_path=excel_path, elevations_json_path=elevations_json_path, extra_materials_json_path=extra_materials_json_path) # Pass all three paths
     if completion_callback: completion_callback()
