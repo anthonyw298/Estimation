@@ -4,7 +4,8 @@ import os
 from data.parts_data import parts_data
 from data.part_number import PART_NUMBER_MAP
 
-EXTRA_MATERIALS_FILE = "extra_materials.json"
+# Removed hardcoded EXTRA_MATERIALS_FILE
+
 EPSILON = 1e-9
 
 def parse_length_to_feet(length_str):
@@ -18,21 +19,21 @@ def parse_length_to_feet(length_str):
     if (m := re.search(r"(\d+\.?\d*)", length_str)): return float(m.group(1))
     return 0.0
 
-def load_extra_materials():
+def load_extra_materials(extra_materials_file): # Added extra_materials_file parameter
     """Load extra materials leftovers from JSON file."""
-    if os.path.exists(EXTRA_MATERIALS_FILE):
-        try: return json.load(open(EXTRA_MATERIALS_FILE, 'r'))
+    if os.path.exists(extra_materials_file):
+        try: return json.load(open(extra_materials_file, 'r'))
         except json.JSONDecodeError:
-            save_extra_materials({})
+            save_extra_materials({}, extra_materials_file) # Pass the file path
             return {}
     return {}
 
-def save_extra_materials(materials):
+def save_extra_materials(materials, extra_materials_file): # Added extra_materials_file parameter
     """Save extra materials leftovers to JSON file."""
-    try: json.dump(materials, open(EXTRA_MATERIALS_FILE, 'w'), indent=4)
-    except IOError as e: print(f"Error: Could not save {EXTRA_MATERIALS_FILE}: {e}")
+    try: json.dump(materials, open(extra_materials_file, 'w'), indent=4)
+    except IOError as e: print(f"Error: Could not save {extra_materials_file}: {e}")
 
-def get_price_by_part(part_number, requested_qty, current_extra_materials=None, summary=False, group=False):
+def get_price_by_part(part_number, requested_qty, current_extra_materials=None, summary=False, group=False, extra_materials_file="extra_materials.json"): # Added extra_materials_file parameter with default
     """Calculate price and material impact."""
     match = parts_data.get(part_number)
     if not match:
@@ -46,7 +47,8 @@ def get_price_by_part(part_number, requested_qty, current_extra_materials=None, 
     
     part_extra_sim = {'quantity': 0, 'length_pieces': []}
     if not summary:
-        if current_extra_materials is None: current_extra_materials = load_extra_materials()
+        if current_extra_materials is None: 
+            current_extra_materials = load_extra_materials(extra_materials_file) # Pass the file path
         part_extra_sim = current_extra_materials.get(part_number, {'quantity': 0, 'length_pieces': []})
 
     material_impact_details = {
@@ -113,11 +115,11 @@ def get_price_by_part(part_number, requested_qty, current_extra_materials=None, 
     return (total_price, unit_type, None) if summary else (total_price, unit_type, material_impact_details)
 
 
-def apply_material_impact_to_extra_materials(material_impact_details):
+def apply_material_impact_to_extra_materials(material_impact_details, extra_materials_file="extra_materials.json"): # Added extra_materials_file parameter with default
     """Applies a single item's material impact to the extra_materials.json file."""
     if not material_impact_details or material_impact_details.get('part_number') == "N/A - Manual": return
 
-    extra_materials = load_extra_materials()
+    extra_materials = load_extra_materials(extra_materials_file) # Pass the file path
     part_number = material_impact_details.get('part_number')
     type_processed_as = material_impact_details.get('type_processed_as')
     if not part_number: return
@@ -153,7 +155,7 @@ def apply_material_impact_to_extra_materials(material_impact_details):
         part_extra['length_pieces'] = []
 
     extra_materials[part_number] = part_extra
-    save_extra_materials(extra_materials)
+    save_extra_materials(extra_materials, extra_materials_file) # Pass the file path
 
 
 def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_impact_details):
@@ -197,11 +199,11 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
     materials_dict[part_number] = part_extra
 
 
-def reverse_material_impact(elevation_material_impacts):
+def reverse_material_impact(elevation_material_impacts, extra_materials_file="extra_materials.json"): # Added extra_materials_file parameter with default
     """Reverses the material impact of a deleted elevation on extra_materials.json."""
     if not elevation_material_impacts: return
 
-    extra_materials = load_extra_materials()
+    extra_materials = load_extra_materials(extra_materials_file) # Pass the file path
 
     for impact in elevation_material_impacts:
         part_number = impact.get('part_number')
@@ -238,9 +240,9 @@ def reverse_material_impact(elevation_material_impacts):
 
         extra_materials[part_number] = part_extra
         
-    save_extra_materials(extra_materials)
+    save_extra_materials(extra_materials, extra_materials_file) # Pass the file path
 
-def get_unit_price_by_part(part_number):
+def get_unit_price_by_part(part_number, extra_materials_file="extra_materials.json"): # Added extra_materials_file parameter with default
     """
     Retrieves the base list price per unit (foot for profiles, piece for accessories)
     for a given part number from parts_data.
