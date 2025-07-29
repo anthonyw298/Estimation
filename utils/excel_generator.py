@@ -3,12 +3,12 @@ import json
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
-# Import the updated pricing functions
-from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials
+from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory
 from data.part_number import PART_NUMBER_MAP
+from data.parts_data import parts_data
 
 output_file = "output.xlsx"
-SAVED_ELEVATIONS_FILE = 'saved_elevations.json' # Define the JSON file path
+SAVED_ELEVATIONS_FILE = 'saved_elevations.json'
 
 # --- Helper Functions ---
 
@@ -39,17 +39,13 @@ def _clean_trailing_blank_rows(ws, start_row):
             ws.delete_rows(current_row, 1)
             rows_deleted += 1
         else: current_row += 1
-    if rows_deleted > 0: print(f"🧹 Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
+    if rows_deleted > 0: print(f"Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
 
 def _recalculate_running_grand_total(ws, price_col):
     """Recalculates and updates the 'RUNNING GRAND TOTAL' in the worksheet."""
-    # Find and delete existing RUNNING GRAND TOTAL
     for r in range(ws.max_row, 0, -1):
-        cell_value = ws.cell(row=r, column=price_col).value
-        if isinstance(cell_value, str) and cell_value.strip() == "RUNNING GRAND TOTAL":
-            # Delete RUNNING GRAND TOTAL and its value
+        if isinstance(ws.cell(row=r, column=price_col).value, str) and ws.cell(row=r, column=price_col).value.strip() == "RUNNING GRAND TOTAL":
             ws.delete_rows(r, 2)
-            print("🗑️ Existing RUNNING GRAND TOTAL removed for recalculation.")
             break
 
     running_grand_total = 0.0
@@ -61,82 +57,57 @@ def _recalculate_running_grand_total(ws, price_col):
             if isinstance(val, (float, int)): running_grand_total += val
             elif isinstance(val, str) and val.strip().startswith("$"):
                 try: running_grand_total += float(val.strip("$"))
-                except ValueError: print(f"⚠️ Could not parse SYSTEM TOTAL value: {val}")
-            else:
-                print(f"⚠️ SYSTEM TOTAL value at row {r+1}, column {price_col} is not a number: {val}")
+                except ValueError: pass
 
     new_gt_row = (last_system_total_row + 3) if last_system_total_row else (ws.max_row + 2)
     
-    # Only write RUNNING GRAND TOTAL if there are any system totals
     if running_grand_total > 0 or last_system_total_row is not None:
         ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
         ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        print(f"📈 Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
-    else:
-        print("ℹ️ No system totals found. RUNNING GRAND TOTAL not written.")
+        print(f"Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
 
 
 def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row, current_extra_materials_state):
-    """
-    Writes a section of calculated outputs (e.g., PROFILES, ACCESSORIES) to the worksheet.
-    Returns the next available row and the material impacts for the current section.
-    `current_extra_materials_state` is passed to get_price_by_part for simulation.
-    """
-    if not items: return start_output_row, [] # Return current row + 1 and empty impacts
+    """Writes a section of calculated outputs to the worksheet."""
+    if not items: return start_output_row, []
 
-    current_row = start_output_row # Start section at the provided start_output_row
-    
+    current_row = start_output_row
     ws.cell(row=current_row, column=colE, value=title).font = Font(bold=True)
     for i, h in enumerate(["Description", "Part Number", "Quantity", "Price"]):
         ws.cell(row=current_row + 1, column=colE + i, value=h).font = Font(bold=True)
     current_row += 2
 
-    section_material_impacts = [] # This will collect impacts for this section
+    section_material_impacts = []
 
     for item in items:
-        qty = item.get('quantity', 0)
-        pn = item.get('part_number')
-        manual = item.get('manual', False)
+        qty, pn, manual = item.get('quantity', 0), item.get('part_number'), item.get('manual', False)
+        total_item_price, unit_type, material_impact_details = 0.0, "pcs", None
 
-        total_item_price = 0.0
-        unit_type = "pcs"
-        material_impact_details = None # Initialize to None
-
-        if manual: # If it's explicitly marked as manual
-            if pn and pn != "N/A": # If manual and has a part number, try to get price from part data
-                # Pass current_extra_materials_state for accurate simulation AND group=True for length-based pricing
+        if manual:
+            if pn and pn != "N/A":
                 price_calculated, unit_calculated, material_impact_details = \
                     get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False, group=True) 
-                # For manual, if get_price_by_part returns a valid price, use it, otherwise fall back to 'price' in item
                 total_item_price = (price_calculated if price_calculated is not None else item.get('price', 0.0) * qty)
                 unit_type = unit_calculated or item.get('unit', 'pcs')
-            else: # Manual entry without a part number (or "N/A")
+            else:
                 total_item_price = item.get('price', 0.0) * qty
                 unit_type = item.get('unit', 'pcs')
-                # For pure manual items without PN, create a generic impact for tracking if needed for summary
                 material_impact_details = {
-                    'part_number': "N/A - Manual", # Use a distinct PN for manual items without real PN
-                    'requested_qty': qty,
-                    'purchased_qty_or_length': 0.0,
-                    'leftover_generated_qty_or_length': 0.0,
-                    'used_from_leftover_qty_or_length': 0.0,
-                    'cost_incurred': total_item_price
+                    'part_number': "N/A - Manual", 'requested_qty': qty, 'purchased_qty_or_length': 0.0,
+                    'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
+                    'cost_incurred': total_item_price, 'type_processed_as': 'manual_no_pn'
                 }
-        else: # Not a manual entry, always get price from part data
-            # get_price_by_part now returns the total cost for the requested qty and unit_type, plus material_impact_details
-            total_item_price, unit_type, material_impact_details = \
-                get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False) # Not summary here
-            total_item_price = total_item_price or 0.0
+        else:
+            total_price, unit_type, material_impact_details = \
+                get_price_by_part(pn, qty, current_extra_materials=current_extra_materials_state, summary=False)
+            total_item_price = total_price or 0.0
             unit_type = unit_type or "pcs"
         
-        # Add a check for None in material_impact_details for robustness
         if material_impact_details:
              section_material_impacts.append(material_impact_details)
+             apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
-        # Apply multiplier for profiles to the total calculated item price
-        if title == "PROFILES":
-            total_item_price *= multiplier
-
+        if title == "PROFILES": total_item_price *= multiplier
         system_total_ref[0] += total_item_price
 
         ws.cell(row=current_row, column=colE, value=item.get('description', ''))
@@ -298,247 +269,161 @@ def create_summary_sheet(excel_path=output_file, json_path=SAVED_ELEVATIONS_FILE
     _autofit_columns(ws, 1, 3, start_row, start_row + len(final_summary_data))
     _clean_trailing_blank_rows(ws, 1)
     try:
-        wb.save(excel_path); print(f"✅ Summary sheet updated in {excel_path}.")
+        wb.save(excel_path); 
     except Exception as save_err:
         print(f"❌ Error saving summary sheet to '{excel_path}': {save_err}")
+
 
 def generate_excel_report(
     system_input, finish_input, elevation_type, total_count,
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
     calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    door_size=None # Added door_size as an optional parameter
+    door_size=None
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 8
     
-    # --- Always load current saved elevations from JSON at the start ---
     current_saved_elevations = {}
     if os.path.exists(SAVED_ELEVATIONS_FILE):
         try:
             with open(SAVED_ELEVATIONS_FILE, 'r') as f:
                 current_saved_elevations = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"❌ Error loading {SAVED_ELEVATIONS_FILE}: {e}. Starting with empty elevations in memory.")
+            print(f"Error loading {SAVED_ELEVATIONS_FILE}: {e}. Starting with empty elevations in memory.")
 
-    # --- Handle Deletion First (if requested) ---
     if delete_elevation_type:
-        print(f"🚀 Processing deletion request for '{delete_elevation_type}'.")
-        
-        # 1. Get the material_impact data for the elevation being deleted from memory
         elevation_to_delete_data = current_saved_elevations.get(delete_elevation_type)
         if elevation_to_delete_data and 'material_impact' in elevation_to_delete_data:
-            print(f"Attempting to reverse material impact for '{delete_elevation_type}'.")
             reverse_material_impact(elevation_to_delete_data['material_impact'])
-            print(f"✅ Material impact for '{delete_elevation_type}' reversed in extra_materials.json.")
-        else:
-            print(f"ℹ️ No material impact data found for '{delete_elevation_type}' in saved data to reverse.")
 
-        # 2. Delete the elevation from saved_elevations.json (in memory)
         if delete_elevation_type in current_saved_elevations:
             del current_saved_elevations[delete_elevation_type]
-            print(f"Deleted '{delete_elevation_type}' from saved_elevations.json in memory.")
-        else:
-            print(f"⚠️ '{delete_elevation_type}' not found in {SAVED_ELEVATIONS_FILE}. Nothing to delete from JSON.")
 
-        # 3. Save the updated saved_elevations.json to persist the deletion
         try:
             with open(SAVED_ELEVATIONS_FILE, 'w') as f:
                 json.dump(current_saved_elevations, f, indent=4)
-            print(f"✅ {SAVED_ELEVATIONS_FILE} updated after deletion.")
         except IOError as e:
-            print(f"❌ Error saving updated {SAVED_ELEVATIONS_FILE} during delete: {e}")
+            print(f"Error saving updated {SAVED_ELEVATIONS_FILE} during delete: {e}")
             if completion_callback: completion_callback(f"Error saving updated elevations after delete: {e}")
-            return # Critical error, cannot proceed
-
-        # After deletion, proceed to rebuild the entire Excel report from the remaining elevations
-        print("🔄 Rebuilding entire Excel report after elevation deletion...")
+            return
         
-    else: # Handle New/Update Elevation
-        # If this elevation already exists in saved_elevations.json, reverse its old impact first.
+    else:
         if elevation_type in current_saved_elevations and not reset: 
-            print(f"🔄 Detected update for '{elevation_type}'. Reversing old material impact before applying new.")
             old_elevation_data = current_saved_elevations[elevation_type]
             if 'material_impact' in old_elevation_data:
                 reverse_material_impact(old_elevation_data['material_impact'])
-            else:
-                print(f"ℹ️ No old material impact data found for '{elevation_type}' to reverse (might be a very old entry).")
         
-        # Update the current elevation data in memory
         current_saved_elevations[elevation_type] = {
-            "system": system_input,
-            "finish": finish_input,
-            "total_count": total_count,
-            "bays_wide": bays_wide,
-            "bays_tall": bays_tall,
-            "opening_width_inches": opening_width,
-            "opening_height_inches": opening_height,
-            "sqft_per_type": sqft_per_type,
-            "total_sqft": total_sqft,
-            "perimeter_ft": perimeter_ft,
-            "total_perimeter_ft": total_perimeter_ft,
-            "calculated_outputs": calculated_outputs,
-            "material_impact": [] # This will be populated during the rebuild process
+            "system": system_input, "finish": finish_input, "total_count": total_count,
+            "bays_wide": bays_wide, "bays_tall": bays_tall, "opening_width_inches": opening_width,
+            "opening_height_inches": opening_height, "sqft_per_type": sqft_per_type, "total_sqft": total_sqft,
+            "perimeter_ft": perimeter_ft, "total_perimeter_ft": total_perimeter_ft,
+            "calculated_outputs": calculated_outputs, "material_impact": []
         }
-        if door_size is not None:
-            current_saved_elevations[elevation_type]['door_size'] = door_size
+        if door_size is not None: current_saved_elevations[elevation_type]['door_size'] = door_size
 
-        # Save the updated saved_elevations.json to persist the add/update
         try:
             with open(SAVED_ELEVATIONS_FILE, 'w') as f:
                 json.dump(current_saved_elevations, f, indent=4)
-            print(f"✅ Elevation '{elevation_type}' saved to {SAVED_ELEVATIONS_FILE}.")
         except IOError as e:
-            print(f"❌ Error saving elevation to {SAVED_ELEVATIONS_FILE}: {e}")
+            print(f"Error saving elevation to {SAVED_ELEVATIONS_FILE}: {e}")
             if completion_callback: completion_callback(f"Error saving elevation: {e}")
             return
 
-    # --- Consolidated Excel Rebuild Logic ---
-    wb = Workbook() # Always start with a completely new workbook for rebuild
+    wb = Workbook()
     ws = wb.active
     ws.title = "Report"
     
-    # Reset extra_materials.json for a clean rebuild process.
-    # This is CRUCIAL to ensure that all remaining elevations are priced
-    # and impact extra_materials.json as if they were added sequentially
-    # starting from an empty material state.
-    save_extra_materials({}) # Wipe extra_materials.json
-    overall_current_extra_materials_state = load_extra_materials() # Reload as empty for first calculation
+    save_extra_materials({})
+    overall_current_extra_materials_state = load_extra_materials()
 
     current_excel_row = 1
-    
-    # To maintain a stable order in Excel, get sorted keys
     sorted_elev_names = sorted(current_saved_elevations.keys())
 
     if not sorted_elev_names:
-        print("ℹ️ No elevations remaining. Excel report will be empty.")
-        _clean_trailing_blank_rows(ws, 1) # Clean any initial blank rows
+        _clean_trailing_blank_rows(ws, 1)
     else:
         for elev_name in sorted_elev_names:
             elev_data = current_saved_elevations[elev_name]
-            print(f"🛠️ Re-adding '{elev_name}' to the report during rebuild...")
             
-            # Extract all necessary parameters from `elev_data`
-            current_system_input = elev_data.get("system")
-            current_finish_input = elev_data.get("finish")
-            current_total_count = elev_data.get("total_count")
-            current_bays_wide = elev_data.get("bays_wide")
-            current_bays_tall = elev_data.get("bays_tall")
-            current_opening_width = elev_data.get("opening_width_inches")
-            current_opening_height = elev_data.get("opening_height_inches")
-            current_sqft_per_type = elev_data.get("sqft_per_type")
-            current_total_sqft = elev_data.get("total_sqft")
-            current_perimeter_ft = elev_data.get("perimeter_ft")
-            current_total_perimeter_ft = elev_data.get("total_perimeter_ft")
-            current_calculated_outputs = elev_data.get("calculated_outputs")
-            current_door_size = elev_data.get("door_size") # Get door_size from saved data
-
-            multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(current_finish_input.lower(), 1.0)
-            
-            system_total_for_this_block = [0.0]
-            newly_calculated_material_impacts_for_this_elevation = []
-
-            # Write elevation input data for this block
             input_data = [
-                ("System Input", current_system_input), ("Elevation Type", elev_name), ("Total Count", current_total_count),
-                ("Bays Wide", current_bays_wide), ("Bays Tall", current_bays_tall), ("Opening Width", current_opening_width),
-                ("Opening Height", current_opening_height), ("Sq Ft per Type", current_sqft_per_type), ("Total Sq Ft", current_total_sqft),
-                ("Perimeter Ft", current_perimeter_ft), ("Total Perimeter Ft", current_total_perimeter_ft)
+                ("System Input", elev_data.get("system")), ("Elevation Type", elev_name), ("Total Count", elev_data.get("total_count")),
+                ("Bays Wide", elev_data.get("bays_wide")), ("Bays Tall", elev_data.get("bays_tall")), ("Opening Width", elev_data.get("opening_width_inches")),
+                ("Opening Height", elev_data.get("opening_height_inches")), ("Sq Ft per Type", elev_data.get("sqft_per_type")), ("Total Sq Ft", elev_data.get("total_sqft")),
+                ("Perimeter Ft", elev_data.get("perimeter_ft")), ("Total Perimeter Ft", elev_data.get("total_perimeter_ft"))
             ]
-            if current_door_size is not None: # Add door_size to input_data if it exists
-                input_data.append(("Door Size", current_door_size))
+            if elev_data.get("door_size") is not None: input_data.append(("Door Size", elev_data.get("door_size")))
 
             for i, (header, value) in enumerate(input_data):
                 ws.cell(row=current_excel_row + i, column=COL_A, value=header).font = Font(bold=True)
                 ws.cell(row=current_excel_row + i, column=COL_B, value=value)
-                # Column C remains empty here, providing visual separation before COL_E
 
-            # Calculate the starting row for the output sections
-            # This ensures "PROFILES" starts directly on the same row as the input data, in column E
             output_section_current_row = current_excel_row 
             
-            # Initialize lists for outputs before populating them to prevent UnboundLocalError
-            profiles_for_section = []
-            accessories_for_section = []
-            other_manual_outputs_for_section = []
+            profiles_for_section, accessories_for_section, manual_pn_items_for_section, other_items_for_section = [], [], [], []
 
-            for item in current_calculated_outputs:
-                pn = item.get('part_number')
-                manual = item.get('manual', False)
-
+            for item in elev_data.get('calculated_outputs', []):
+                pn, manual = item.get('part_number'), item.get('manual', False)
                 if manual:
-                    other_manual_outputs_for_section.append(item)
+                    if pn and pn != "N/A": manual_pn_items_for_section.append(item)
+                    else: other_items_for_section.append(item)
                 elif pn and pn != "N/A":
                     if pn in PART_NUMBER_MAP.get("profiles", []): profiles_for_section.append(item)
                     elif pn in PART_NUMBER_MAP.get("accessories", []): accessories_for_section.append(item)
-                    else: other_manual_outputs_for_section.append(item)
-                else:
-                    other_manual_outputs_for_section.append(item)
+                    else: other_items_for_section.append(item)
+                else: other_items_for_section.append(item)
             
-            # Write output sections and collect material impacts
-            # Pass the output_section_current_row and update it for subsequent sections
-            next_row_after_profiles, impacts = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state)
-            newly_calculated_material_impacts_for_this_elevation.extend(impacts)
+            multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(elev_data.get("finish").lower(), 1.0)
+            system_total_for_this_block = [0.0]
+            newly_calculated_material_impacts_for_this_elevation = []
+
+            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state)
+            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state)
+            next_row_after_manual_pn, impacts_mpn = _write_output_section(ws, "MANUAL PART-NUMBERED ITEMS", manual_pn_items_for_section, COL_E, 1.0, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state)
             
-            next_row_after_accessories, impacts = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state)
-            newly_calculated_material_impacts_for_this_elevation.extend(impacts)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_mpn)
+
+            current_section_row = next_row_after_manual_pn
+            grouped_other_misc = {}; 
+            for item in other_items_for_section:
+                grouped_other_misc.setdefault(item.get('type', 'MISCELLANEOUS ITEMS').upper(), []).append(item)
             
-            grouped_other = {}; 
-            for item in other_manual_outputs_for_section:
-                grouped_other.setdefault(item.get('type', 'MANUAL ITEMS').upper(), []).append(item)
-            
-            current_section_row = next_row_after_accessories
-            for grp_title, grp_items in grouped_other.items():
-                next_row_after_group, impacts = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state)
-                newly_calculated_material_impacts_for_this_elevation.extend(impacts)
-                current_section_row = next_row_after_group # Update for the next group
+            for grp_title, grp_items in grouped_other_misc.items():
+                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state)
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+                current_section_row = next_row_after_group
 
-            # After collecting all impacts for this elevation, apply them to extra_materials.json
-            # This happens *after* all calculations for the elevation are done and impacts are collected.
-            for impact_detail in newly_calculated_material_impacts_for_this_elevation:
-                apply_material_impact_to_extra_materials(impact_detail)
-            print(f"✅ Material impacts for '{elev_name}' applied during rebuild.")
-
-            # IMPORTANT: Reload the overall_current_extra_materials_state after applying impacts for the current elevation.
-            # This ensures the next iteration of the loop (for the next elevation) uses the most up-to-date inventory.
-            overall_current_extra_materials_state = load_extra_materials()
-            print(f"🔄 Reloaded extra_materials for next elevation: {overall_current_extra_materials_state}")
-
-
-            # Update the `material_impact` in the in-memory `current_saved_elevations` for this elevation
-            # with the newly calculated impacts during this rebuild phase. This is important
-            # if you ever delete THIS elevation later.
             current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
 
-            # Write SYSTEM TOTAL for this elevation
             system_total_row = ws.max_row + 2 
             ws.cell(row=system_total_row, column=PRICE_COL, value="SYSTEM TOTAL").font = Font(bold=True)
             ws.cell(row=system_total_row + 1, column=PRICE_COL, value=system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            print(f"📊 Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
+            print(f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
             
-            current_excel_row = system_total_row + 3 # Move to the next block start
+            current_excel_row = system_total_row + 3
 
-    # After rebuilding all elevations
-    _recalculate_running_grand_total(ws, PRICE_COL) # Recalculate based on the rebuilt sheet
+    save_extra_materials(overall_current_extra_materials_state)
+
+    _recalculate_running_grand_total(ws, PRICE_COL)
     _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
     _clean_trailing_blank_rows(ws, 1)
     
     try:
         wb.save(output_file)
-        print(f"✅ Excel report '{output_file}' fully rebuilt.")
+        print(f"Excel report '{output_file}' fully rebuilt.")
     except Exception as save_err:
-        print(f"❌ Error saving Excel report during full rebuild: {save_err}")
+        print(f"Error saving Excel report during full rebuild: {save_err}")
         if completion_callback: completion_callback(f"Error saving report: {save_err}")
         return
 
-    # Save the `current_saved_elevations` again to ensure the `material_impact` field is updated
-    # with the newly calculated impacts during the rebuild process.
     try:
         with open(SAVED_ELEVATIONS_FILE, 'w') as f:
             json.dump(current_saved_elevations, f, indent=4)
-        print(f"✅ All elevations in {SAVED_ELEVATIONS_FILE} updated with rebuilt material impacts.")
     except IOError as e:
-        print(f"❌ Error saving all elevations to {SAVED_ELEVATIONS_FILE} after rebuild: {e}")
+        print(f"Error saving all elevations to {SAVED_ELEVATIONS_FILE} after rebuild: {e}")
 
-    create_summary_sheet(excel_path=output_file) # Rebuild summary based on the final JSON
+    create_summary_sheet(excel_path=output_file)
     if completion_callback: completion_callback()
