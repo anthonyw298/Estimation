@@ -360,7 +360,44 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             ws.cell(row=idx, column=5, value="").number_format = numbers.FORMAT_TEXT
             ws.cell(row=idx, column=6, value="").number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-    _autofit_columns(ws, 1, 6, start_row, start_row + len(final_summary_data))
+    # --- Add Reusable Grand Total and Percentage ---
+    reusable_grand_total = sum(item[5] for item in final_summary_data) # Sum of reusable_cost_saved_val
+
+    # Find the row of the "RUNNING GRAND TOTAL" in the report sheet (column 8)
+    running_grand_total_row = _find_row_by_value(ws, 8, "RUNNING GRAND TOTAL", reverse=True)
+    overall_running_grand_total = 0.0
+    if running_grand_total_row:
+        # The actual value is in the row below "RUNNING GRAND TOTAL" in the same column
+        value_cell = ws.cell(row=running_grand_total_row + 1, column=8).value
+        if isinstance(value_cell, (float, int)):
+            overall_running_grand_total = value_cell
+        elif isinstance(value_cell, str) and value_cell.strip().startswith("$"):
+            try:
+                overall_running_grand_total = float(value_cell.strip("$"))
+            except ValueError:
+                pass # Handle cases where conversion fails
+
+    reusable_percentage_of_running_grand_total = 0.0
+    if overall_running_grand_total > 0:
+        reusable_percentage_of_running_grand_total = (reusable_grand_total / overall_running_grand_total) * 100
+
+    # Determine where to write the new totals
+    current_summary_end_row = start_row + len(final_summary_data)
+    
+    # Add a blank row for spacing
+    current_summary_end_row += 1 
+
+    # Write Reusable Grand Total
+    ws.cell(row=current_summary_end_row, column=5, value="REUSABLE GRAND TOTAL").font = Font(bold=True)
+    ws.cell(row=current_summary_end_row, column=6, value=reusable_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    
+    # Write Reusable % of Running Grand Total
+    current_summary_end_row += 1
+    ws.cell(row=current_summary_end_row, column=5, value="REUSABLE % OF RUNNING GRAND TOTAL").font = Font(bold=True)
+    ws.cell(row=current_summary_end_row, column=6, value=f"{reusable_percentage_of_running_grand_total:.2f}%").number_format = numbers.FORMAT_TEXT
+
+
+    _autofit_columns(ws, 1, 6, start_row, current_summary_end_row) # Adjust autofit range
     _clean_trailing_blank_rows(ws, 1)
 
     try:
