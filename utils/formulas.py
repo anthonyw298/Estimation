@@ -1,4 +1,4 @@
-# utils/formulas.py
+from typing import Union
 
 def calculate_rectangle_area(length: float, width: float) -> float:
     """Calculates the area of a rectangle."""
@@ -53,38 +53,91 @@ def calculate_anti_walk_block_shallow(bays_wide: int, bays_tall: int, total_coun
 def calculate_setting_block_int_horizontal(bays_wide: int, total_count: int) -> int:
     return 2 * bays_wide * total_count
 
-def calculate_jamb_ft_v(opening_height: float, total_count: int) -> float:
-    return (2 * opening_height / 12) * total_count
+def calculate_jamb_ft_v(opening_height: float, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculates vertical jamb feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2513
+    """
+    single_instance_qty = (2 * opening_height / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_sill_ft_h(opening_width: float, total_count: int) -> float:
-    return (opening_width / 12) * total_count
+def calculate_sill_ft_h(opening_width: float, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculates horizontal sill feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2513
+    """
+    single_instance_qty = (opening_width / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_flush_filler_v(bays_wide: int, total_count: int, opening_height: float) -> float:
-    return ((bays_wide-1) * opening_height / 12) * total_count
+def calculate_flush_filler_v(bays_wide: int, total_count: int, opening_height: float) -> Union[float, list[float]]:
+    """
+    Calculates vertical flush filler feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: E9-2512
+    """
+    single_instance_qty = ((bays_wide - 1) * opening_height / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_int_vertical(bays_wide: int, total_count: int, opening_height: float) -> float:
-    return ((bays_wide-1) * opening_height / 12) * total_count
+def calculate_int_vertical(bays_wide: int, total_count: int, opening_height: float) -> Union[float, list[float]]:
+    """
+    Calculates intermediate vertical feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2511
+    """
+    single_instance_qty = ((bays_wide - 1) * opening_height / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_og_int_horizontal(opening_width: float, total_count: int) -> float:
-    return (opening_width / 12) * total_count
+def calculate_og_int_horizontal(opening_width: float, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculates outside glazing intermediate horizontal feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2515
+    """
+    single_instance_qty = (opening_width / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_og_head_h(opening_width: float, total_count: int) -> float:
-    return (opening_width / 12) * total_count
+def calculate_og_head_h(opening_width: float, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculates outside glazing head horizontal feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2514
+    """
+    single_instance_qty = (opening_width / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
-def calculate_sill_flashing_h(opening_width: float, total_count: int) -> float:
-    return (opening_width / 12) * total_count
+def calculate_sill_flashing_h(opening_width: float, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculates sill flashing horizontal feet. Returns a list if total_count > 1, else a float.
+    Associated with profile: BE9-2578
+    """
+    single_instance_qty = (opening_width / 12)
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
 def calculate_fabrication_joints(bays_wide: int, bays_tall: int, total_count: int) -> int:
     """Calculate number of fabrication joints."""
     return ((4 * bays_wide) + (bays_wide * (2 * (bays_tall - 1))) ) * total_count
 
-def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int) -> float:
-    """Calculate glass stop length."""
-    return (opening_width / 12) * bays_tall * total_count
+def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int) -> Union[float, list[float]]:
+    """
+    Calculate glass stop length. Returns a list if total_count > 1, else a float.
+    Associated with profile: E9-2519
+    """
+    single_instance_qty = (opening_width / 12) * bays_tall
+    if total_count > 1:
+        return [single_instance_qty] * total_count
+    return single_instance_qty
 
 def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
-
-
     return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
 
 def calculate_door_size(door_size, total_count):
