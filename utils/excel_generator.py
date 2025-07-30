@@ -21,12 +21,39 @@ def _find_row_by_value(ws, column, value, start_row=1, end_row=None, reverse=Fal
     return None
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
-    """Autofits columns within a specified range based on content length."""
+    """
+    Autofits columns within a specified range based on content length.
+    Applies special non-shrinking, no-buffer logic for Column E (Description).
+    """
     end_row = end_row if end_row is not None else ws.max_row
     for col_idx in range(start_col, end_col + 1):
         col_letter = get_column_letter(col_idx)
-        max_len = max((len(str(ws.cell(row=r, column=col_idx).value or '')) for r in range(start_row, end_row + 1)), default=0)
-        ws.column_dimensions[col_letter].width = max_len + 2
+        max_len = 0
+        for r in range(start_row, end_row + 1):
+            cell_value = ws.cell(row=r, column=col_idx).value
+            if cell_value is not None:
+                max_len = max(max_len, len(str(cell_value)))
+
+        # Get current width. If not explicitly set, it might be None.
+        # Default to 0.0 for comparison if not set, so it will expand to max_len.
+        current_width_obj = ws.column_dimensions[col_letter]
+        current_width = current_width_obj.width if current_width_obj.width is not None else 0.0
+
+        # Special logic for Column E (index 5), which holds 'Description'.
+        # Note: The user mentioned "column 6" in the prompt, but based on the
+        # problem description ("column E and the descriptions are not cut off")
+        # and the code structure, Column E (index 5) is where descriptions are.
+        if col_idx == 5: # Column E (Description)
+            # If the newly calculated max_len is greater than the current width,
+            # update the width to the new max_len (no buffer).
+            # Otherwise, keep the current width (prevent shrinking).
+            if max_len > current_width:
+                ws.column_dimensions[col_letter].width = max_len
+            # Else: current_width is already sufficient or larger, so keep it.
+        else: # For all other columns
+            # Apply standard autofit with a small buffer (+2).
+            # This will adjust to content, shrinking or expanding as needed.
+            ws.column_dimensions[col_letter].width = max_len + 2
 
 def _clean_trailing_blank_rows(ws, start_row):
     """Deletes blank rows from the worksheet starting from a given row."""
@@ -496,8 +523,9 @@ def generate_excel_report(
     save_extra_materials(overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
 
     _recalculate_running_grand_total(ws, PRICE_COL)
-    _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
+    # Changed the order: Clean trailing rows BEFORE autofitting to ensure max_row is accurate.
     _clean_trailing_blank_rows(ws, 1)
+    _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row) # Autofit now runs on the final, cleaned sheet
     
     try:
         wb.save(excel_path) # Use excel_path
