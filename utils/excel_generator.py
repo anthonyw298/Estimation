@@ -21,10 +21,6 @@ def _find_row_by_value(ws, column, value, start_row=1, end_row=None, reverse=Fal
     return None
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
-    """
-    Autofits columns within a specified range based on content length.
-    Applies special non-shrinking, no-buffer logic for Column E (Description).
-    """
     end_row = end_row if end_row is not None else ws.max_row
     for col_idx in range(start_col, end_col + 1):
         col_letter = get_column_letter(col_idx)
@@ -33,26 +29,12 @@ def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
             cell_value = ws.cell(row=r, column=col_idx).value
             if cell_value is not None:
                 max_len = max(max_len, len(str(cell_value)))
-
-        # Get current width. If not explicitly set, it might be None.
-        # Default to 0.0 for comparison if not set, so it will expand to max_len.
         current_width_obj = ws.column_dimensions[col_letter]
         current_width = current_width_obj.width if current_width_obj.width is not None else 0.0
-
-        # Special logic for Column E (index 5), which holds 'Description'.
-        # Note: The user mentioned "column 6" in the prompt, but based on the
-        # problem description ("column E and the descriptions are not cut off")
-        # and the code structure, Column E (index 5) is where descriptions are.
         if col_idx == 5: # Column E (Description)
-            # If the newly calculated max_len is greater than the current width,
-            # update the width to the new max_len (no buffer).
-            # Otherwise, keep the current width (prevent shrinking).
             if max_len > current_width:
                 ws.column_dimensions[col_letter].width = max_len
-            # Else: current_width is already sufficient or larger, so keep it.
         else: # For all other columns
-            # Apply standard autofit with a small buffer (+2).
-            # This will adjust to content, shrinking or expanding as needed.
             ws.column_dimensions[col_letter].width = max_len + 2
 
 def _clean_trailing_blank_rows(ws, start_row):
@@ -224,12 +206,15 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             quantity = output.get('quantity', 0)
             manual = output.get('manual', False)
 
-            if manual or not part_number or part_number == "N/A":
+            # Determine the key for aggregation and display_key_base
+            if manual:
+                # For manual items, group by description and part number (if exists)
                 key = f"MANUAL_{description}_{part_number}"
                 display_key_base = description
-                if manual and part_number and part_number != "N/A":
+                if part_number and part_number != "N/A":
                     display_key_base = f"{description} ({part_number})"
             else:
+                # For non-manual items, group by part number
                 key = part_number
                 display_key_base = part_number
 
@@ -240,7 +225,7 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
                     'display_key': display_key_base,
                     'part_number': part_number,
                     'manual': manual,
-                    'price': output.get('price', 0.0),
+                    'price': output.get('price', 0.0), # Store the individual item price, not total
                     'unit': output.get('unit', 'pcs')
                 }
 
@@ -254,7 +239,6 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
 
     # === Final summary rows ===
     final_summary_data = []
-    # Inside your for loop that builds final_summary_data:
 
     for key, item in aggregated_summary.items():
         quantity = item['quantity']
@@ -265,77 +249,80 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
 
         total_cost_for_item = 0.0
         calculated_unit_type = original_unit
+        reusable_qty_f = 0.0
+        reusable_percentage = 0.0
+        reusable_cost_saved_val = 0.0
+        unit_for_reusable_qty_display = original_unit # Default to original unit
 
+        # Calculate total_cost_for_item and calculated_unit_type
         if manual:
             if part_number and part_number != "N/A":
-                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True, group=True) # Pass extra_materials_file
-                total_cost_for_item = price_from_part if price_from_part else 0.0
+                # For manual items with a part number, get price from pricing module
+                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True, group=True)
+                total_cost_for_item = price_from_part if price_from_part is not None else 0.0
                 calculated_unit_type = unit_type_from_pricing or original_unit
             else:
-                # Safely convert price and quantity
+                # For manual items without a part number, use the provided price * quantity
                 try:
                     price = float(item['price'])
                 except (TypeError, ValueError):
                     price = 0.0
-
                 try:
                     qty_float = float(quantity)
                 except (TypeError, ValueError):
                     qty_float = 0.0
-
                 total_cost_for_item = price * qty_float
                 calculated_unit_type = original_unit
         else:
-            total_price, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True) # Pass extra_materials_file
-            total_cost_for_item = total_price if total_price else 0.0
+            # For non-manual items, get price from pricing module
+            total_price, unit_type_from_pricing, _ = get_price_by_part(part_number, quantity, extra_materials_file=extra_materials_json_path, summary=True)
+            total_cost_for_item = total_price if total_price is not None else 0.0
             calculated_unit_type = unit_type_from_pricing or original_unit
 
-        # ✅ Read reusable info correctly
-        part_data = extra_materials.get(part_number, {})
-        reusable_qty = part_data.get("quantity", 0)
-        length_pieces = part_data.get("length_pieces", [])
+        # Calculate reusable material data for items with a part number (manual or non-manual)
+        if part_number and part_number != "N/A":
+            part_data = extra_materials.get(part_number, {})
+            reusable_qty = part_data.get("quantity", 0)
+            length_pieces = part_data.get("length_pieces", [])
 
-        # If reusable_qty is zero and length_pieces exist, sum length pieces (make sure they're numbers)
-        if reusable_qty == 0 and length_pieces:
+            if reusable_qty == 0 and length_pieces:
+                try:
+                    reusable_qty = sum(float(x) for x in length_pieces)
+                except (TypeError, ValueError):
+                    reusable_qty = 0.0
+
             try:
-                reusable_qty = sum(float(x) for x in length_pieces)
+                reusable_qty_f = float(reusable_qty)
             except (TypeError, ValueError):
-                reusable_qty = 0.0
+                reusable_qty_f = 0.0
 
-        # Convert reusable_qty and quantity to float safely
-        try:
-            reusable_qty_f = float(reusable_qty)
-        except (TypeError, ValueError):
-            reusable_qty_f = 0.0
+            try:
+                quantity_f = float(quantity)
+            except (TypeError, ValueError):
+                quantity_f = 0.0
 
-        try:
-            quantity_f = float(quantity)
-        except (TypeError, ValueError):
-            quantity_f = 0.0
+            if quantity_f > 0:
+                reusable_percentage = (reusable_qty_f / quantity_f) * 100
 
-        reusable_percentage = 0.0
-        if quantity_f > 0:
-            reusable_percentage = (reusable_qty_f / quantity_f) * 100
+            unit_price, unit_type_for_reusable = get_unit_price_by_part(part_number, extra_materials_file=extra_materials_json_path)
 
-        reusable_cost_saved_val = 0.0
-        unit_price, unit_type = get_unit_price_by_part(part_number, extra_materials_file=extra_materials_json_path) # Pass extra_materials_file
-
-        print(part_number, type(unit_price), unit_price)  # Debug print without float()
-
-        if reusable_qty_f > 0 and unit_price is not None:
-            reusable_cost_saved_val = unit_price * reusable_qty_f
-        else:
-            reusable_cost_saved_val = 0.0
+            if reusable_qty_f > 0 and unit_price is not None:
+                reusable_cost_saved_val = unit_price * reusable_qty_f
+            else:
+                reusable_cost_saved_val = 0.0
+            
+            unit_for_reusable_qty_display = unit_type_for_reusable or original_unit # Use unit from pricing if available
 
         final_summary_data.append((
             display_key,
-            f"{quantity_f} {calculated_unit_type}",
+            f"{quantity:.2f} {calculated_unit_type}", # Format quantity for display
             total_cost_for_item,
             reusable_qty_f,
             reusable_percentage,
             reusable_cost_saved_val,
             manual,
-            unit_type
+            unit_for_reusable_qty_display,
+            part_number # Include part_number in the tuple for easier access
         ))
 
 
@@ -357,13 +344,14 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
     ws.cell(row=start_row, column=5, value="Reusable % of Total").font = Font(bold=True)
     ws.cell(row=start_row, column=6, value="Reusable Material Cost").font = Font(bold=True)
 
-    for idx, (item_key, qty_with_unit, total_cost, reusable_qty, reusable_percentage, reusable_cost_saved_val, manual_flag, unit_for_reusable_qty_display) in enumerate(final_summary_data, start=start_row + 1):
+    for idx, (item_key, qty_with_unit, total_cost, reusable_qty, reusable_percentage, reusable_cost_saved_val, manual_flag, unit_for_reusable_qty_display, current_item_part_number) in enumerate(final_summary_data, start=start_row + 1):
         ws.cell(row=idx, column=1, value=item_key)
         ws.cell(row=idx, column=2, value=qty_with_unit)
         price_cell = ws.cell(row=idx, column=3, value=total_cost)
         price_cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-        if not manual_flag:
+        # Display reusable material info if a valid part number exists for the item
+        if current_item_part_number and current_item_part_number != "N/A":
             ws.cell(row=idx, column=4, value=f"{reusable_qty:.2f} {unit_for_reusable_qty_display}")
             ws.cell(row=idx, column=5, value=f"{reusable_percentage:.2f}%").number_format = numbers.FORMAT_TEXT
             ws.cell(row=idx, column=6, value=reusable_cost_saved_val).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -476,18 +464,21 @@ def generate_excel_report(
 
             output_section_current_row = current_excel_row 
             
-            profiles_for_section, accessories_for_section, manual_pn_items_for_section, other_items_for_section = [], [], [], []
+            profiles_for_section, accessories_for_section, other_items_for_section = [], [], [] # Removed manual_pn_items_for_section
 
             for item in elev_data.get('calculated_outputs', []):
                 pn, manual = item.get('part_number'), item.get('manual', False)
-                if manual:
-                    if pn and pn != "N/A": manual_pn_items_for_section.append(item)
-                    else: other_items_for_section.append(item)
-                elif pn and pn != "N/A":
-                    if pn in PART_NUMBER_MAP.get("profiles", []): profiles_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", []): accessories_for_section.append(item)
-                    else: other_items_for_section.append(item)
-                else: other_items_for_section.append(item)
+                if pn and pn != "N/A": # Item has a part number
+                    if manual: # It's a manual item with a part number, group by its 'type'
+                        other_items_for_section.append(item)
+                    elif pn in PART_NUMBER_MAP.get("profiles", []):
+                        profiles_for_section.append(item)
+                    elif pn in PART_NUMBER_MAP.get("accessories", []):
+                        accessories_for_section.append(item)
+                    else: # Non-manual, with PN, but not profile/accessory
+                        other_items_for_section.append(item)
+                else: # Item does not have a valid part number (manual_no_pn or other misc)
+                    other_items_for_section.append(item)
             
             multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(elev_data.get("finish").lower(), 1.0)
             system_total_for_this_block = [0.0]
@@ -495,13 +486,13 @@ def generate_excel_report(
 
             next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
             next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
-            next_row_after_manual_pn, impacts_mpn = _write_output_section(ws, "MANUAL PART-NUMBERED ITEMS", manual_pn_items_for_section, COL_E, 1.0, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
+            # Removed the call for "MANUAL PART-NUMBERED ITEMS"
             
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-            newly_calculated_material_impacts_for_this_elevation.extend(impacts_mpn)
+            # No longer extending impacts_mpn as that section is removed
 
-            current_section_row = next_row_after_manual_pn
+            current_section_row = next_row_after_accessories # Adjusted starting row for subsequent sections
             grouped_other_misc = {}; 
             for item in other_items_for_section:
                 grouped_other_misc.setdefault(item.get('type', 'MISCELLANEOUS ITEMS').upper(), []).append(item)
