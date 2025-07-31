@@ -1,40 +1,32 @@
 {
-    "BE9-2513": {
+    "BE9-2513-clear": {
         "quantity": 0.0,
         "length_pieces": [
             8.0,
-            8.0,
-            8.0,
-            12.0
+            8.0
         ]
     },
-    "E9-2512": {
+    "E9-2512-clear": {
         "quantity": 0,
         "length_pieces": []
     },
-    "BE9-2511": {
+    "BE9-2511-clear": {
         "quantity": 0,
         "length_pieces": []
     },
-    "BE9-2515": {
+    "BE9-2515-clear": {
         "quantity": 0.0,
-        "length_pieces": [
-            12.0
-        ]
+        "length_pieces": []
     },
-    "BE9-2514": {
+    "BE9-2514-clear": {
         "quantity": 0.0,
-        "length_pieces": [
-            12.0
-        ]
+        "length_pieces": []
     },
-    "BE9-2578": {
+    "BE9-2578-clear": {
         "quantity": 0.0,
-        "length_pieces": [
-            12.0
-        ]
+        "length_pieces": []
     },
-    "E9-2519": {
+    "E9-2519-clear": {
         "quantity": 0,
         "length_pieces": []
     },
@@ -83,10 +75,47 @@
         "length_pieces": []
     },
     "E2-0052": {
-        "quantity": 0,
+        "quantity": 0.0,
         "length_pieces": [
             52.0,
             276.0
         ]
+    },
+    "BE9-2513-paint": {
+        "quantity": 0,
+        "length_pieces": [
+            8.0,
+            12.0
+        ]
+    },
+    "E9-2512-paint": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2511-paint": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "BE9-2515-paint": {
+        "quantity": 0,
+        "length_pieces": [
+            12.0
+        ]
+    },
+    "BE9-2514-paint": {
+        "quantity": 0,
+        "length_pieces": [
+            12.0
+        ]
+    },
+    "BE9-2578-paint": {
+        "quantity": 0,
+        "length_pieces": [
+            12.0
+        ]
+    },
+    "E9-2519-paint": {
+        "quantity": 0,
+        "length_pieces": []
     }
 }

@@ -74,7 +74,7 @@ def _recalculate_running_grand_total(ws, price_col):
         ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         print(f"Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
 
-def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path):
+def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path):
     """Writes a section of calculated outputs to the worksheet."""
     if not items: return start_output_row, []
 
@@ -109,8 +109,9 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
 
             if manual:
                 if pn and pn != "N/A":
+                    # Pass the finish for manual items with part numbers
                     price_calculated, unit_calculated, material_impact_details = \
-                        get_price_by_part(pn, single_qty_for_calc, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)  
+                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)  
                     total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
                     unit_type = unit_calculated or item.get('unit', 'pcs')
                 else:
@@ -120,11 +121,13 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
                     material_impact_details = {
                         'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
                         'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
-                        'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn'
+                        'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn',
+                        'finish': None # No finish for manual items without PN
                     }
             else:
+                # Pass the finish for non-manual items
                 total_price, unit_type, material_impact_details = \
-                    get_price_by_part(pn, single_qty_for_calc, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
+                    get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
                 total_item_price_single_cut = total_price or 0.0
                 unit_type = unit_type or "pcs"
             
@@ -138,9 +141,7 @@ def _write_output_section(ws, title, items, colE, multiplier, system_total_ref, 
                 section_material_impacts.append(material_impact_details)
                 apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
-        # Apply multiplier to the accumulated cost for the entire item (if applicable)
-        if title == "PROFILES":
-            item_total_cost_for_display *= multiplier
+        # Removed multiplier application as pricing is now dynamic based on finish
         
         system_total_ref[0] += item_total_cost_for_display # Add the accumulated cost to grand total
 
@@ -227,6 +228,7 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
     aggregated = {}
 
     for elev in data.values():
+        elevation_finish = elev.get('finish') # Get finish for the current elevation
         for output in elev.get('calculated_outputs', []):
             part = output.get('part_number', '').strip()
             desc = output.get('description', '').strip()
@@ -236,12 +238,26 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             # Aggregate quantities: sum if it's a list, otherwise use as is
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
 
+            # Determine if the part is a profile to include finish in the key
+            # This is critical for distinguishing materials by finish in aggregation
+            is_profile_part = part in PART_NUMBER_MAP.get('profiles', {})
+
             if manual:
-                key = f"MANUAL_{desc}_{part}"
-                display = f"{desc} ({part})" if part and part != "N/A" else desc
+                if part and part != "N/A":
+                    # For manual items with a part number, also include finish if it's a profile
+                    key = f"MANUAL_{part}-{elevation_finish.lower()}" if is_profile_part and elevation_finish else f"MANUAL_{part}"
+                    display = f"{desc} ({part} - {elevation_finish})" if is_profile_part and elevation_finish else f"{desc} ({part})"
+                else:
+                    key = f"MANUAL_NO_PN_{desc}"
+                    display = desc
             else:
-                key = part
-                display = part
+                # For non-manual profiles, include finish in the key for distinct aggregation
+                if is_profile_part and elevation_finish:
+                    key = f"{part}-{elevation_finish.lower()}"
+                    display = f"{part} ({elevation_finish})"
+                else:
+                    key = part
+                    display = part
 
             if key not in aggregated:
                 aggregated[key] = {
@@ -250,8 +266,9 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
                     'display': display,
                     'part_number': part,
                     'manual': manual,
-                    'price': output.get('price', 0.0),
-                    'unit': output.get('unit', 'pcs')
+                    'price': output.get('price', 0.0), # Storing the per-unit price or base price
+                    'unit': output.get('unit', 'pcs'),
+                    'finish': elevation_finish if is_profile_part or (manual and part and part != "N/A" and is_profile_part) else None # Store finish for profiles (manual or not)
                 }
 
             try:
@@ -260,55 +277,74 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             except (TypeError, ValueError):
                 pass
 
-    # === Build Summary Rows ===
-    summary_rows = []
+# === Build Summary Rows ===
+    final_summary_data = []
 
-    for _, item in aggregated.items():
+    for key, item in aggregated.items():
         quantity_aggregated = item['quantity'] # This is the summed quantity
         manual = item['manual']
         part = item['part_number']
         display = item['display']
         original_unit_from_item = item['unit']
+        item_finish = item.get('finish') # Get the stored finish for this aggregated item
 
-        total_cost = 0.0
+        total_cost_for_item = 0.0
+        calculated_unit_type = original_unit_from_item 
         reusable_qty_sum = 0.0
         reusable_pct = 0.0
         reusable_cost = 0.0
         
-        # Determine the primary unit for this part number from pricing logic
-        # This will be used for both Total Quantity and Reusable Quantity display
-        calculated_unit_type = original_unit_from_item 
-
+        # Calculate total_cost_for_item and calculated_unit_type
         if manual:
             if part and part != "N/A":
-                # For manual items with PN, get price and unit based on aggregated quantity
-                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, extra_materials_file=extra_materials_json_path, summary=True, group=True)
-                total_cost = price_from_part if price_from_part is not None else 0.0
-                calculated_unit_type = unit_type_from_pricing or original_unit_from_item
+                # For manual items with part numbers, calculate price using get_price_by_part
+                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True, group=True)
+                total_cost_for_item = price_from_part if price_from_part is not None else 0.0
+                # Prioritize original_unit_from_item for manual part-numbered items
+                calculated_unit_type = original_unit_from_item or unit_type_from_pricing
             else:
-                # For manual items without PN, use provided price * aggregated quantity
-                total_cost = float(item['price']) * quantity_aggregated
-                # Unit remains original_unit_from_item
+                # For manual items without a part number, use the provided price * quantity
+                try:
+                    price = float(item['price'])
+                except (TypeError, ValueError):
+                    price = 0.0
+                try:
+                    qty_float = float(quantity_aggregated)
+                except (TypeError, ValueError):
+                    qty_float = 0.0
+                total_cost_for_item = price * qty_float
+                calculated_unit_type = original_unit_from_item
         else:
-            # For non-manual items, get price and unit based on aggregated quantity
-            total_price, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, extra_materials_file=extra_materials_json_path, summary=True)
-            total_cost = total_price if total_price is not None else 0.0
+            # Pass the item_finish to get_price_by_part for non-manual items
+            total_price, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True)
+            total_cost_for_item = total_price if total_price is not None else 0.0
             calculated_unit_type = unit_type_from_pricing or original_unit_from_item
 
         reusable_qty_display_string = "N/A" # Default for display
         
+        # This block now correctly handles both non-manual and manual items with part numbers
         if part and part != "N/A":
-            part_data = extra_materials.get(part, {})
-            # For profiles, sum the length_pieces for the total reusable quantity
+            # Construct the key for extra materials based on part number and finish (for profiles)
+            extra_materials_key_for_reuse = part
+            is_profile_part_for_reuse = part in PART_NUMBER_MAP.get('profiles', {})
+
+            # If it's a profile (manual or not) and has a finish, append finish to key
+            if is_profile_part_for_reuse and item_finish:
+                extra_materials_key_for_reuse = f"{part}-{item_finish.lower()}"
+
+            part_data = extra_materials.get(extra_materials_key_for_reuse, {})
+            
+            # --- MODIFICATION START ---
+            # Prioritize length_pieces if it exists, regardless of whether it's a 'profile'
             if part_data.get("length_pieces"):
                 reusable_qty_sum = sum(float(x) for x in part_data["length_pieces"] if isinstance(x, (int, float, str)))
-                # Display individual pieces for reusable material for profiles
                 reuse_lengths_formatted = [f"{float(x):.2f}" for x in part_data["length_pieces"] if isinstance(x, (int, float, str))]
                 reusable_qty_display_string = ", ".join(reuse_lengths_formatted)
             else:
-                # For accessories or if length_pieces is empty, use the 'quantity' field
+                # Fallback to 'quantity' field if length_pieces is not present or empty
                 reusable_qty_sum = part_data.get("quantity", 0.0)
                 reusable_qty_display_string = f"{float(reusable_qty_sum):.2f}"
+            # --- MODIFICATION END ---
 
             # Ensure reusable_qty_sum is float for calculations
             try:
@@ -316,22 +352,38 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             except (TypeError, ValueError):
                 reusable_qty_sum = 0.0
 
-            if quantity_aggregated > 0:
-                reusable_pct = (reusable_qty_sum / quantity_aggregated) * 100
+            try:
+                quantity_aggregated_f = float(quantity_aggregated)
+            except (TypeError, ValueError):
+                quantity_aggregated_f = 0.0
+
+            if quantity_aggregated_f > 0:
+                reusable_pct = (reusable_qty_sum / quantity_aggregated_f) * 100
             else:
                 reusable_pct = 0.0
 
-            unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(part, extra_materials_file=extra_materials_json_path)
+            # Pass the item_finish to get_unit_price_by_part
+            unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(part, finish=item_finish, extra_materials_file=extra_materials_json_path)
+            print(unit_price_for_reuse)
             reusable_cost = reusable_qty_sum * unit_price_for_reuse if unit_price_for_reuse is not None else 0.0
             
             # Use the unit from get_unit_price_by_part for reusable quantity display if available
             # This ensures consistency between total and reusable units if they are linked by part number
-            calculated_unit_type = unit_type_for_reusable_calc or calculated_unit_type
+            
+            # --- MODIFICATION START (already present, just for context) ---
+            if manual and part and part != "N/A":
+                # For manual part-numbered items, prioritize the 'unit' from the aggregated item,
+                # then fall back to the unit from get_unit_price_by_part, then the calculated_unit_type.
+                # This ensures the original input unit for manual items is respected.
+                calculated_unit_type = original_unit_from_item or unit_type_for_reusable_calc or calculated_unit_type
+            else:
+                calculated_unit_type = unit_type_for_reusable_calc or calculated_unit_type
+            # --- MODIFICATION END ---
         
-        summary_rows.append((
+        final_summary_data.append((
             display,
             f"{quantity_aggregated:.2f} {calculated_unit_type}", # Format quantity for display with determined unit
-            total_cost,
+            total_cost_for_item,
             f"{reusable_qty_display_string} {calculated_unit_type}" if part and part != "N/A" else "N/A", # Use formatted string and determined unit
             reusable_pct,
             reusable_cost,
@@ -342,7 +394,7 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
     last_gt = _find_row_by_value(ws, 8, "RUNNING GRAND TOTAL", reverse=True)
     start_row = (last_gt + 3) if last_gt else ws.max_row + 2
 
-    if not summary_rows:
+    if not final_summary_data:
         wb.save(excel_path)
         print("ℹ️ Nothing to summarize.")
         return
@@ -354,12 +406,12 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
     for col, header in enumerate(headers, start=1):
         ws.cell(row=start_row, column=col, value=header).font = Font(bold=True)
 
-    for idx, (display, qty_disp, total_cost, reuse_qty_disp, reuse_pct, reuse_cost, part) in enumerate(summary_rows, start=start_row + 1):
+    for idx, (display, qty_disp, total_cost, reuse_qty_disp, reuse_pct, reuse_cost, part) in enumerate(final_summary_data, start=start_row + 1):
         ws.cell(row=idx, column=1, value=display)
         ws.cell(row=idx, column=2, value=qty_disp)
         ws.cell(row=idx, column=3, value=total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-        if part and part != "N/A":
+        if part and part != "N/A": # This condition now includes manual items with part numbers
             ws.cell(row=idx, column=4, value=reuse_qty_disp)
             ws.cell(row=idx, column=5, value=f"{reuse_pct:.2f}%")
             ws.cell(row=idx, column=6, value=reuse_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -370,8 +422,8 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
 
 
     # --- Add Reusable Grand Total ---
-    reuse_total = sum(row[5] for row in summary_rows) 
-    rg_total_row = start_row + len(summary_rows) + 1
+    reuse_total = sum(row[5] for row in final_summary_data) 
+    rg_total_row = start_row + len(final_summary_data) + 1
 
     ws.cell(row=rg_total_row, column=5, value="REUSABLE GRAND TOTAL").font = Font(bold=True)
     ws.cell(row=rg_total_row, column=6, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -478,7 +530,9 @@ def generate_excel_report(
             elev_data = current_saved_elevations[elev_name]
             
             input_data = [
-                ("System Input", elev_data.get("system")), ("Elevation Type", elev_name), ("Total Count", elev_data.get("total_count")),
+                ("System Input", elev_data.get("system")),
+                ("Finish", elev_data.get("finish")), # Added Finish here
+                ("Elevation Type", elev_name), ("Total Count", elev_data.get("total_count")),
                 ("Bays Wide", elev_data.get("bays_wide")), ("Bays Tall", elev_data.get("bays_tall")), ("Opening Width", elev_data.get("opening_width_inches")),
                 ("Opening Height", elev_data.get("opening_height_inches")), ("Sq Ft per Type", elev_data.get("sqft_per_type")), ("Total Sq Ft", elev_data.get("total_sqft")),
                 ("Perimeter Ft", elev_data.get("perimeter_ft")), ("Total Perimeter Ft", elev_data.get("total_perimeter_ft"))
@@ -489,9 +543,12 @@ def generate_excel_report(
                 ws.cell(row=current_excel_row + i, column=COL_A, value=header).font = Font(bold=True)
                 ws.cell(row=current_excel_row + i, column=COL_B, value=value)
 
-            output_section_current_row = current_excel_row   
+            output_section_current_row = current_excel_row  
             
-            profiles_for_section, accessories_for_section, other_items_for_section = [], [], [] # Removed manual_pn_items_for_section
+            profiles_for_section, accessories_for_section, other_items_for_section = [], [], []
+
+            # Get the finish for the current elevation to pass to _write_output_section
+            current_elevation_finish = elev_data.get("finish")
 
             for item in elev_data.get('calculated_outputs', []):
                 pn, manual = item.get('part_number'), item.get('manual', False)
@@ -507,25 +564,26 @@ def generate_excel_report(
                 else: # Item does not have a valid part number (manual_no_pn or other misc)
                     other_items_for_section.append(item)
             
-            multiplier = {"clear": 1.0, "black": 1.1, "paint": 1.2}.get(elev_data.get("finish").lower(), 1.0)
+            # Multiplier is no longer used for pricing, but could be for other purposes if needed.
+            # Removed multiplier calculation from here as it's now handled in get_price_by_part
             system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
 
-            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, multiplier, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
-            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, multiplier, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
-            # Removed the call for "MANUAL PART-NUMBERED ITEMS"
+            # Pass current_elevation_finish to _write_output_section
+            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path)
+            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path)
             
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-            # No longer extending impacts_mpn as that section is removed
 
-            current_section_row = next_row_after_accessories # Adjusted starting row for subsequent sections
+            current_section_row = next_row_after_accessories 
             grouped_other_misc = {};  
             for item in other_items_for_section:
                 grouped_other_misc.setdefault(item.get('type', 'MISCELLANEOUS ITEMS').upper(), []).append(item)
             
             for grp_title, grp_items in grouped_other_misc.items():
-                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, 1.0, system_total_for_this_block, current_section_row, overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
+                # For other/misc items, finish might not apply or be used for pricing. Pass None or a default.
+                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, None, system_total_for_this_block, current_section_row, overall_current_extra_materials_state, extra_materials_json_path)
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
                 current_section_row = next_row_after_group
 
@@ -538,15 +596,14 @@ def generate_excel_report(
             
             current_excel_row = system_total_row + 3
 
-    save_extra_materials(overall_current_extra_materials_state, extra_materials_json_path) # Pass extra_materials_json_path
+    save_extra_materials(overall_current_extra_materials_state, extra_materials_json_path)
 
     _recalculate_running_grand_total(ws, PRICE_COL)
-    # Changed the order: Clean trailing rows BEFORE autofitting to ensure max_row is accurate.
     _clean_trailing_blank_rows(ws, 1)
-    _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row) # Autofit now runs on the final, cleaned sheet
+    _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
     
     try:
-        wb.save(excel_path) # Use excel_path
+        wb.save(excel_path)
         print(f"Excel report '{excel_path}' fully rebuilt.")
     except Exception as save_err:
         print(f"❌ Error saving Excel report during full rebuild: {save_err}")
@@ -554,10 +611,10 @@ def generate_excel_report(
         return
 
     try:
-        with open(elevations_json_path, 'w') as f: # Use elevations_json_path
+        with open(elevations_json_path, 'w') as f:
             json.dump(current_saved_elevations, f, indent=4)
     except IOError as e:
         print(f"Error saving all elevations to {elevations_json_path} after rebuild: {e}")
 
-    create_summary_sheet(excel_path=excel_path, elevations_json_path=elevations_json_path, extra_materials_json_path=extra_materials_json_path) # Pass all three paths
+    create_summary_sheet(excel_path=excel_path, elevations_json_path=elevations_json_path, extra_materials_json_path=extra_materials_json_path)
     if completion_callback: completion_callback()
