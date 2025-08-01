@@ -61,7 +61,7 @@ class App(ctk.CTk):
         self.current_elevations_json_path = ""
         self.current_extra_materials_json_path = ""
         
-        self.current_elevation_doors = []
+        self.current_elevation_doors = None
         self.selected_door_index = None
 
         self.vars = dict(
@@ -478,7 +478,7 @@ class App(ctk.CTk):
             total_sqft = sqft_per * total
             perimeter = calculate_perimeter(ow / 12, oh / 12)
             total_perimeter = perimeter * total
-
+            print(calculated_outputs,'calcout',self.current_elevation_doors,'doorelev')
             generate_excel_report(
                 excel_path=self.current_excel_path,
                 elevations_json_path=self.current_elevations_json_path,
@@ -499,7 +499,6 @@ class App(ctk.CTk):
                 completion_callback=lambda msg: self.update_status("Report: " + msg, self.success_color),
                 doors=self.current_elevation_doors
             )
-            
             self.load_saved_elevations_for_current_project()
             self.vars['saved_elevation_types'].set(elev)
             self.update_status(f"Elevation '{elev}' saved successfully.", self.success_color)

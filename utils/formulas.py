@@ -140,20 +140,77 @@ def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int)
 def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
     return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
 
-def calculate_door_size(door_size, total_count):
+def calculate_door_size(door_size_str: str) -> float:
+    """
+    Calculates the area of a single door from a size string like "3' X 7'".
+    Returns the area in square feet.
+    """
     try:
-        # Remove spaces, split on 'X'
-        parts = door_size.upper().replace(" ", "").split("X")
+        # Normalize the string and split on 'X'
+        parts = door_size_str.upper().replace(" ", "").split("X")
         if len(parts) != 2:
-            raise ValueError(f"Invalid format: {door_size}")
+            raise ValueError(f"Invalid door size format: {door_size_str}")
 
         # Remove the apostrophe and convert to float
         width_ft = float(parts[0].replace("'", ""))
         height_ft = float(parts[1].replace("'", ""))
 
-        area = width_ft * height_ft * total_count
+        area = width_ft * height_ft
         return area
 
     except Exception as e:
-        print(f"Error calculating door area: {e}")
+        print(f"Error calculating door area for '{door_size_str}': {e}")
+        return 0.0
+def calculate_door_size(door_size_str: str) -> float:
+    """
+    Calculates the area of a single door from a size string like "3' X 7'".
+    Returns the area in square feet.
+    """
+    try:
+        parts = door_size_str.upper().replace(" ", "").split("X")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid door size format: {door_size_str}")
+
+        width_ft = float(parts[0].replace("'", ""))
+        height_ft = float(parts[1].replace("'", ""))
+
+        area = width_ft * height_ft
+        return area
+
+    except Exception as e:
+        print(f"Error calculating door area for '{door_size_str}': {e}")
+        return 0.0
+
+def calculate_door_price(size_str: str, stile: str, hardware_list: list) -> float:
+    """
+    Calculates the total price of a single door unit based on its size, stile, and hardware.
+    """
+    DOOR_BASE_PRICES = {
+        '3x7': 1200, '3x8': 1500, '3x9': 1800,
+        '6x7': 2400, '6x8': 3000, '6x9': 3600
+    }
+    STILE_MULTIPLIERS = {'Narrow': 0.9, 'Medium': 1.0, 'Wide': 1.1}
+    HARDWARE_PRICE = 69.0
+
+    try:
+        parts = size_str.upper().replace("'", "").replace(" ", "").split("X")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid door size format: {size_str}")
+        door_size_key = f"{parts[0]}x{parts[1]}"
+
+        base_price = DOOR_BASE_PRICES.get(door_size_key, 0)
+        stile_multiplier = STILE_MULTIPLIERS.get(stile, 1.0)
+        door_frame_price = base_price * stile_multiplier
+        
+        hardware_count = len(hardware_list)
+        is_double_door = size_str.startswith("6'")
+        if is_double_door:
+            hardware_count *= 2
+        
+        total_hardware_price = hardware_count * HARDWARE_PRICE
+        
+        return door_frame_price + total_hardware_price
+
+    except Exception as e:
+        print(f"Error calculating price for door '{size_str}': {e}")
         return 0.0
