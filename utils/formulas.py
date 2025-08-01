@@ -139,7 +139,6 @@ def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int)
 
 def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
     return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
-
 def calculate_door_size(door_size_str: str) -> float:
     """
     Calculates the area of a single door from a size string like "3' X 7'".
@@ -152,25 +151,6 @@ def calculate_door_size(door_size_str: str) -> float:
             raise ValueError(f"Invalid door size format: {door_size_str}")
 
         # Remove the apostrophe and convert to float
-        width_ft = float(parts[0].replace("'", ""))
-        height_ft = float(parts[1].replace("'", ""))
-
-        area = width_ft * height_ft
-        return area
-
-    except Exception as e:
-        print(f"Error calculating door area for '{door_size_str}': {e}")
-        return 0.0
-def calculate_door_size(door_size_str: str) -> float:
-    """
-    Calculates the area of a single door from a size string like "3' X 7'".
-    Returns the area in square feet.
-    """
-    try:
-        parts = door_size_str.upper().replace(" ", "").split("X")
-        if len(parts) != 2:
-            raise ValueError(f"Invalid door size format: {door_size_str}")
-
         width_ft = float(parts[0].replace("'", ""))
         height_ft = float(parts[1].replace("'", ""))
 
@@ -214,3 +194,40 @@ def calculate_door_price(size_str: str, stile: str, hardware_list: list) -> floa
     except Exception as e:
         print(f"Error calculating price for door '{size_str}': {e}")
         return 0.0
+
+def calculate_door_info(doors: list) -> list:
+    """
+    Takes a list of door inputs and returns a list of dictionaries with door information,
+    including calculated price and other details.
+
+    Args:
+        doors (list): A list of dictionaries, where each dictionary represents a door
+                      and contains keys like 'size', 'count', 'stile', and 'hardware'.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a door with
+              its calculated details and is formatted for the final output.
+    """
+    door_items = []
+    
+    if doors:
+        for door_info in doors:
+            door_size_str = door_info.get('size')
+            door_count = door_info.get('count', 0)
+            door_stile = door_info.get('stile')
+            door_hardware = door_info.get('hardware', [])
+
+            if door_size_str and door_count > 0:
+                door_price = calculate_door_price(door_size_str, door_stile, door_hardware)
+                
+                door_items.append({
+                    "description": f"Door ({door_size_str})", 
+                    "Style": door_stile,
+                    "quantity": door_count,
+                    "part_number": "N/A",
+                    "type": "Door",
+                    'price': door_price,
+                    'hardware': door_hardware,
+                    'manual': True
+                })
+    return door_items
