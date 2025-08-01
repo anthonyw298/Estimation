@@ -484,64 +484,75 @@ class App(ctk.CTk):
             if not elev:
                 self.update_status("Error: Please enter an elevation type.", self.error_color)
                 return
-                
-            # Create elevation data with current doors
+            
+            # Get all required values first
+            system = v['system'].get()
+            finish = v['finish'].get()
+            total_count = int(v['total_count'].get())
+            opening_width = float(v['opening_width'].get())
+            opening_height = float(v['opening_height'].get())
+            
+            # Calculate measurements first
+            sqft_per = calculate_rectangle_area(opening_width / 12, opening_height / 12)
+            total_sqft = sqft_per * total_count
+            perimeter = calculate_perimeter(opening_width / 12, opening_height / 12)
+            total_perimeter = perimeter * total_count
+
+            # Create elevation data with measurements
             elevation_data = {
-                'system': v['system'].get(),
-                'finish': v['finish'].get(),
-                'total_count': int(v['total_count'].get()),
-                'opening_width_inches': float(v['opening_width'].get()),
-                'opening_height_inches': float(v['opening_height'].get()),
-                'doors': self.current_elevation_doors.copy()  # Save copy of doors
+                'system': system,
+                'finish': finish,
+                'total_count': total_count,
+                'opening_width_inches': opening_width,
+                'opening_height_inches': opening_height,
+                'sqft_per_type': sqft_per,
+                'total_sqft': total_sqft,
+                'perimeter_ft': perimeter,
+                'total_perimeter_ft': total_perimeter,
+                'doors': self.current_elevation_doors if self.current_elevation_doors else []
             }
             
-            if elevation_data['system'] == self.system_options[0]:
-                elevation_data['bays_wide'] = int(v['bays_wide'].get())
-                elevation_data['bays_tall'] = int(v['bays_tall'].get())
+            # Add bays if using YES 45TU system
+            calculated_outputs = []
+            if system == self.system_options[0]:
+                bays_wide = int(v['bays_wide'].get())
+                bays_tall = int(v['bays_tall'].get())
+                elevation_data['bays_wide'] = bays_wide
+                elevation_data['bays_tall'] = bays_tall
+                calculated_outputs = calculate_yes45tu_quantities(
+                    bays_wide,
+                    bays_tall,
+                    total_count,
+                    opening_width,
+                    opening_height,
+                    elevation_data['doors']
+                )
 
-            # Save elevation data to JSON
+            # Save to JSON before generating report
             self.saved_elevations[elev] = elevation_data
             with open(self.current_elevations_json_path, 'w') as f:
                 json.dump(self.saved_elevations, f, indent=4)
 
-            # Calculate quantities
-            calculated_outputs = []
-            if elevation_data['system'] == self.system_options[0]:
-                calculated_outputs = calculate_yes45tu_quantities(
-                    elevation_data.get('bays_wide', 0),
-                    elevation_data.get('bays_tall', 0),
-                    elevation_data['total_count'],
-                    elevation_data['opening_width_inches'],
-                    elevation_data['opening_height_inches'],
-                    self.current_elevation_doors
-                )
-
-            # Calculate measurements
-            sqft_per = calculate_rectangle_area(elevation_data['opening_width_inches'] / 12, elevation_data['opening_height_inches'] / 12)
-            total_sqft = sqft_per * elevation_data['total_count']
-            perimeter = calculate_perimeter(elevation_data['opening_width_inches'] / 12, elevation_data['opening_height_inches'] / 12)
-            total_perimeter = perimeter * elevation_data['total_count']
-
-            # Generate Excel report without lambda
+            # Generate Excel report with all measurements
             generate_excel_report(
                 excel_path=self.current_excel_path,
                 elevations_json_path=self.current_elevations_json_path,
                 extra_materials_json_path=self.current_extra_materials_json_path,
-                system_input=elevation_data['system'],
-                finish_input=elevation_data['finish'],
+                system_input=system,
+                finish_input=finish,
                 elevation_type=elev,
-                total_count=elevation_data['total_count'],
+                total_count=total_count,
                 bays_wide=elevation_data.get('bays_wide', 0),
                 bays_tall=elevation_data.get('bays_tall', 0),
-                opening_width=elevation_data['opening_width_inches'],
-                opening_height=elevation_data['opening_height_inches'],
+                opening_width=opening_width,
+                opening_height=opening_height,
                 sqft_per_type=sqft_per,
                 total_sqft=total_sqft,
                 perimeter_ft=perimeter,
                 total_perimeter_ft=total_perimeter,
                 calculated_outputs=calculated_outputs,
-                completion_callback=None,  # Removed lambda
-                doors=self.current_elevation_doors
+                completion_callback=None,
+                doors=elevation_data['doors']
             )
 
             self.update_saved_elevation_dropdown()
@@ -571,32 +582,51 @@ class App(ctk.CTk):
             self.update_status("Deletion cancelled.", self.text_color)
             return
 
-        # Pass the deletion command to the excel_generator
-        generate_excel_report(
-            excel_path=self.current_excel_path,
-            elevations_json_path=self.current_elevations_json_path,
-            extra_materials_json_path=self.current_extra_materials_json_path,
-            delete_elevation_type=elev_to_delete,
-            completion_callback=lambda msg: self.update_status("Report: " + msg, self.success_color),
-            system_input="", # Not used in deletion mode, but required by function signature
-            finish_input="",
-            elevation_type="",
-            total_count=0,
-            bays_wide=0,
-            bays_tall=0,
-            opening_width=0.0,
-            opening_height=0.0,
-            sqft_per_type=0.0,
-            total_sqft=0.0,
-            perimeter_ft=0.0,
-            total_perimeter_ft=0.0,
-            calculated_outputs=[],
-            doors=[]
-        )
-        
+        # Remove the elevation from saved data
+        del self.saved_elevations[elev_to_delete]
+
+        # Save updated JSON
+        with open(self.current_elevations_json_path, 'w') as f:
+            json.dump(self.saved_elevations, f, indent=4)
+
+        # Rebuild the Excel report from remaining elevations
+        for elev, data in self.saved_elevations.items():
+            calculated_outputs = []
+            if data['system'] == self.system_options[0]:
+                calculated_outputs = calculate_yes45tu_quantities(
+                    data['bays_wide'],
+                    data['bays_tall'],
+                    data['total_count'],
+                    data['opening_width_inches'],
+                    data['opening_height_inches'],
+                    data['doors']
+                )
+
+            generate_excel_report(
+                excel_path=self.current_excel_path,
+                elevations_json_path=self.current_elevations_json_path,
+                extra_materials_json_path=self.current_extra_materials_json_path,
+                system_input=data['system'],
+                finish_input=data['finish'],
+                elevation_type=elev,
+                total_count=data['total_count'],
+                bays_wide=data.get('bays_wide', 0),
+                bays_tall=data.get('bays_tall', 0),
+                opening_width=data['opening_width_inches'],
+                opening_height=data['opening_height_inches'],
+                sqft_per_type=data['sqft_per_type'],
+                total_sqft=data['total_sqft'],
+                perimeter_ft=data['perimeter_ft'],
+                total_perimeter_ft=data['total_perimeter_ft'],
+                calculated_outputs=calculated_outputs,
+                completion_callback=None,
+                doors=data['doors']
+            )
+
         self.load_saved_elevations_for_current_project()
         self.clear_form()
-        self.update_status(f"Elevation '{elev_to_delete}' deleted.", self.success_color)
+        self.update_status(f"Elevation '{elev_to_delete}' deleted and report updated.", self.success_color)
+
 
     def add_door(self):
         if not self.current_project_name:
