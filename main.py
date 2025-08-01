@@ -1,3 +1,4 @@
+
 import customtkinter as ctk
 import tkinter as tk
 import json
@@ -61,7 +62,7 @@ class App(ctk.CTk):
         self.current_elevations_json_path = ""
         self.current_extra_materials_json_path = ""
         
-        self.current_elevation_doors = None
+        self.current_elevation_doors = []
         self.selected_door_index = None
 
         self.vars = dict(
@@ -369,14 +370,21 @@ class App(ctk.CTk):
             try:
                 with open(self.current_elevations_json_path, 'r') as f:
                     self.saved_elevations = json.load(f)
+                
+                # Update dropdown and ensure a value is selected if available
                 self.update_saved_elevation_dropdown()
+                if self.saved_elevations:
+                    first_elevation = sorted(self.saved_elevations.keys())[0]
+                    self.vars['saved_elevation_types'].set(first_elevation)
+                    self.on_saved_elevation_select(first_elevation)  # Load the first elevation
+                
                 self.update_status(f"Loaded elevations for '{self.current_project_name}'.", self.success_color)
             except Exception as e:
-                self.update_status(f"Error loading elevations for '{self.current_project_name}': {e}", self.error_color)
+                self.update_status(f"Error loading elevations: {e}", self.error_color)
         else:
             self.saved_elevations = {}
             self.update_saved_elevation_dropdown()
-            self.update_status(f"No elevations found for '{self.current_project_name}'.", self.text_color)
+            self.clear_form()
             with open(self.current_elevations_json_path, 'w') as f:
                 json.dump({}, f, indent=4)
 
@@ -429,9 +437,17 @@ class App(ctk.CTk):
 
     def on_saved_elevation_select(self, elev_type):
         """Loads selected elevation data into the form fields."""
-        if elev_type not in self.saved_elevations:
+        # Clear current data first
+        self.current_elevation_doors = []
+        self.update_door_listbox()
+        
+        if not elev_type or elev_type not in self.saved_elevations:
+            self.clear_form()
             return
+                
         data = self.saved_elevations[elev_type]
+        
+        # Load form fields
         for key, var_key in [
             ('system', 'system'),
             ('finish', 'finish'),
@@ -441,11 +457,19 @@ class App(ctk.CTk):
             ('opening_width_inches', 'opening_width'),
             ('opening_height_inches', 'opening_height'),
         ]:
-            self.vars[var_key].set(str(data.get(key, '')))
+            if key in data:
+                self.vars[var_key].set(str(data[key]))
+                
         self.vars['elevation_type'].set(elev_type)
         self.on_system_change(self.vars['system'].get())
-        self.current_elevation_doors = data.get('doors', [])
-        self.update_door_listbox()
+        
+        # Load doors with explicit GUI update
+        if 'doors' in data and isinstance(data['doors'], list):
+            self.current_elevation_doors = data['doors'].copy()
+            self.update_door_listbox()  # This updates the GUI listbox
+        
+        self.clear_door_form()
+        self.update_saved_elevation_dropdown()
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
 
     def save_elevation_type(self):
@@ -460,46 +484,67 @@ class App(ctk.CTk):
             if not elev:
                 self.update_status("Error: Please enter an elevation type.", self.error_color)
                 return
+                
+            # Create elevation data with current doors
+            elevation_data = {
+                'system': v['system'].get(),
+                'finish': v['finish'].get(),
+                'total_count': int(v['total_count'].get()),
+                'opening_width_inches': float(v['opening_width'].get()),
+                'opening_height_inches': float(v['opening_height'].get()),
+                'doors': self.current_elevation_doors.copy()  # Save copy of doors
+            }
             
-            system = v['system'].get()
-            finish = v['finish'].get()
-            total = int(v['total_count'].get())
-            ow = float(v['opening_width'].get())
-            oh = float(v['opening_height'].get())
-            bays_wide = int(v['bays_wide'].get()) if system == self.system_options[0] else 0
-            bays_tall = int(v['bays_tall'].get()) if system == self.system_options[0] else 0
+            if elevation_data['system'] == self.system_options[0]:
+                elevation_data['bays_wide'] = int(v['bays_wide'].get())
+                elevation_data['bays_tall'] = int(v['bays_tall'].get())
 
+            # Save elevation data to JSON
+            self.saved_elevations[elev] = elevation_data
+            with open(self.current_elevations_json_path, 'w') as f:
+                json.dump(self.saved_elevations, f, indent=4)
+
+            # Calculate quantities
             calculated_outputs = []
-            if system == self.system_options[0]:
-                door_data = self.current_elevation_doors
-                calculated_outputs = calculate_yes45tu_quantities(bays_wide, bays_tall, total, ow, oh, door_data)
+            if elevation_data['system'] == self.system_options[0]:
+                calculated_outputs = calculate_yes45tu_quantities(
+                    elevation_data.get('bays_wide', 0),
+                    elevation_data.get('bays_tall', 0),
+                    elevation_data['total_count'],
+                    elevation_data['opening_width_inches'],
+                    elevation_data['opening_height_inches'],
+                    self.current_elevation_doors
+                )
 
-            sqft_per = calculate_rectangle_area(ow / 12, oh / 12)
-            total_sqft = sqft_per * total
-            perimeter = calculate_perimeter(ow / 12, oh / 12)
-            total_perimeter = perimeter * total
-            print(calculated_outputs,'calcout',self.current_elevation_doors,'doorelev')
+            # Calculate measurements
+            sqft_per = calculate_rectangle_area(elevation_data['opening_width_inches'] / 12, elevation_data['opening_height_inches'] / 12)
+            total_sqft = sqft_per * elevation_data['total_count']
+            perimeter = calculate_perimeter(elevation_data['opening_width_inches'] / 12, elevation_data['opening_height_inches'] / 12)
+            total_perimeter = perimeter * elevation_data['total_count']
+
+            # Generate Excel report without lambda
             generate_excel_report(
                 excel_path=self.current_excel_path,
                 elevations_json_path=self.current_elevations_json_path,
                 extra_materials_json_path=self.current_extra_materials_json_path,
-                system_input=system,
-                finish_input=finish,
+                system_input=elevation_data['system'],
+                finish_input=elevation_data['finish'],
                 elevation_type=elev,
-                total_count=total,
-                bays_wide=bays_wide,
-                bays_tall=bays_tall,
-                opening_width=ow,
-                opening_height=oh,
+                total_count=elevation_data['total_count'],
+                bays_wide=elevation_data.get('bays_wide', 0),
+                bays_tall=elevation_data.get('bays_tall', 0),
+                opening_width=elevation_data['opening_width_inches'],
+                opening_height=elevation_data['opening_height_inches'],
                 sqft_per_type=sqft_per,
                 total_sqft=total_sqft,
                 perimeter_ft=perimeter,
                 total_perimeter_ft=total_perimeter,
                 calculated_outputs=calculated_outputs,
-                completion_callback=lambda msg: self.update_status("Report: " + msg, self.success_color),
+                completion_callback=None,  # Removed lambda
                 doors=self.current_elevation_doors
             )
-            self.load_saved_elevations_for_current_project()
+
+            self.update_saved_elevation_dropdown()
             self.vars['saved_elevation_types'].set(elev)
             self.update_status(f"Elevation '{elev}' saved successfully.", self.success_color)
 
@@ -648,11 +693,17 @@ class App(ctk.CTk):
         self.update_status("Door deleted successfully.", self.success_color)
 
     def update_door_listbox(self):
-        self.door_listbox.delete(0, tk.END)
+        """Updates the door listbox in the GUI with current doors."""
+        self.door_listbox.delete(0, tk.END)  # Clear current entries
+        
+        # Add each door to the listbox
         for door in self.current_elevation_doors:
             hardware_str = ", ".join(door['hardware']) if door['hardware'] else "None"
             entry = f"{door['count']}x {door['size']} | Stile: {door['stile']} | Hardware: {hardware_str}"
             self.door_listbox.insert(tk.END, entry)
+        
+        # Force GUI update
+        self.door_listbox.update()
 
     def select_door_for_edit(self, event):
         try:
@@ -693,9 +744,11 @@ class App(ctk.CTk):
         keys = sorted(self.saved_elevations.keys())
         self.saved_elevations_option_menu.configure(values=keys if keys else [""])
         current = self.vars['saved_elevation_types'].get()
-        if current not in keys:
-            self.vars['saved_elevation_types'].set(keys[0] if keys else "")
-
+        if keys:  # If there are saved elevations
+            if current not in keys:
+                self.vars['saved_elevation_types'].set(keys[0])  # Set to first elevation if current not found
+        else:
+            self.vars['saved_elevation_types'].set("")  # Set to empty if no elevations
     def clear_form(self):
         """Clears all input fields in the form."""
         for var in ['elevation_type', 'total_count', 'bays_wide', 'bays_tall', 'opening_width', 'opening_height']:
