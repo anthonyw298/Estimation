@@ -23,7 +23,8 @@ from utils.formulas import (
     calculate_glass_stop,
     calculate_total_glass,
     calculate_fabrication_joints,
-    calculate_door_size # Your function, correctly imported
+    calculate_door_size,
+    calculate_door_price
 )
 
 def calculate_yes45tu_quantities(
@@ -32,7 +33,7 @@ def calculate_yes45tu_quantities(
     total_count: int,
     opening_width: float,
     opening_height: float,
-    door_size: str # Type hint changed to str, as it will receive the string '3' X 7''
+    doors: list
 ) -> list:
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
@@ -64,32 +65,44 @@ def calculate_yes45tu_quantities(
 
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
     
-    # --- DEBUG PRINTS for Door calculation ---
-    print(f"\n--- DEBUG: Door Calculation in yes45tu_front_set.py ---")
-    print(f"Input door_size parameter: {door_size} (Type: {type(door_size)})")
-    print(f"Total count: {total_count}")
-    print(f"Calculated total_glass_area: {total_glass_area:.2f} sqft")
+    # --- Door Calculation ---
+    total_door_area = 0
+    door_items = []
+    
+    if doors:
+        for door_info in doors:
+            door_size_str = door_info.get('size')
+            door_count = door_info.get('count', 0)
+            door_stile = door_info.get('stile')
+            door_hardware = door_info.get('hardware', [])
 
-    # --- CORRECTED DOOR AREA CALCULATION ---
-    # Pass the door_size string directly to your calculate_door_size function
-    # It already handles parsing from 'W' X H'' format.
-    if door_size is None or str(door_size).strip().lower() == 'none':
-        door_area = 'None'
-        print(f"door_size is None or 'None', setting door_area to 'None'.")
-    else:
-        # Call your existing calculate_door_size function with the string
-        door_area = calculate_door_size(door_size, total_count)
-        print(f"Calculated door_area from calculate_door_size('{door_size}', {total_count}): {door_area:.2f} sqft")
-        
-        # If calculate_door_size returns 0.0 (due to internal error handling),
-        # we still want to treat it as 'None' for logic consistency (e.g., if input was bad)
-        if door_area == 0.0:
-            door_area = 'None'
-            print("Note: calculate_door_size returned 0.0, treating as 'None' for inclusion logic.")
-    # --- END CORRECTED DOOR AREA CALCULATION ---
+            if door_size_str and door_count > 0:
+                door_area = calculate_door_size(door_size_str)
+                
+                # Calculate the price for this specific door
+                door_price = calculate_door_price(door_size_str, door_stile, door_hardware)
+                
+                total_door_area += door_area
+                
+                door_items.append({
+                    "description": f"Door ({door_size_str}) - Stile: {door_stile}",
+                    "quantity": door_count,
+                    "part_number": "N/A",
+                    "type": "Door",
+                    'price': door_price,
+                    'hardware': door_hardware,
+                    'manual': True
+                })
+
+    # Adjust glass area based on total door area
+    glass_area_qty = max(0, total_glass_area - total_door_area)
 
     results = []
 
+    # First, append the calculated doors
+    results.extend(door_items)
+
+    # Then, append the other outputs from the `outputs` list
     for part_number, quantity in outputs:
         desc = None
         part_type = None
@@ -112,28 +125,7 @@ def calculate_yes45tu_quantities(
             "type": part_type
         })
 
-    # Determine if the door size exceeds total glass
-    if door_area == 'None':
-        glass_area_qty = total_glass_area
-        door_area_qty = 'None'
-        door_desc = "No door size provided"
-        print(f"Door not included: {door_desc}")
-    elif door_area >= total_glass_area:
-        glass_area_qty = total_glass_area
-        door_area_qty = 0 # Explicitly set to 0 if it exceeds total glass
-        door_desc = "Door size exceeds total glass area"
-        print(f"Door quantity set to 0: {door_desc} (Door Area: {door_area:.2f}, Glass Area: {total_glass_area:.2f})")
-    else:
-        glass_area_qty = total_glass_area - door_area
-        door_area_qty = door_area
-        door_desc = "Door"
-        print(f"Door included. Quantity: {door_area_qty:.2f} sqft. Remaining Glass Area: {glass_area_qty:.2f} sqft")
-    
-    print(f"Final door_area_qty for 'Door' item dictionary: {door_area_qty}\n")
-    # --- END DEBUG PRINTS ---
-
-
-    # Add manual outputs with possible override
+    # Finally, append the remaining manual outputs
     manual_outputs = [
         {
             "description": "Glass Area",
@@ -142,7 +134,7 @@ def calculate_yes45tu_quantities(
             "type": "Glass",
             'price': 10.5,
             'unit': 'sqft',
-            'manual':True
+            'manual': True
         },
         {
             "description": "Joints Fabrication Labor",
@@ -151,7 +143,7 @@ def calculate_yes45tu_quantities(
             "type": "Fabrication",
             'price': 15.0,
             'unit': 'joints',
-            'manual':True
+            'manual': True
         },
         {
             "description": "Gasket",
@@ -159,22 +151,66 @@ def calculate_yes45tu_quantities(
             "part_number": "E2-0052",
             "type": "Glazing Gasket",
             'unit': 'ft',
-            'manual':True
+            'manual': True
         }
     ]
 
-    if door_area_qty != 'None': # Only add the door if a valid quantity (not 'None') is calculated
-        manual_outputs.insert(1, {
-            "description": door_desc,
-            "quantity": door_area_qty,
-            "part_number": "N/A",
-            "type": "Door",
-            'price': 10, # Price per sqft for door
-            'unit': 'sqft',
-            'manual': True # Explicitly mark as manual
-        })
-
-
     results.extend(manual_outputs)
-    print(results)
+    
+    print(results, 'this is results')
     return results
+
+# The `calculate_door_size` and `calculate_door_price` functions are not part of the issue, but they are included here for completeness.
+def calculate_door_size(door_size_str: str) -> float:
+    """
+    Calculates the area of a single door from a size string like "3' X 7'".
+    Returns the area in square feet.
+    """
+    try:
+        parts = door_size_str.upper().replace(" ", "").split("X")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid door size format: {door_size_str}")
+
+        width_ft = float(parts[0].replace("'", ""))
+        height_ft = float(parts[1].replace("'", ""))
+
+        area = width_ft * height_ft
+        return area
+
+    except Exception as e:
+        print(f"Error calculating door area for '{door_size_str}': {e}")
+        return 0.0
+
+def calculate_door_price(size_str: str, stile: str, hardware_list: list) -> float:
+    """
+    Calculates the total price of a single door unit based on its size, stile, and hardware.
+    """
+    DOOR_BASE_PRICES = {
+        '3x7': 1200, '3x8': 1500, '3x9': 1800,
+        '6x7': 2400, '6x8': 3000, '6x9': 3600
+    }
+    STILE_MULTIPLIERS = {'Narrow': 0.9, 'Medium': 1.0, 'Wide': 1.1}
+    HARDWARE_PRICE = 69.0
+
+    try:
+        parts = size_str.upper().replace("'", "").replace(" ", "").split("X")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid door size format: {size_str}")
+        door_size_key = f"{parts[0]}x{parts[1]}"
+
+        base_price = DOOR_BASE_PRICES.get(door_size_key, 0)
+        stile_multiplier = STILE_MULTIPLIERS.get(stile, 1.0)
+        door_frame_price = base_price * stile_multiplier
+        
+        hardware_count = len(hardware_list)
+        is_double_door = size_str.startswith("6'")
+        if is_double_door:
+            hardware_count *= 2
+        
+        total_hardware_price = hardware_count * HARDWARE_PRICE
+        
+        return door_frame_price + total_hardware_price
+
+    except Exception as e:
+        print(f"Error calculating price for door '{size_str}': {e}")
+        return 0.0

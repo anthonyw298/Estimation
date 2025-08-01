@@ -5,7 +5,6 @@ from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
 from collections import defaultdict
 
-# Removed global constants for file paths, as they will now be passed as arguments
 from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part
 from data.part_number import PART_NUMBER_MAP
 
@@ -231,6 +230,7 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
             desc = output.get('description', '').strip()
             manual = output.get('manual', False)
             qty = output.get('quantity', 0)
+            item_type = output.get('type', '').strip()
             
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
 
@@ -241,7 +241,8 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
                     key = f"MANUAL_{part}-{elevation_finish.lower()}" if is_profile_part and elevation_finish else f"MANUAL_{part}"
                     display = f"{desc} ({part} - {elevation_finish})" if is_profile_part and elevation_finish else f"{desc} ({part})"
                 else:
-                    key = f"MANUAL_NO_PN_{desc}"
+                    # For manual items with no PN, use the description and type for a unique key
+                    key = f"MANUAL_NO_PN_{desc}_{item_type}"
                     display = desc
             else:
                 if is_profile_part and elevation_finish:
@@ -260,7 +261,8 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
                     'manual': manual,
                     'price': output.get('price', 0.0),
                     'unit': output.get('unit', 'pcs'),
-                    'finish': elevation_finish if is_profile_part or (manual and part and part != "N/A" and is_profile_part) else None
+                    'finish': elevation_finish if is_profile_part or (manual and part and part != "N/A" and is_profile_part) else None,
+                    'type': item_type # Store the item type
                 }
             try:
                 aggregated[key]['quantity'] += float(qty_for_aggregation)
@@ -509,40 +511,44 @@ def generate_excel_report(
 
             output_section_current_row = current_excel_row + len(input_data) + 2
             
-            profiles_for_section, accessories_for_section, other_items_for_section = [], [], []
+            profiles_for_section, accessories_for_section, doors_for_section, other_items_for_section = [], [], [], []
 
             current_elevation_finish = elev_data.get("finish")
 
             for item in elev_data.get('calculated_outputs', []):
-                pn, manual = item.get('part_number'), item.get('manual', False)
-                if pn and pn != "N/A":
-                    if manual:
-                        other_items_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("profiles", []):
-                        profiles_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", []):
-                        accessories_for_section.append(item)
-                    else:
-                        other_items_for_section.append(item)
+                item_type = item.get('type', '').strip().upper()
+                if item_type == "PROFILES":
+                    profiles_for_section.append(item)
+                elif item_type == "ACCESSORIES":
+                    accessories_for_section.append(item)
+                elif item_type == "DOOR":
+                    doors_for_section.append(item)
                 else:
                     other_items_for_section.append(item)
             
             system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
-
-            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path)
-            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path)
             
+            # Write Profiles
+            next_row_after_profiles, impacts_p = _write_output_section(ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish, system_total_for_this_block, output_section_current_row, overall_current_extra_materials_state, extra_materials_json_path)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
-            newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
 
-            current_section_row = next_row_after_accessories 
+            # Write Accessories
+            next_row_after_accessories, impacts_a = _write_output_section(ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish, system_total_for_this_block, next_row_after_profiles, overall_current_extra_materials_state, extra_materials_json_path)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
+            
+            # Write Doors
+            next_row_after_doors, impacts_d = _write_output_section(ws, "DOORS", doors_for_section, COL_E, current_elevation_finish, system_total_for_this_block, next_row_after_accessories, overall_current_extra_materials_state, extra_materials_path)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
+            
+            current_section_row = next_row_after_doors
+            
             grouped_other_misc = defaultdict(list)
             for item in other_items_for_section:
                 grouped_other_misc[item.get('type', 'MISCELLANEOUS ITEMS').upper()].append(item)
             
             for grp_title, grp_items in grouped_other_misc.items():
-                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, None, system_total_for_this_block, current_section_row, overall_current_extra_materials_state, extra_materials_json_path)
+                next_row_after_group, impacts_g = _write_output_section(ws, grp_title, grp_items, COL_E, None, system_total_for_this_block, current_section_row, overall_current_extra_materials_state, extra_materials_path)
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
                 current_section_row = next_row_after_group
 
