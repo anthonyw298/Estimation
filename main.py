@@ -472,6 +472,7 @@ class App(ctk.CTk):
         self.update_saved_elevation_dropdown()
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
 
+
     def save_elevation_type(self):
         """Saves or updates an elevation and generates the Excel report."""
         if not self.current_project_name:
@@ -479,6 +480,13 @@ class App(ctk.CTk):
             return
 
         try:
+            # ✅ Load saved elevations FIRST to get latest data
+            if os.path.exists(self.current_elevations_json_path):
+                with open(self.current_elevations_json_path, 'r') as f:
+                    self.saved_elevations = json.load(f)
+            else:
+                self.saved_elevations = {}
+
             v = self.vars
             elev = v['elevation_type'].get().strip()
             if not elev:
@@ -520,15 +528,13 @@ class App(ctk.CTk):
                     opening_width, opening_height, elevation_data['doors']
                 )
 
-            # ✅ ✅ ✅ Load current saved elevations FIRST
-            if os.path.exists(self.current_elevations_json_path):
-                with open(self.current_elevations_json_path, 'r') as f:
-                    self.saved_elevations = json.load(f)
-            else:
-                self.saved_elevations = {}
+            # Store calculated outputs in saved data
+            elevation_data['calculated_outputs'] = calculated_outputs
 
+            # Update or add the elevation data in the saved elevations dict
             self.saved_elevations[elev] = elevation_data
 
+            # Save all elevations back to JSON
             with open(self.current_elevations_json_path, 'w') as f:
                 json.dump(self.saved_elevations, f, indent=4)
 
@@ -562,80 +568,87 @@ class App(ctk.CTk):
         except Exception as e:
             self.update_status(f"An unexpected error occurred: {e}", self.error_color)
 
+
     def delete_elevation_type(self):
-        """Deletes a selected elevation and updates the Excel report."""
+        """Deletes a selected elevation and updates saved elevations file."""
         if not self.current_project_name:
-            self.update_status("Error", "Please select a project first.", "red")
+            self.update_status("Error: Please select a project first.", self.error_color)
             return
 
-        elev = self.vars['saved_elevation_types'].get()
-        if elev: # Ensure an elevation is selected
-            if elev in self.saved_elevations:
-                # Pass the current project's file paths to generate_excel_report
-                generate_excel_report(
-                    excel_path=self.current_excel_path,
-                    elevations_json_path=self.current_elevations_json_path,
-                    extra_materials_json_path=self.current_extra_materials_json_path,
-                    system_input="", # These inputs are ignored during deletion mode
-                    finish_input="",
-                    elevation_type="",
-                    total_count=0,
-                    bays_wide=0,
-                    bays_tall=0,
-                    opening_width=0.0,
-                    opening_height=0.0,
-                    sqft_per_type=0.0,
-                    total_sqft=0.0,
-                    perimeter_ft=0.0,
-                    total_perimeter_ft=0.0,
-                    calculated_outputs=[],
-                    completion_callback=None,
-                    delete_elevation_type=elev # This is the key parameter for deletion
-                )
-                
-                # After generate_excel_report completes, reload saved_elevations to reflect changes
-                self.load_saved_elevations_for_current_project() # This will also update the dropdown
-                self.clear_form() # Clear the form after deletion
-                self.update_status("Deleted", elev, "green")
+        elev = self.vars['saved_elevation_types'].get().strip()
+        if elev:
+            # Load latest saved elevations from file
+            if os.path.exists(self.current_elevations_json_path):
+                with open(self.current_elevations_json_path, 'r') as f:
+                    saved_elevations = json.load(f)
             else:
-                self.update_status("Error", f"Elevation '{elev}' not found to delete.", "red")
+                saved_elevations = {}
+
+            if elev in saved_elevations:
+                # Delete only the selected elevation key
+                del saved_elevations[elev]
+
+                # Save the updated dict back to the file
+                with open(self.current_elevations_json_path, 'w') as f:
+                    json.dump(saved_elevations, f, indent=4)
+
+                # Update the in-memory dict to keep in sync
+                self.saved_elevations = saved_elevations
+
+                # Reload the dropdown and UI with updated data
+                self.update_saved_elevation_dropdown()
+                self.clear_form()
+                self.update_status(f"Elevation '{elev}' deleted successfully.", self.success_color)
+            else:
+                self.update_status(f"Error: Elevation '{elev}' not found.", self.error_color)
         else:
-            self.update_status("Error", "No elevation selected to delete.", "red")
+            self.update_status("Error: No elevation selected to delete.", self.error_color)
+
 
     def add_door(self):
         if not self.current_project_name:
             self.update_status("Error: Please select a project first.", self.error_color)
             return
-        
+
         try:
             door_size = self.vars['door_size'].get()
             if door_size == 'None':
                 self.update_status("Error: Cannot add 'None' as a door.", self.error_color)
                 return
-            
+
             door_count_str = self.vars['door_count'].get()
             if not door_count_str:
                 self.update_status("Error: Please enter a number of doors.", self.error_color)
                 return
             door_count = int(door_count_str)
-            
+
             stile_style = self.vars['stile'].get()
             hardware = [opt for opt, var in self.hardware_vars.items() if var.get()]
-            
+
             new_door = {
                 'size': door_size,
                 'count': door_count,
                 'stile': stile_style,
                 'hardware': hardware
             }
-            
+
             self.current_elevation_doors.append(new_door)
             self.update_door_listbox()
             self.clear_door_form()
+
+            elev_type = self.vars['elevation_type'].get().strip()
+            if elev_type and elev_type in self.saved_elevations:
+                # Update doors in saved elevations dict
+                self.saved_elevations[elev_type]['doors'] = self.current_elevation_doors
+                # Save full dict back to JSON preserving all keys
+                with open(self.current_elevations_json_path, 'w') as f:
+                    json.dump(self.saved_elevations, f, indent=4)
+
             self.update_status("Door added successfully.", self.success_color)
 
         except ValueError:
             self.update_status("Error: Number of doors must be an integer.", self.error_color)
+
 
     def update_door(self):
         if self.selected_door_index is None:
@@ -671,10 +684,18 @@ class App(ctk.CTk):
             self.current_elevation_doors[self.selected_door_index] = updated_door
             self.update_door_listbox()
             self.clear_door_form()
-            self.selected_door_index = None
-            self.update_status("Selected door updated successfully.", self.success_color)
+            
+            elev_type = self.vars['elevation_type'].get().strip()
+            if elev_type and elev_type in self.saved_elevations:
+                self.saved_elevations[elev_type]['doors'] = self.current_elevation_doors
+                with open(self.current_elevations_json_path, 'w') as f:
+                    json.dump(self.saved_elevations, f, indent=4)
+            
+            self.update_status("Door updated successfully.", self.success_color)
+
         except ValueError:
             self.update_status("Error: Number of doors must be an integer.", self.error_color)
+
 
     def delete_door(self):
         if self.selected_door_index is None:
