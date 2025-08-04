@@ -484,21 +484,18 @@ class App(ctk.CTk):
             if not elev:
                 self.update_status("Error: Please enter an elevation type.", self.error_color)
                 return
-            
-            # Get all required values first
+
             system = v['system'].get()
             finish = v['finish'].get()
             total_count = int(v['total_count'].get())
             opening_width = float(v['opening_width'].get())
             opening_height = float(v['opening_height'].get())
-            
-            # Calculate measurements first
+
             sqft_per = calculate_rectangle_area(opening_width / 12, opening_height / 12)
             total_sqft = sqft_per * total_count
             perimeter = calculate_perimeter(opening_width / 12, opening_height / 12)
             total_perimeter = perimeter * total_count
 
-            # Create elevation data with measurements
             elevation_data = {
                 'system': system,
                 'finish': finish,
@@ -511,8 +508,7 @@ class App(ctk.CTk):
                 'total_perimeter_ft': total_perimeter,
                 'doors': self.current_elevation_doors if self.current_elevation_doors else []
             }
-            
-            # Add bays if using YES 45TU system
+
             calculated_outputs = []
             if system == self.system_options[0]:
                 bays_wide = int(v['bays_wide'].get())
@@ -520,20 +516,22 @@ class App(ctk.CTk):
                 elevation_data['bays_wide'] = bays_wide
                 elevation_data['bays_tall'] = bays_tall
                 calculated_outputs = calculate_yes45tu_quantities(
-                    bays_wide,
-                    bays_tall,
-                    total_count,
-                    opening_width,
-                    opening_height,
-                    elevation_data['doors']
+                    bays_wide, bays_tall, total_count,
+                    opening_width, opening_height, elevation_data['doors']
                 )
 
-            # Save to JSON before generating report
+            # ✅ ✅ ✅ Load current saved elevations FIRST
+            if os.path.exists(self.current_elevations_json_path):
+                with open(self.current_elevations_json_path, 'r') as f:
+                    self.saved_elevations = json.load(f)
+            else:
+                self.saved_elevations = {}
+
             self.saved_elevations[elev] = elevation_data
+
             with open(self.current_elevations_json_path, 'w') as f:
                 json.dump(self.saved_elevations, f, indent=4)
 
-            # Generate Excel report with all measurements
             generate_excel_report(
                 excel_path=self.current_excel_path,
                 elevations_json_path=self.current_elevations_json_path,
@@ -565,67 +563,39 @@ class App(ctk.CTk):
             self.update_status(f"An unexpected error occurred: {e}", self.error_color)
 
     def delete_elevation_type(self):
-        """Deletes a selected elevation and updates the Excel report."""
-        if not self.current_project_name:
-            self.update_status("Error: Please select a project first.", self.error_color)
-            return
+        try:
+            selected_elev = self.vars['saved_elevation_types'].get()
+            if not selected_elev:
+                self.update_status("Error: Please select an elevation to delete.", self.error_color)
+                return
 
-        elev_to_delete = self.vars['saved_elevation_types'].get()
-        if not elev_to_delete or elev_to_delete not in self.saved_elevations:
-            self.update_status("Error: No valid elevation selected to delete.", self.error_color)
-            return
+            # Load JSON safely
+            with open(self.current_elevations_json_path, 'r') as f:
+                saved_elevations = json.load(f)
 
-        if not tkinter.messagebox.askyesno(
-            "Confirm Deletion",
-            f"Are you sure you want to delete elevation '{elev_to_delete}'?"
-        ):
-            self.update_status("Deletion cancelled.", self.text_color)
-            return
+            if selected_elev not in saved_elevations:
+                self.update_status(f"Error: Elevation '{selected_elev}' not found.", self.error_color)
+                return
 
-        # Remove the elevation from saved data
-        del self.saved_elevations[elev_to_delete]
+            data = saved_elevations[selected_elev]
+            doors = data.get('doors', [])
 
-        # Save updated JSON
-        with open(self.current_elevations_json_path, 'w') as f:
-            json.dump(self.saved_elevations, f, indent=4)
+            # Do something with doors safely
+            print(doors)
 
-        # Rebuild the Excel report from remaining elevations
-        for elev, data in self.saved_elevations.items():
-            calculated_outputs = []
-            if data['system'] == self.system_options[0]:
-                calculated_outputs = calculate_yes45tu_quantities(
-                    data['bays_wide'],
-                    data['bays_tall'],
-                    data['total_count'],
-                    data['opening_width_inches'],
-                    data['opening_height_inches'],
-                    data['doors']
-                )
+            # Delete
+            del saved_elevations[selected_elev]
 
-            generate_excel_report(
-                excel_path=self.current_excel_path,
-                elevations_json_path=self.current_elevations_json_path,
-                extra_materials_json_path=self.current_extra_materials_json_path,
-                system_input=data['system'],
-                finish_input=data['finish'],
-                elevation_type=elev,
-                total_count=data['total_count'],
-                bays_wide=data.get('bays_wide', 0),
-                bays_tall=data.get('bays_tall', 0),
-                opening_width=data['opening_width_inches'],
-                opening_height=data['opening_height_inches'],
-                sqft_per_type=data['sqft_per_type'],
-                total_sqft=data['total_sqft'],
-                perimeter_ft=data['perimeter_ft'],
-                total_perimeter_ft=data['total_perimeter_ft'],
-                calculated_outputs=calculated_outputs,
-                completion_callback=None,
-                doors=data['doors']
-            )
+            with open(self.current_elevations_json_path, 'w') as f:
+                json.dump(saved_elevations, f, indent=4)
 
-        self.load_saved_elevations_for_current_project()
-        self.clear_form()
-        self.update_status(f"Elevation '{elev_to_delete}' deleted and report updated.", self.success_color)
+            self.update_saved_elevation_dropdown()
+            self.update_status(f"Elevation '{selected_elev}' deleted successfully.", self.success_color)
+
+        except Exception as e:
+            self.update_status(f"Error deleting elevation: {e}", self.error_color)
+
+
 
 
     def add_door(self):
