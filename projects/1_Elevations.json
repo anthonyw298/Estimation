@@ -3,24 +3,14 @@
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
         "total_count": 1,
+        "bays_wide": 1,
+        "bays_tall": 1,
         "opening_width_inches": 1.0,
         "opening_height_inches": 1.0,
         "sqft_per_type": 0.006944444444444444,
         "total_sqft": 0.006944444444444444,
         "perimeter_ft": 0.3333333333333333,
         "total_perimeter_ft": 0.3333333333333333,
-        "doors": [
-            {
-                "size": "3' X 7'",
-                "count": 1,
-                "stile": "Narrow",
-                "hardware": [
-                    "Continuous Hinges"
-                ]
-            }
-        ],
-        "bays_wide": 1,
-        "bays_tall": 1,
         "calculated_outputs": [
             {
                 "description": "End Dam For Sill Flashing",
@@ -168,10 +158,8 @@
                 "quantity": 1,
                 "part_number": "N/A",
                 "type": "Door",
-                "price": 1149.0,
-                "hardware": [
-                    "Continuous Hinges"
-                ],
+                "price": 1080.0,
+                "hardware": [],
                 "manual": true
             }
         ],
@@ -424,7 +412,7 @@
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 1149.0,
+                "cost_incurred": 1080.0,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"

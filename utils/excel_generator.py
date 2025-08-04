@@ -51,10 +51,11 @@ def _clean_trailing_blank_rows(ws, start_row):
     if rows_deleted > 0: print(f"Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
 
 def _recalculate_running_grand_total(ws, price_col):
-    """Recalculates and updates the 'RUNNING GRAND TOTAL' in the worksheet."""
+    """Recalculates and updates the 'RUNNING GRAND TOTAL' and 'DISCOUNTED TOTAL' in the worksheet."""
+    # Remove existing RUNNING GRAND TOTAL and DISCOUNTED TOTAL (2+2 = 4 rows)
     for r in range(ws.max_row, 0, -1):
         if isinstance(ws.cell(row=r, column=price_col).value, str) and ws.cell(row=r, column=price_col).value.strip() == "RUNNING GRAND TOTAL":
-            ws.delete_rows(r, 2)
+            ws.delete_rows(r, 4)
             break
 
     running_grand_total = 0.0
@@ -63,17 +64,27 @@ def _recalculate_running_grand_total(ws, price_col):
         if ws.cell(row=r, column=price_col).value == "SYSTEM TOTAL":
             last_system_total_row = r
             val = ws.cell(row=r + 1, column=price_col).value
-            if isinstance(val, (float, int)): running_grand_total += val
+            if isinstance(val, (float, int)):
+                running_grand_total += val
             elif isinstance(val, str) and val.strip().startswith("$"):
-                try: running_grand_total += float(val.strip("$"))
-                except ValueError: pass
+                try:
+                    running_grand_total += float(val.strip("$").replace(",", ""))
+                except ValueError:
+                    pass
 
     new_gt_row = (last_system_total_row + 3) if last_system_total_row else (ws.max_row + 2)
-    
+
     if running_grand_total > 0 or last_system_total_row is not None:
+        # Running Grand Total
         ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
         ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        print(f"Running Grand Total recalculated and updated to: ${running_grand_total:.2f}.")
+
+        # Discounted Total
+        discount_multiplier = 0.8 if running_grand_total > 10000 else 0.9
+        discounted_total = running_grand_total * discount_multiplier
+        ws.cell(row=new_gt_row + 2, column=price_col, value="DISCOUNTED TOTAL").font = Font(bold=True)
+        ws.cell(row=new_gt_row + 3, column=price_col, value=discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path):
     """Writes a section of calculated outputs to the worksheet."""
