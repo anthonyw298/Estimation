@@ -563,40 +563,44 @@ class App(ctk.CTk):
             self.update_status(f"An unexpected error occurred: {e}", self.error_color)
 
     def delete_elevation_type(self):
-        try:
-            selected_elev = self.vars['saved_elevation_types'].get()
-            if not selected_elev:
-                self.update_status("Error: Please select an elevation to delete.", self.error_color)
-                return
+        """Deletes a selected elevation and updates the Excel report."""
+        if not self.current_project_name:
+            self.update_status("Error", "Please select a project first.", "red")
+            return
 
-            # Load JSON safely
-            with open(self.current_elevations_json_path, 'r') as f:
-                saved_elevations = json.load(f)
-
-            if selected_elev not in saved_elevations:
-                self.update_status(f"Error: Elevation '{selected_elev}' not found.", self.error_color)
-                return
-
-            data = saved_elevations[selected_elev]
-            doors = data.get('doors', [])
-
-            # Do something with doors safely
-            print(doors)
-
-            # Delete
-            del saved_elevations[selected_elev]
-
-            with open(self.current_elevations_json_path, 'w') as f:
-                json.dump(saved_elevations, f, indent=4)
-
-            self.update_saved_elevation_dropdown()
-            self.update_status(f"Elevation '{selected_elev}' deleted successfully.", self.success_color)
-
-        except Exception as e:
-            self.update_status(f"Error deleting elevation: {e}", self.error_color)
-
-
-
+        elev = self.vars['saved_elevation_types'].get()
+        if elev: # Ensure an elevation is selected
+            if elev in self.saved_elevations:
+                # Pass the current project's file paths to generate_excel_report
+                generate_excel_report(
+                    excel_path=self.current_excel_path,
+                    elevations_json_path=self.current_elevations_json_path,
+                    extra_materials_json_path=self.current_extra_materials_json_path,
+                    system_input="", # These inputs are ignored during deletion mode
+                    finish_input="",
+                    elevation_type="",
+                    total_count=0,
+                    bays_wide=0,
+                    bays_tall=0,
+                    opening_width=0.0,
+                    opening_height=0.0,
+                    sqft_per_type=0.0,
+                    total_sqft=0.0,
+                    perimeter_ft=0.0,
+                    total_perimeter_ft=0.0,
+                    calculated_outputs=[],
+                    completion_callback=None,
+                    delete_elevation_type=elev # This is the key parameter for deletion
+                )
+                
+                # After generate_excel_report completes, reload saved_elevations to reflect changes
+                self.load_saved_elevations_for_current_project() # This will also update the dropdown
+                self.clear_form() # Clear the form after deletion
+                self.update_status("Deleted", elev, "green")
+            else:
+                self.update_status("Error", f"Elevation '{elev}' not found to delete.", "red")
+        else:
+            self.update_status("Error", "No elevation selected to delete.", "red")
 
     def add_door(self):
         if not self.current_project_name:
@@ -762,9 +766,14 @@ class App(ctk.CTk):
         # This will now correctly call the new method
         self.on_system_change(self.vars['system'].get())
 
-    def update_status(self, message, color):
-        """Updates the status label with a given message and color."""
-        self.status_label.configure(text=message, text_color=color)
+    def update_status(self, status_type, message="", color="black"):
+        if message:
+            full_message = f"{status_type}: {message}"
+        else:
+            full_message = status_type
+
+        self.status_label.configure(text=full_message, text_color=color)
+
 
 if __name__ == "__main__":
     app = App()
