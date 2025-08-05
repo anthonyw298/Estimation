@@ -1,4 +1,3 @@
-
 import customtkinter as ctk
 import tkinter as tk
 import json
@@ -61,8 +60,10 @@ class App(ctk.CTk):
         self.current_excel_path = ""
         self.current_elevations_json_path = ""
         self.current_extra_materials_json_path = ""
+        self.current_door_json_path = ""
         
-        self.current_elevation_doors = []
+        # We no longer use a temporary in-memory list for doors.
+        # All door data is read/written directly to its JSON file.
         self.selected_door_index = None
 
         self.vars = dict(
@@ -189,7 +190,7 @@ class App(ctk.CTk):
 
         self._create_door_input_widgets(door_management_frame)
 
-        self.door_listbox = tk.Listbox(door_management_frame, height=5, font=(self.font_family, 12), fg=self.text_color, bg=self.accent_color, selectbackground=self.accent_hover, selectforeground=self.text_color, borderwidth=0, highlightthickness=0)
+        self.door_listbox = tk.Listbox(door_management_frame, height=5, font=(self.font_family, 12), fg="white", bg=self.accent_color, selectbackground=self.accent_hover, selectforeground="white", borderwidth=0, highlightthickness=0)
         self.door_listbox.grid(row=self.door_input_row, column=0, columnspan=2, sticky="ew", padx=10, pady=(5, 10))
         self.door_listbox.bind('<<ListboxSelect>>', self.select_door_for_edit)
         
@@ -407,6 +408,12 @@ class App(ctk.CTk):
                 self.current_elevations_json_path,
                 self.current_extra_materials_json_path
             ]
+
+            # Also delete all associated door JSON files
+            project_base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
+            for file in os.listdir(PROJECTS_DIR):
+                if file.startswith(os.path.basename(project_base_name)) and "_doors.json" in file:
+                    files_to_delete.append(os.path.join(PROJECTS_DIR, file))
             
             for file_path in files_to_delete:
                 if os.path.exists(file_path):
@@ -437,14 +444,14 @@ class App(ctk.CTk):
 
     def on_saved_elevation_select(self, elev_type):
         """Loads selected elevation data into the form fields."""
-        # Clear current data first
-        self.current_elevation_doors = []
-        self.update_door_listbox()
+        # Clear current door data and listbox
+        self.door_listbox.delete(0, tk.END)
+        self.clear_door_form()
         
         if not elev_type or elev_type not in self.saved_elevations:
             self.clear_form()
             return
-                
+            
         data = self.saved_elevations[elev_type]
         
         # Load form fields
@@ -462,17 +469,55 @@ class App(ctk.CTk):
                 
         self.vars['elevation_type'].set(elev_type)
         self.on_system_change(self.vars['system'].get())
+
+        # Load doors from the separate JSON file and update the listbox
+        self.current_door_json_path = self._get_door_json_path(elev_type)
+        self.update_door_listbox()
         
-        # Load doors with explicit GUI update
-        if 'doors' in data and isinstance(data['doors'], list):
-            self.current_elevation_doors = data['doors'].copy()
-            self.update_door_listbox()  # This updates the GUI listbox
-        
-        self.clear_door_form()
-        self.update_saved_elevation_dropdown()
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
 
+    def _get_door_json_path(self, elev_type):
+        """Helper to generate the specific door JSON file path for a given elevation."""
+        if not self.current_project_name or not elev_type:
+            return None
+        
+        project_base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
+        safe_elev_type = elev_type.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        return f"{project_base_name}_{safe_elev_type}_doors.json"
 
+    def update_door_listbox(self):
+        """Loads doors from the specific JSON file and populates the listbox."""
+        self.door_listbox.delete(0, tk.END)
+        if not self.current_door_json_path or not os.path.exists(self.current_door_json_path):
+            return []
+        
+        try:
+            with open(self.current_door_json_path, 'r') as f:
+                doors = json.load(f)
+        except (IOError, json.JSONDecodeError):
+            doors = []
+
+        for i, door in enumerate(doors):
+            door_text = f"Door {i+1}: {door['size']}, {door['stile']} Stile, Count: {door['count']}"
+            hardware = [hw for hw, var in door['hardware'].items() if var]
+            if hardware:
+                door_text += f" - Hardware: {', '.join(hardware)}"
+            self.door_listbox.insert(tk.END, door_text)
+        
+        return doors
+
+    def save_door_data(self, doors):
+        """Saves the doors list to the current elevation's dedicated JSON file."""
+        if not self.current_door_json_path:
+            self.update_status("Error: No elevation selected to save doors.", self.error_color)
+            return
+
+        try:
+            with open(self.current_door_json_path, 'w') as f:
+                json.dump(doors, f, indent=4)
+        except Exception as e:
+            self.update_status(f"Error saving door data: {e}", self.error_color)
+    
     def save_elevation_type(self):
         """Saves or updates an elevation and generates the Excel report."""
         if not self.current_project_name:
@@ -480,13 +525,6 @@ class App(ctk.CTk):
             return
 
         try:
-            # ✅ Load saved elevations FIRST to get latest data
-            if os.path.exists(self.current_elevations_json_path):
-                with open(self.current_elevations_json_path, 'r') as f:
-                    self.saved_elevations = json.load(f)
-            else:
-                self.saved_elevations = {}
-
             v = self.vars
             elev = v['elevation_type'].get().strip()
             if not elev:
@@ -504,6 +542,9 @@ class App(ctk.CTk):
             perimeter = calculate_perimeter(opening_width / 12, opening_height / 12)
             total_perimeter = perimeter * total_count
 
+            # Load doors from the new JSON file to include them in calculations
+            doors = self.update_door_listbox()
+
             elevation_data = {
                 'system': system,
                 'finish': finish,
@@ -514,11 +555,9 @@ class App(ctk.CTk):
                 'total_sqft': total_sqft,
                 'perimeter_ft': perimeter,
                 'total_perimeter_ft': total_perimeter,
-                'doors': self.current_elevation_doors if self.current_elevation_doors else []
             }
-
+            
             calculated_outputs = []
-            print(elevation_data['doors'],'dejgbhneriwbviuwr')
             if system == self.system_options[0]:
                 bays_wide = int(v['bays_wide'].get())
                 bays_tall = int(v['bays_tall'].get())
@@ -526,18 +565,24 @@ class App(ctk.CTk):
                 elevation_data['bays_tall'] = bays_tall
                 calculated_outputs = calculate_yes45tu_quantities(
                     bays_wide, bays_tall, total_count,
-                    opening_width, opening_height, elevation_data['doors']
+                    opening_width, opening_height, doors
                 )
 
             # Store calculated outputs in saved data
             elevation_data['calculated_outputs'] = calculated_outputs
 
             # Update or add the elevation data in the saved elevations dict
+            if os.path.exists(self.current_elevations_json_path):
+                 with open(self.current_elevations_json_path, 'r') as f:
+                    self.saved_elevations = json.load(f)
             self.saved_elevations[elev] = elevation_data
 
             # Save all elevations back to JSON
             with open(self.current_elevations_json_path, 'w') as f:
                 json.dump(self.saved_elevations, f, indent=4)
+            
+            # Update the door path to match the new elevation name
+            self.current_door_json_path = self._get_door_json_path(elev)
 
             generate_excel_report(
                 excel_path=self.current_excel_path,
@@ -557,7 +602,7 @@ class App(ctk.CTk):
                 total_perimeter_ft=total_perimeter,
                 calculated_outputs=calculated_outputs,
                 completion_callback=None,
-                doors=elevation_data['doors']
+                doors=doors
             )
 
             self.update_saved_elevation_dropdown()
@@ -571,231 +616,157 @@ class App(ctk.CTk):
 
 
     def delete_elevation_type(self):
-        """Deletes a selected elevation and updates saved elevations file."""
+        """Deletes a selected elevation and its associated door file."""
         if not self.current_project_name:
             self.update_status("Error: Please select a project first.", self.error_color)
             return
 
         elev = self.vars['saved_elevation_types'].get().strip()
         if elev:
-            # Load latest saved elevations from file
-            if os.path.exists(self.current_elevations_json_path):
-                with open(self.current_elevations_json_path, 'r') as f:
-                    saved_elevations = json.load(f)
-            else:
-                saved_elevations = {}
-
-            if elev in saved_elevations:
-                # Delete only the selected elevation key
-                del saved_elevations[elev]
-
-                # Save the updated dict back to the file
+            if elev in self.saved_elevations:
+                # Delete the elevation from the main JSON
+                del self.saved_elevations[elev]
                 with open(self.current_elevations_json_path, 'w') as f:
-                    json.dump(saved_elevations, f, indent=4)
-
-                # Update the in-memory dict to keep in sync
-                self.saved_elevations = saved_elevations
+                    json.dump(self.saved_elevations, f, indent=4)
+                
+                # Delete the associated door JSON file
+                door_file_path = self._get_door_json_path(elev)
+                if os.path.exists(door_file_path):
+                    os.remove(door_file_path)
 
                 # Reload the dropdown and UI with updated data
                 self.update_saved_elevation_dropdown()
                 self.clear_form()
-                self.update_status(f"Elevation '{elev}' deleted successfully.", self.success_color)
-            else:
-                self.update_status(f"Error: Elevation '{elev}' not found.", self.error_color)
+                self.update_status(f"Elevation '{elev}' and its doors deleted successfully.", self.success_color)
+
+    def update_saved_elevation_dropdown(self):
+        """Updates the saved elevation dropdown with current elevation types."""
+        elevations = sorted(self.saved_elevations.keys())
+        self.saved_elevations_option_menu.configure(values=elevations if elevations else [""])
+        if elevations:
+            self.vars['saved_elevation_types'].set(elevations[0])
         else:
-            self.update_status("Error: No elevation selected to delete.", self.error_color)
-
-
-    def add_door(self):
-        if not self.current_project_name:
-            self.update_status("Error: Please select a project first.", self.error_color)
-            return
-
-        try:
-            door_size = self.vars['door_size'].get()
-            if door_size == 'None':
-                self.update_status("Error: Cannot add 'None' as a door.", self.error_color)
-                return
-
-            door_count_str = self.vars['door_count'].get()
-            if not door_count_str:
-                self.update_status("Error: Please enter a number of doors.", self.error_color)
-                return
-            door_count = int(door_count_str)
-
-            stile_style = self.vars['stile'].get()
-            hardware = [opt for opt, var in self.hardware_vars.items() if var.get()]
-
-            new_door = {
-                'size': door_size,
-                'count': door_count,
-                'stile': stile_style,
-                'hardware': hardware
-            }
-
-            self.current_elevation_doors.append(new_door)
-            self.update_door_listbox()
-            self.clear_door_form()
-
-            elev_type = self.vars['elevation_type'].get().strip()
-            if elev_type and elev_type in self.saved_elevations:
-                # Update doors in saved elevations dict
-                self.saved_elevations[elev_type]['doors'] = self.current_elevation_doors
-                # Save full dict back to JSON preserving all keys
-                with open(self.current_elevations_json_path, 'w') as f:
-                    json.dump(self.saved_elevations, f, indent=4)
-
-            self.update_status("Door added successfully.", self.success_color)
-
-        except ValueError:
-            self.update_status("Error: Number of doors must be an integer.", self.error_color)
-
-
-    def update_door(self):
-        if self.selected_door_index is None:
-            self.update_status("Error: No door selected to update.", self.error_color)
-            return
-        
-        if not self.current_project_name:
-            self.update_status("Error: Please select a project first.", self.error_color)
-            return
-
-        try:
-            door_size = self.vars['door_size'].get()
-            if door_size == 'None':
-                self.update_status("Error: Cannot update to 'None' as a door.", self.error_color)
-                return
+            self.vars['saved_elevation_types'].set("")
             
-            door_count_str = self.vars['door_count'].get()
-            if not door_count_str:
-                self.update_status("Error: Please enter a number of doors.", self.error_color)
-                return
-            door_count = int(door_count_str)
-
-            stile_style = self.vars['stile'].get()
-            hardware = [opt for opt, var in self.hardware_vars.items() if var.get()]
-            
-            updated_door = {
-                'size': door_size,
-                'count': door_count,
-                'stile': stile_style,
-                'hardware': hardware
-            }
-            
-            self.current_elevation_doors[self.selected_door_index] = updated_door
-            self.update_door_listbox()
-            self.clear_door_form()
-            
-            elev_type = self.vars['elevation_type'].get().strip()
-            if elev_type and elev_type in self.saved_elevations:
-                self.saved_elevations[elev_type]['doors'] = self.current_elevation_doors
-                with open(self.current_elevations_json_path, 'w') as f:
-                    json.dump(self.saved_elevations, f, indent=4)
-            
-            self.update_status("Door updated successfully.", self.success_color)
-
-        except ValueError:
-            self.update_status("Error: Number of doors must be an integer.", self.error_color)
-
-
-    def delete_door(self):
-        if self.selected_door_index is None:
-            self.update_status("Error: No door selected to delete.", self.error_color)
-            return
-        
-        if not self.current_project_name:
-            self.update_status("Error: Please select a project first.", self.error_color)
-            return
-
-        door_desc = self.door_listbox.get(self.selected_door_index)
-        if not tkinter.messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete this door?\n{door_desc}"):
-            self.update_status("Deletion cancelled.", self.text_color)
-            return
-
-        del self.current_elevation_doors[self.selected_door_index]
-        self.update_door_listbox()
+    def clear_form(self):
+        """Clears all form fields."""
+        self.vars['elevation_type'].set("")
+        self.vars['total_count'].set("")
+        self.vars['bays_wide'].set("")
+        self.vars['bays_tall'].set("")
+        self.vars['opening_width'].set("")
+        self.vars['opening_height'].set("")
+        self.vars['system'].set(self.system_options[0])
+        self.vars['finish'].set(self.finish_options[0])
+        self.door_listbox.delete(0, tk.END)
         self.clear_door_form()
-        self.selected_door_index = None
-        self.update_status("Door deleted successfully.", self.success_color)
-
-    def update_door_listbox(self):
-        """Updates the door listbox in the GUI with current doors."""
-        self.door_listbox.delete(0, tk.END)  # Clear current entries
-        
-        # Add each door to the listbox
-        for door in self.current_elevation_doors:
-            hardware_str = ", ".join(door['hardware']) if door['hardware'] else "None"
-            entry = f"{door['count']}x {door['size']} | Stile: {door['stile']} | Hardware: {hardware_str}"
-            self.door_listbox.insert(tk.END, entry)
-        
-        # Force GUI update
-        self.door_listbox.update()
-
-    def select_door_for_edit(self, event):
-        try:
-            # Get the index of the selected item
-            selected_index = self.door_listbox.curselection()
-            if not selected_index:
-                return
-
-            self.selected_door_index = selected_index[0]
-            door_data = self.current_elevation_doors[self.selected_door_index]
-
-            # Populate the form with the selected door's data
-            self.vars['door_size'].set(door_data['size'])
-            self.vars['door_count'].set(str(door_data['count']))
-            self.vars['stile'].set(door_data['stile'])
-            
-            # Clear all hardware checkboxes first
-            for var in self.hardware_vars.values():
-                var.set(False)
-            # Then set the ones that are in the selected door's hardware list
-            for hardware_item in door_data['hardware']:
-                if hardware_item in self.hardware_vars:
-                    self.hardware_vars[hardware_item].set(True)
-        except IndexError:
-            # Handle case where selection is cleared
-            self.selected_door_index = None
 
     def clear_door_form(self):
+        """Clears the door input fields."""
         self.vars['door_size'].set(self.door_options[0])
         self.vars['door_count'].set("")
         self.vars['stile'].set(self.stile_options[0])
+        self.selected_door_index = None
         for var in self.hardware_vars.values():
             var.set(False)
-        self.selected_door_index = None
 
-    def update_saved_elevation_dropdown(self):
-        """Updates the dropdown menu with saved elevation types for the current project."""
-        keys = sorted(self.saved_elevations.keys())
-        self.saved_elevations_option_menu.configure(values=keys if keys else [""])
-        current = self.vars['saved_elevation_types'].get()
-        if keys:  # If there are saved elevations
-            if current not in keys:
-                self.vars['saved_elevation_types'].set(keys[0])  # Set to first elevation if current not found
-        else:
-            self.vars['saved_elevation_types'].set("")  # Set to empty if no elevations
-    def clear_form(self):
-        """Clears all input fields in the form."""
-        for var in ['elevation_type', 'total_count', 'bays_wide', 'bays_tall', 'opening_width', 'opening_height']:
-            self.vars[var].set("")
-        self.vars['system'].set(self.system_options[0])
-        self.vars['finish'].set(self.finish_options[0])
-        self.vars['saved_elevation_types'].set("")
-        self.current_elevation_doors = []
+    def add_door(self):
+        """Adds a door to the current elevation and updates the listbox."""
+        door_size = self.vars['door_size'].get()
+        door_count = self.vars['door_count'].get()
+        stile = self.vars['stile'].get()
+        hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
+        
+        if door_size == "None" or not door_count:
+            self.update_status("Error: Please select a door size and count.", self.error_color)
+            return
+        
+        if not self.vars['elevation_type'].get().strip():
+             self.update_status("Error: Please enter an elevation type before adding doors.", self.error_color)
+             return
+        
+        self.current_door_json_path = self._get_door_json_path(self.vars['elevation_type'].get())
+
+        try:
+            door_count = int(door_count)
+            if door_count <= 0:
+                self.update_status("Error: Door count must be a positive number.", self.error_color)
+                return
+        except ValueError:
+            self.update_status("Error: Door count must be an integer.", self.error_color)
+            return
+        
+        # Load existing doors, append new one, and save
+        doors = self.update_door_listbox()
+        doors.append({'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware})
+        self.save_door_data(doors)
+        
         self.update_door_listbox()
         self.clear_door_form()
-        # This will now correctly call the new method
-        self.on_system_change(self.vars['system'].get())
+        self.update_status("Door added to the current elevation.", self.success_color)
 
-    def update_status(self, status_type, message="", color="black"):
-        if message:
-            full_message = f"{status_type}: {message}"
+    def update_door(self):
+        """Updates a selected door in the current elevation."""
+        if self.selected_door_index is not None:
+            door_size = self.vars['door_size'].get()
+            door_count = self.vars['door_count'].get()
+            stile = self.vars['stile'].get()
+            hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
+
+            try:
+                door_count = int(door_count)
+                if door_count <= 0:
+                    self.update_status("Error: Door count must be a positive number.", self.error_color)
+                    return
+            except ValueError:
+                self.update_status("Error: Door count must be an integer.", self.error_color)
+                return
+
+            # Load doors, update the selected one, and save
+            doors = self.update_door_listbox()
+            doors[self.selected_door_index] = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
+            self.save_door_data(doors)
+
+            self.update_door_listbox()
+            self.clear_door_form()
+            self.update_status(f"Door {self.selected_door_index + 1} updated.", self.success_color)
         else:
-            full_message = status_type
+            self.update_status("Error: No door selected to update.", self.error_color)
+    
+    def delete_door(self):
+        """Deletes a selected door from the current elevation."""
+        if self.selected_door_index is not None:
+            # Load doors, delete the selected one, and save
+            doors = self.update_door_listbox()
+            del doors[self.selected_door_index]
+            self.save_door_data(doors)
 
-        self.status_label.configure(text=full_message, text_color=color)
+            self.update_door_listbox()
+            self.clear_door_form()
+            self.update_status(f"Door {self.selected_door_index + 1} deleted.", self.success_color)
+        else:
+            self.update_status("Error: No door selected to delete.", self.error_color)
 
+    def select_door_for_edit(self, event):
+        """Loads the selected door's data into the input fields for editing."""
+        selected_index = self.door_listbox.curselection()
+        if selected_index:
+            self.selected_door_index = selected_index[0]
+            
+            # Load the doors from the JSON file to ensure we get the latest data
+            doors = self.update_door_listbox()
+            if doors and self.selected_door_index < len(doors):
+                door_data = doors[self.selected_door_index]
+                self.vars['door_size'].set(door_data['size'])
+                self.vars['door_count'].set(str(door_data['count']))
+                self.vars['stile'].set(door_data['stile'])
+                
+                for opt, var in self.hardware_vars.items():
+                    var.set(door_data['hardware'].get(opt, False))
+
+    def update_status(self, message, color):
+        """Updates the status label with a new message and color."""
+        self.status_label.configure(text=message, text_color=color)
 
 if __name__ == "__main__":
     app = App()
