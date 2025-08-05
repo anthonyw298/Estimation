@@ -231,3 +231,20 @@ def calculate_door_info(doors: list) -> list:
                     'manual': True
                 })
     return door_items
+
+def calculate_total_door_area(doors: list) -> float:
+    """
+    Calculates the total area (in sqft) of all doors in the list.
+    Args:
+        doors (list): List of door dicts, each with 'size' and 'count'.
+    Returns:
+        float: Total area in sqft.
+    """
+    total_area = 0.0
+    for door in doors:
+        size_str = door.get('size')
+        count = door.get('count', 0)
+        if size_str and count:
+            area = calculate_door_size(size_str)
+            total_area += area * count
+    return total_area

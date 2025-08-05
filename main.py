@@ -518,6 +518,7 @@ class App(ctk.CTk):
             }
 
             calculated_outputs = []
+            print(elevation_data['doors'],'dejgbhneriwbviuwr')
             if system == self.system_options[0]:
                 bays_wide = int(v['bays_wide'].get())
                 bays_tall = int(v['bays_tall'].get())
