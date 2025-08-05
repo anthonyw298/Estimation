@@ -1,0 +1,17 @@
+[
+    {
+        "size": "3' X 8'",
+        "count": 1,
+        "stile": "Narrow",
+        "hardware": {
+            "Continuous Hinges": true,
+            "Concealed Closer": true,
+            "Exit Devices": true,
+            "Electric Strike": false,
+            "Extended Ladder Pull (B2B)": false,
+            "Extended Ladder Pull (Single)": false,
+            "Latch Lock w/ Lever Handle": false,
+            "Lever Handle": false
+        }
+    }
+]
