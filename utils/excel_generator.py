@@ -376,7 +376,6 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
 
             # Pass the item_finish to get_unit_price_by_part
             unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(part, finish=item_finish, extra_materials_file=extra_materials_json_path)
-            print(unit_price_for_reuse)
             reusable_cost = reusable_qty_sum * unit_price_for_reuse if unit_price_for_reuse is not None else 0.0
             
             # Use the unit from get_unit_price_by_part for reusable quantity display if available

@@ -22,8 +22,8 @@ from utils.formulas import (
     calculate_glass_stop,
     calculate_total_glass,
     calculate_fabrication_joints,
+    calculate_total_door_area
 )
-
 def calculate_yes45tu_quantities(
     bays_wide: int,
     bays_tall: int,
@@ -37,6 +37,10 @@ def calculate_yes45tu_quantities(
     by calling dedicated formula functions.
     Returns a list of dictionaries with description, quantity, part number, and type.
     """
+
+    # Safety check for doors
+    if doors is None:
+        doors = []
 
     outputs = [
         ("E1-0199", calculate_end_dam(total_count)),
@@ -60,18 +64,18 @@ def calculate_yes45tu_quantities(
         ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
     ]
 
+    # --- Total area calculations ---
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
-    
+    total_door_area = calculate_total_door_area(doors)
+    adjusted_glass_area = max(total_glass_area - total_door_area, 0)  # Prevent negative glass area
+
     results = []
-    
-    # Append the other outputs from the `outputs` list
+
+    # --- Standard outputs ---
     for part_number, quantity in outputs:
         desc = None
         part_type = None
 
-        # This part of the code assumes PART_NUMBER_MAP is defined elsewhere
-        # and contains descriptions and types for each part number.
-        # It has been left in place to maintain the original logic.
         for category, parts_dict in PART_NUMBER_MAP.items():
             if part_number in parts_dict:
                 desc = parts_dict[part_number]
@@ -90,14 +94,22 @@ def calculate_yes45tu_quantities(
             "type": part_type
         })
 
-    # Append the remaining manual outputs
+    # --- Manual outputs including glass and door area ---
     manual_outputs = [
         {
-            "description": "Glass Area",
-            "quantity": total_glass_area,
+            "description": "Glass Area (Adjusted)",
+            "quantity": adjusted_glass_area,
             "part_number": "N/A",
             "type": "Glass",
             'price': 10.5,
+            'unit': 'sqft',
+            'manual': True
+        },
+        {
+            "description": "Door Area (to subtract from glass)",
+            "quantity": total_door_area,
+            "part_number": "N/A",
+            "type": "Doors",
             'unit': 'sqft',
             'manual': True
         },
@@ -121,6 +133,4 @@ def calculate_yes45tu_quantities(
     ]
 
     results.extend(manual_outputs)
-    
-    print(results, 'this is results')
     return results
