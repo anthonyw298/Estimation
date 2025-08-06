@@ -458,6 +458,34 @@ def create_summary_sheet(excel_path, elevations_json_path, extra_materials_json_
     wb.save(excel_path)
     print(f"✅ Summary updated: {excel_path}")
 
+def _format_door_summary(calculated_outputs):
+    if not calculated_outputs:
+        return ""
+    door_lines = []
+    for item in calculated_outputs:
+        if item.get("type", "").lower() in ["door", "doors"] and item.get("manual", False):
+            quantity = item.get("quantity", 1)
+            style = item.get("Style", "").strip()
+            price = item.get("price", 0.0)
+            hardware = item.get("hardware", {})
+
+            # Skip invalid items
+            if not (isinstance(quantity, (int, float)) and quantity > 0):
+                continue
+            if not style or style.lower() == "unknown":
+                continue
+
+            # Extract enabled hardware
+            enabled_hw = [hw for hw, enabled in hardware.items() if enabled]
+
+            # Format hardware on new line if present
+            if enabled_hw:
+                door_lines.append(f"{quantity} x {style} Door (${price:,.2f})\n  with: {', '.join(enabled_hw)}")
+            else:
+                door_lines.append(f"{quantity} x {style} Door (${price:,.2f})")
+
+    return "; \n".join(door_lines) if door_lines else "None"
+
 def generate_excel_report(
     excel_path, elevations_json_path, extra_materials_json_path,
     system_input, finish_input, elevation_type, total_count,
@@ -548,7 +576,8 @@ def generate_excel_report(
                 ("Sq Ft per Type", elev_data.get("sqft_per_type")),
                 ("Total Sq Ft", elev_data.get("total_sqft")),
                 ("Perimeter Ft", elev_data.get("perimeter_ft")),
-                ("Total Perimeter Ft", elev_data.get("total_perimeter_ft"))
+                ("Total Perimeter Ft", elev_data.get("total_perimeter_ft")),
+                ("Doors", _format_door_summary(elev_data.get("calculated_outputs", [])))
             ]
 
             for i, (header, value) in enumerate(input_data):
