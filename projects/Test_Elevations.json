@@ -1,5 +1,5 @@
 {
-    "1": {
+    "Elev 1": {
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
         "total_count": 1,
@@ -128,7 +128,7 @@
             },
             {
                 "description": "Glass Area (Adjusted)",
-                "quantity": 62.75,
+                "quantity": 59.75,
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
@@ -137,7 +137,7 @@
             },
             {
                 "description": "Door Area (to subtract from glass)",
-                "quantity": 21.0,
+                "quantity": 24.0,
                 "part_number": "N/A",
                 "type": "Doors",
                 "unit": "sqft",
@@ -161,14 +161,14 @@
                 "manual": true
             },
             {
-                "description": "Door (3' X 7')",
-                "Style": "Narrow",
+                "description": "Door (3' X 8')",
+                "Style": "Wide",
                 "quantity": 1,
                 "part_number": "N/A",
                 "type": "Door",
-                "price": 1632.0,
+                "price": 1719.0000000000002,
                 "hardware": {
-                    "Continuous Hinges": false,
+                    "Continuous Hinges": true,
                     "Concealed Closer": false,
                     "Exit Devices": false,
                     "Electric Strike": false,
@@ -392,18 +392,18 @@
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 62.75,
+                "requested_qty": 59.75,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 658.875,
+                "cost_incurred": 627.375,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 21.0,
+                "requested_qty": 24.0,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
@@ -440,7 +440,7 @@
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 1632.0,
+                "cost_incurred": 1719.0000000000002,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"

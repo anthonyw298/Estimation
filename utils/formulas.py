@@ -160,10 +160,17 @@ def calculate_door_size(door_size_str: str) -> float:
     except Exception as e:
         print(f"Error calculating door area for '{door_size_str}': {e}")
         return 0.0
-
-def calculate_door_price(size_str: str, stile: str, hardware_list: list) -> float:
+def calculate_door_price(size_str: str, stile: str, hardware_dict: dict) -> float:
     """
     Calculates the total price of a single door unit based on its size, stile, and hardware.
+    
+    Args:
+        size_str (str): Size of the door, e.g., "3' X 8'".
+        stile (str): Stile type (e.g., "Narrow", "Medium", "Wide").
+        hardware_dict (dict): Dictionary of hardware options, with boolean values.
+    
+    Returns:
+        float: Total price for the door.
     """
     DOOR_BASE_PRICES = {
         '3x7': 1200, '3x8': 1500, '3x9': 1800,
@@ -176,19 +183,23 @@ def calculate_door_price(size_str: str, stile: str, hardware_list: list) -> floa
         parts = size_str.upper().replace("'", "").replace(" ", "").split("X")
         if len(parts) != 2:
             raise ValueError(f"Invalid door size format: {size_str}")
-        door_size_key = f"{parts[0]}x{parts[1]}"
 
+        door_size_key = f"{parts[0]}x{parts[1]}"
         base_price = DOOR_BASE_PRICES.get(door_size_key, 0)
+
         stile_multiplier = STILE_MULTIPLIERS.get(stile, 1.0)
         door_frame_price = base_price * stile_multiplier
-        
-        hardware_count = len(hardware_list)
-        is_double_door = size_str.startswith("6'")
+
+        # Count only selected hardware items (those with value True)
+        hardware_count = sum(1 for selected in hardware_dict.values() if selected)
+
+        # Double hardware count for double doors (6' width)
+        is_double_door = size_str.strip().startswith("6'")
         if is_double_door:
             hardware_count *= 2
-        
+
         total_hardware_price = hardware_count * HARDWARE_PRICE
-        
+
         return door_frame_price + total_hardware_price
 
     except Exception as e:
