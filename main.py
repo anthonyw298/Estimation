@@ -137,9 +137,6 @@ class App(ctk.CTk):
         self.project_dropdown = ctk.CTkOptionMenu(select_frame, values=[], variable=self.vars['selected_project'], command=self.on_project_select, fg_color=self.fg_color, button_color=self.fg_color, button_hover_color=self.accent_hover, text_color=self.text_color, font=self.label_font)
         self.project_dropdown.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(select_frame, text="Delete Selected", fg_color=self.error_color, hover_color="#8b1a1a", command=self.delete_current_project, font=self.button_font).grid(row=2, column=0, columnspan=2, pady=(5, 10))
-        
-        self.status_label = ctk.CTkLabel(self.project_tab, text="", text_color=self.text_color, font=self.label_font)
-        self.status_label.grid(row=2, column=0, columnspan=2, pady=10)
 
     def create_elevation_tab_widgets(self):
         self.elevation_tab.grid_columnconfigure(0, weight=1, minsize=400)
@@ -201,6 +198,8 @@ class App(ctk.CTk):
         ctk.CTkButton(door_action_buttons_frame, text="Delete", command=self.delete_door, font=self.button_font, fg_color=self.error_color, hover_color="#8b1a1a").pack(side="left", expand=True, fill="x", padx=5)
         self.right_row += 1
         
+        self.elevation_status_label = ctk.CTkLabel(self.elevation_tab, text="", text_color=self.text_color, font=self.label_font)
+        self.elevation_status_label.grid(row=1, column=0, columnspan=2, pady=10)
     def _add_section_header(self, parent, text, right_row_counter=False):
         """Helper to add a bold section header within a frame and increment the appropriate row counter."""
         row_attr_name = "right_row" if right_row_counter else "left_row"
@@ -766,7 +765,7 @@ class App(ctk.CTk):
 
     def update_status(self, message, color):
         """Updates the status label with a new message and color."""
-        self.status_label.configure(text=message, text_color=color)
+        self.elevation_status_label.configure(text=message, text_color=color)
 
 if __name__ == "__main__":
     app = App()

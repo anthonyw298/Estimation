@@ -137,7 +137,7 @@
             },
             {
                 "description": "Door Area (to subtract from glass)",
-                "quantity": 216.0,
+                "quantity": 42.0,
                 "part_number": "N/A",
                 "type": "Doors",
                 "unit": "sqft",
@@ -163,16 +163,16 @@
             {
                 "description": "Door (3' X 7')",
                 "Style": "Narrow",
-                "quantity": 2,
+                "quantity": 1,
                 "part_number": "N/A",
                 "type": "Door",
                 "price": 1632.0,
                 "hardware": {
-                    "Continuous Hinges": false,
-                    "Concealed Closer": true,
+                    "Continuous Hinges": true,
+                    "Concealed Closer": false,
                     "Exit Devices": false,
-                    "Electric Strike": false,
-                    "Extended Ladder Pull (B2B)": true,
+                    "Electric Strike": true,
+                    "Extended Ladder Pull (B2B)": false,
                     "Extended Ladder Pull (Single)": false,
                     "Latch Lock w/ Lever Handle": false,
                     "Lever Handle": false
@@ -180,38 +180,19 @@
                 "manual": true
             },
             {
-                "description": "Door (3' X 8')",
+                "description": "Door (3' X 7')",
                 "Style": "Narrow",
-                "quantity": 2,
+                "quantity": 1,
                 "part_number": "N/A",
                 "type": "Door",
-                "price": 1902.0,
+                "price": 1632.0,
                 "hardware": {
                     "Continuous Hinges": false,
                     "Concealed Closer": false,
-                    "Exit Devices": false,
+                    "Exit Devices": true,
                     "Electric Strike": false,
                     "Extended Ladder Pull (B2B)": false,
-                    "Extended Ladder Pull (Single)": true,
-                    "Latch Lock w/ Lever Handle": false,
-                    "Lever Handle": false
-                },
-                "manual": true
-            },
-            {
-                "description": "Door (6' X 7')",
-                "Style": "Narrow",
-                "quantity": 3,
-                "part_number": "N/A",
-                "type": "Door",
-                "price": 3264.0,
-                "hardware": {
-                    "Continuous Hinges": true,
-                    "Concealed Closer": false,
-                    "Exit Devices": false,
-                    "Electric Strike": true,
-                    "Extended Ladder Pull (B2B)": false,
-                    "Extended Ladder Pull (Single)": true,
+                    "Extended Ladder Pull (Single)": false,
                     "Latch Lock w/ Lever Handle": false,
                     "Lever Handle": false
                 },
@@ -441,7 +422,7 @@
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 216.0,
+                "requested_qty": 42.0,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
@@ -474,33 +455,22 @@
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 2,
+                "requested_qty": 1,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 3264.0,
+                "cost_incurred": 1632.0,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 2,
+                "requested_qty": 1,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 3804.0,
-                "type_processed_as": "manual_no_pn",
-                "finish": null,
-                "leftover_generated_qty_or_length_display": "0.00"
-            },
-            {
-                "part_number": "N/A - Manual",
-                "requested_qty": 3,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 9792.0,
+                "cost_incurred": 1632.0,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"
