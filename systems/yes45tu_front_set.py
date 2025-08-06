@@ -24,6 +24,7 @@ from utils.formulas import (
     calculate_fabrication_joints,
     calculate_total_door_area
 )
+
 def calculate_yes45tu_quantities(
     bays_wide: int,
     bays_tall: int,
@@ -93,10 +94,21 @@ def calculate_yes45tu_quantities(
             "part_number": part_number,
             "type": part_type
         })
-
-    # --- Manual outputs including glass and door area ---
-    manual_outputs = [
-        {
+    
+    # Check if the adjusted glass area is zero and add a specific message.
+    if adjusted_glass_area == 0:
+        glass_output = {
+            "description": "Glass Area (Adjusted)",
+            "quantity": 0,
+            "part_number": "N/A",
+            "type": "Glass",
+            'price': 0.0,
+            'unit': 'sqft',
+            'manual': True,
+            'message': "Total door area equals or exceeds total glass area. No glass is needed."
+        }
+    else:
+        glass_output = {
             "description": "Glass Area (Adjusted)",
             "quantity": adjusted_glass_area,
             "part_number": "N/A",
@@ -104,7 +116,11 @@ def calculate_yes45tu_quantities(
             'price': 10.5,
             'unit': 'sqft',
             'manual': True
-        },
+        }
+
+    # --- Manual outputs including glass and door area ---
+    manual_outputs = [
+        glass_output,
         {
             "description": "Door Area (to subtract from glass)",
             "quantity": total_door_area,
