@@ -1,37 +1,7 @@
 [
     {
         "size": "3' X 7'",
-        "count": 2,
-        "stile": "Narrow",
-        "hardware": {
-            "Continuous Hinges": false,
-            "Concealed Closer": true,
-            "Exit Devices": false,
-            "Electric Strike": false,
-            "Extended Ladder Pull (B2B)": true,
-            "Extended Ladder Pull (Single)": false,
-            "Latch Lock w/ Lever Handle": false,
-            "Lever Handle": false
-        }
-    },
-    {
-        "size": "3' X 8'",
-        "count": 2,
-        "stile": "Narrow",
-        "hardware": {
-            "Continuous Hinges": false,
-            "Concealed Closer": false,
-            "Exit Devices": false,
-            "Electric Strike": false,
-            "Extended Ladder Pull (B2B)": false,
-            "Extended Ladder Pull (Single)": true,
-            "Latch Lock w/ Lever Handle": false,
-            "Lever Handle": false
-        }
-    },
-    {
-        "size": "6' X 7'",
-        "count": 3,
+        "count": 1,
         "stile": "Narrow",
         "hardware": {
             "Continuous Hinges": true,
@@ -39,7 +9,37 @@
             "Exit Devices": false,
             "Electric Strike": true,
             "Extended Ladder Pull (B2B)": false,
-            "Extended Ladder Pull (Single)": true,
+            "Extended Ladder Pull (Single)": false,
+            "Latch Lock w/ Lever Handle": false,
+            "Lever Handle": false
+        }
+    },
+    {
+        "size": "3' X 7'",
+        "count": 1,
+        "stile": "Narrow",
+        "hardware": {
+            "Continuous Hinges": false,
+            "Concealed Closer": false,
+            "Exit Devices": true,
+            "Electric Strike": false,
+            "Extended Ladder Pull (B2B)": false,
+            "Extended Ladder Pull (Single)": false,
+            "Latch Lock w/ Lever Handle": false,
+            "Lever Handle": false
+        }
+    },
+    {
+        "size": "3' X 8'",
+        "count": 1,
+        "stile": "Narrow",
+        "hardware": {
+            "Continuous Hinges": false,
+            "Concealed Closer": false,
+            "Exit Devices": false,
+            "Electric Strike": false,
+            "Extended Ladder Pull (B2B)": false,
+            "Extended Ladder Pull (Single)": false,
             "Latch Lock w/ Lever Handle": false,
             "Lever Handle": false
         }
