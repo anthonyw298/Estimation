@@ -9,7 +9,7 @@ from openpyxl import Workbook # Import Workbook to create new Excel files
 # If these files are missing, the program will crash.
 from utils.excel_generator import generate_excel_report, create_summary_sheet
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
-from utils.formulas import calculate_rectangle_area, calculate_perimeter
+from utils.formulas import calculate_rectangle_area, calculate_perimeter,calculate_total_door_area,calculate_total_glass
 
 # Define a directory to store all project-related files
 PROJECTS_DIR = "projects"
@@ -668,23 +668,23 @@ class App(ctk.CTk):
         self.selected_door_index = None
         for var in self.hardware_vars.values():
             var.set(False)
-
     def add_door(self):
         """Adds a door to the current elevation and updates the listbox."""
         door_size = self.vars['door_size'].get()
         door_count = self.vars['door_count'].get()
         stile = self.vars['stile'].get()
         hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
-        
+
         if door_size == "None" or not door_count:
             self.update_status("Error: Please select a door size and count.", self.error_color)
             return
-        
-        if not self.vars['elevation_type'].get().strip():
-             self.update_status("Error: Please enter an elevation type before adding doors.", self.error_color)
-             return
-        
-        self.current_door_json_path = self._get_door_json_path(self.vars['elevation_type'].get())
+
+        elevation_name = self.vars['elevation_type'].get().strip()
+        if not elevation_name:
+            self.update_status("Error: Please enter an elevation type before adding doors.", self.error_color)
+            return
+
+        self.current_door_json_path = self._get_door_json_path(elevation_name)
 
         try:
             door_count = int(door_count)
@@ -694,44 +694,98 @@ class App(ctk.CTk):
         except ValueError:
             self.update_status("Error: Door count must be an integer.", self.error_color)
             return
-        
-        # Load existing doors, append new one, and save
+
+        # Load doors and simulate adding the new one
         doors = self.update_door_listbox()
-        doors.append({'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware})
-        self.save_door_data(doors)
-        
+        new_door = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
+        simulated_doors = doors + [new_door]
+
+        # 🔍 Load saved glass area from elevation JSON
+        try:
+            if not os.path.exists(self.current_elevations_json_path):
+                raise FileNotFoundError("Elevations file not found.")
+
+            with open(self.current_elevations_json_path, 'r') as f:
+                elevations_data = json.load(f)
+
+            elevation_data = elevations_data.get(elevation_name)
+            if not elevation_data:
+                raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
+
+            glass_area = elevation_data.get('total_sqft', 0.0)
+            door_area = calculate_total_door_area(simulated_doors)
+
+            if door_area > glass_area:
+                self.update_status("Error: Total door area exceeds available glass area.", self.error_color)
+                return
+
+        except Exception as e:
+            self.update_status(f"Error checking area: {e}", self.error_color)
+            return
+
+        self.save_door_data(simulated_doors)
         self.update_door_listbox()
         self.clear_door_form()
         self.update_status("Door added to the current elevation.", self.success_color)
-
     def update_door(self):
         """Updates a selected door in the current elevation."""
-        if self.selected_door_index is not None:
-            door_size = self.vars['door_size'].get()
-            door_count = self.vars['door_count'].get()
-            stile = self.vars['stile'].get()
-            hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
+        if self.selected_door_index is None:
+            self.update_status("Error: No door selected to update.", self.error_color)
+            return
 
-            try:
-                door_count = int(door_count)
-                if door_count <= 0:
-                    self.update_status("Error: Door count must be a positive number.", self.error_color)
-                    return
-            except ValueError:
-                self.update_status("Error: Door count must be an integer.", self.error_color)
+        door_size = self.vars['door_size'].get()
+        door_count = self.vars['door_count'].get()
+        stile = self.vars['stile'].get()
+        hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
+
+        try:
+            door_count = int(door_count)
+            if door_count <= 0:
+                self.update_status("Error: Door count must be a positive number.", self.error_color)
+                return
+        except ValueError:
+            self.update_status("Error: Door count must be an integer.", self.error_color)
+            return
+
+        elevation_name = self.vars['elevation_type'].get().strip()
+        if not elevation_name:
+            self.update_status("Error: Please enter an elevation type first.", self.error_color)
+            return
+
+        # Load doors and simulate updating one
+        doors = self.update_door_listbox()
+        updated_door = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
+        simulated_doors = doors.copy()
+        simulated_doors[self.selected_door_index] = updated_door
+
+        # 🔍 Load saved glass area from elevation JSON
+        try:
+            if not os.path.exists(self.current_elevations_json_path):
+                raise FileNotFoundError("Elevations file not found.")
+
+            with open(self.current_elevations_json_path, 'r') as f:
+                elevations_data = json.load(f)
+
+            elevation_data = elevations_data.get(elevation_name)
+            if not elevation_data:
+                raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
+
+            glass_area = elevation_data.get('total_sqft', 0.0)
+            door_area = calculate_total_door_area(simulated_doors)
+
+            if door_area > glass_area:
+                self.update_status("Error: Total door area exceeds available glass area.", self.error_color)
                 return
 
-            # Load doors, update the selected one, and save
-            doors = self.update_door_listbox()
-            doors[self.selected_door_index] = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
-            self.save_door_data(doors)
+        except Exception as e:
+            self.update_status(f"Error checking area: {e}", self.error_color)
+            return
 
-            self.update_door_listbox()
-            self.clear_door_form()
-            self.update_status(f"Door {self.selected_door_index + 1} updated.", self.success_color)
-        else:
-            self.update_status("Error: No door selected to update.", self.error_color)
-    
+        self.save_door_data(simulated_doors)
+        self.update_door_listbox()
+        self.clear_door_form()
+        self.update_status(f"Door {self.selected_door_index + 1} updated.", self.success_color)
+        
     def delete_door(self):
         """Deletes a selected door from the current elevation."""
         if self.selected_door_index is not None:
