@@ -43,6 +43,15 @@ def calculate_yes45tu_quantities(
     if doors is None:
         doors = []
 
+    # First, compute the quantities for conditional checks
+    flush_filler_qty = calculate_flush_filler_v(bays_wide, total_count, opening_height)
+    int_vertical_qty = calculate_int_vertical(bays_wide, total_count, opening_height)
+
+    # Determine part numbers conditionally
+    flush_filler_part = "BE9-2525" if flush_filler_qty > 10 else "E9-2512"
+    int_vertical_part = "BY7-8474" if int_vertical_qty > 10 else "BE9-2511"
+
+    # Now assign to outputs
     outputs = [
         ("E1-0199", calculate_end_dam(total_count)),
         ("E2-0047", calculate_water_deflector(bays_wide, total_count)),
@@ -57,13 +66,14 @@ def calculate_yes45tu_quantities(
         ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),
         ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),
         ("BE9-2513", calculate_sill_ft_h(opening_width, total_count)),
-        ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
-        ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),
+        (flush_filler_part, flush_filler_qty),
+        (int_vertical_part, int_vertical_qty),
         ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count)),
         ("BE9-2514", calculate_og_head_h(opening_width, total_count)),
         ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
         ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
     ]
+
 
     # --- Total area calculations ---
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
