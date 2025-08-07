@@ -1,4 +1,4 @@
-# Estimation Script for UNITED GLASS VENTURES
+# Estimation Application for United Glass Ventures
 
 A robust Python-based cost estimation tool to streamline the quoting process for custom glass and door systems. Built with Clear architecture and modular design, this tool combines GUI interaction, part calculations, and Excel report generation.
 
