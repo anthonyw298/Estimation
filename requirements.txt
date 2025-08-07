@@ -2,3 +2,10 @@ customtkinter
 tk
 openpyxl
 pandas
+
+
+# To compile to EXE:
+#   Enter venv: venv\Scripts\activate
+#   run: pyinstaller --onefile --noconsole (only if UI) NAMEOFYOURFILE.py
+#   Compiled program will be found in the dist folder
+#   exit
