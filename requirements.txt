@@ -1,0 +1,4 @@
+customtkinter
+tk
+openpyxl
+pandas
