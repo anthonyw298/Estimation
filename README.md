@@ -1,17 +1,29 @@
-# Estimation Script For UNITED GLASS VENTURES 
+# Estimation Script for UNITED GLASS VENTURES
 
-# To compile to EXE:
-#   Enter venv: venv\Scripts\activate
-#   run: pyinstaller --onefile --noconsole (only if UI) NAMEOFYOURFILE.py
-#   Compiled program will be found in the dist folder
-#   exit
+A robust Python-based cost estimation tool to streamline the quoting process for custom glass and door systems. Built with Clear architecture and modular design, this tool combines GUI interaction, part calculations, and Excel report generation.
 
-# New ui designing needs recompiling and rerelease aka take binary ui and drop down on github
+---
 
-# with data adjust the AS to whatever the user inputs and the fetch withever the user inputs as well
+##  Overview
 
-# 1. Main.Py runs and Code Goes Thru GUI player inputs stuff and it gets stored on a variable
-# 2. Main.Py calculates system specific outputsbased on inpurts and returns back a calculated_output with the format [{des,quan,part},....]
-# 3. Main.Py autocalculates other outputs(Area+Perimeter) and sends all input+outputs(the list of dics) to generate excel report
+The Estimation Script allows users to:
 
-# to insert new accessory/part --- 1. Add Formula 2. Add Calculation in System List
+- Define project configurations using a clean GUI
+- Automatically calculate quantities for various parts (glass, gasketing, screws, etc.)
+- Easily add, modify, or delete items (e.g., doors, finishes) with consistent pricing logic
+- Generate Excel-based estimates with detail-rich breakdowns
+- Expand functionality via modular `systems/` and `utils/` directories
+
+---
+
+##  Installation
+
+```bash
+git clone https://github.com/anthonyw298/Estimation.git
+cd Estimation
+
+python -m venv venv           # optional
+venv\Scripts\activate      # Windows
+
+pip install -r requirements.txt
+python main.py
