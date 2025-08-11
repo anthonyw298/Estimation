@@ -83,12 +83,6 @@ def _recalculate_running_grand_total(ws, price_col, elevations_json_path, extra_
         ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
         ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-        # Discounted Total
-        discount_multiplier = 0.8 if running_grand_total > 10000 else 0.9
-        discounted_total = running_grand_total * discount_multiplier
-        ws.cell(row=new_gt_row + 2, column=price_col, value="DISCOUNTED TOTAL").font = Font(bold=True)
-        ws.cell(row=new_gt_row + 3, column=price_col, value=discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-
     # Update elevations JSON with new prices based on multiplier
     try:
         with open(elevations_json_path, 'r') as f:
