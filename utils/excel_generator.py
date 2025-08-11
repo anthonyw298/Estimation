@@ -79,16 +79,11 @@ def _recalculate_running_grand_total(ws, price_col):
         ws.cell(row=new_gt_row, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
         ws.cell(row=new_gt_row + 1, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-        # Discounted Total
-        discount_multiplier = 0.8 if running_grand_total > 10000 else 0.9
-        discounted_total = running_grand_total * discount_multiplier
-        ws.cell(row=new_gt_row + 2, column=price_col, value="DISCOUNTED TOTAL").font = Font(bold=True)
-        ws.cell(row=new_gt_row + 3, column=price_col, value=discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path):
     """Writes a section of calculated outputs to the worksheet."""
-    if not items: return start_output_row, []
+    if not items:
+        return start_output_row, []
 
     current_row = start_output_row
     ws.cell(row=current_row, column=colE, value=title).font = Font(bold=True)
@@ -102,10 +97,8 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         qty_raw = item.get('quantity', 0)
         pn, manual = item.get('part_number'), item.get('manual', False)
 
-        # Normalize quantity to always be an iterable (list) for processing individual cuts
         individual_quantities = qty_raw if isinstance(qty_raw, list) else [qty_raw]
 
-        # Calculate display string for the Excel cell BEFORE looping
         if isinstance(qty_raw, list):
             if len(qty_raw) > 1 and all(x == qty_raw[0] for x in qty_raw):
                 display_qty_string = f"{qty_raw[0]:.2f} x {len(qty_raw)}"
@@ -114,57 +107,56 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         else:
             display_qty_string = f"{qty_raw:.2f}"
 
-        item_total_cost_for_display = 0.0 # Accumulate price for this line item
+        item_total_cost_for_display = 0.0
+        unit_type = item.get('unit', 'pcs') # Initialize with existing unit, if any
+        
+        # New variable to hold the calculated price for the entire item
+        calculated_item_price = 0.0
 
-        for single_qty_for_calc in individual_quantities: # Loop through each individual quantity
-            total_item_price_single_cut, unit_type, material_impact_details = 0.0, "pcs", None
+        for single_qty_for_calc in individual_quantities:
+            total_item_price_single_cut, calculated_unit, material_impact_details = 0.0, None, None
 
             if manual:
                 if pn and pn != "N/A":
-                    # Pass the finish for manual items with part numbers
-                    price_calculated, unit_calculated, material_impact_details = \
+                    price_calculated, calculated_unit, material_impact_details = \
                         get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)  
-                    total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
-                    unit_type = unit_calculated or item.get('unit', 'pcs')
+                    total_item_price_single_cut = price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc
+                    unit_type = calculated_unit or item.get('unit', 'pcs')
                 else:
                     total_item_price_single_cut = item.get('price', 0.0) * single_qty_for_calc
                     unit_type = item.get('unit', 'pcs')
-                    # For manual items without PN, ensure material_impact_details has the new display format
                     material_impact_details = {
                         'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
                         'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
                         'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn',
-                        'finish': None # No finish for manual items without PN
+                        'finish': None
                     }
             else:
-                # Pass the finish for non-manual items
-                total_price, unit_type, material_impact_details = \
+                total_price, calculated_unit, material_impact_details = \
                     get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
                 total_item_price_single_cut = total_price or 0.0
-                unit_type = unit_type or "pcs"
+                unit_type = calculated_unit or "pcs"
             
-            # Accumulate the cost for the current item in the Excel row
             item_total_cost_for_display += total_item_price_single_cut
 
             if material_impact_details:
-                # Format leftover_generated_qty_or_length for display (it will be a single float here)
                 material_impact_details['leftover_generated_qty_or_length_display'] = f"{material_impact_details.get('leftover_generated_qty_or_length', 0.0):.2f}"
-                
                 section_material_impacts.append(material_impact_details)
                 apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
-        # Removed multiplier application as pricing is now dynamic based on finish
+        # Update the item's dictionary with the final calculated price
+        # for the entire line item. This will be saved in the JSON file.
+        item['price'] = item_total_cost_for_display
         
-        system_total_ref[0] += item_total_cost_for_display # Add the accumulated cost to grand total
+        system_total_ref[0] += item_total_cost_for_display
 
         ws.cell(row=current_row, column=colE, value=item.get('description', ''))
         ws.cell(row=current_row, column=colE + 1, value=pn or 'N/A')
-        # Display the original (possibly list-formatted) quantity with the determined unit type
         ws.cell(row=current_row, column=colE + 2, value=f"{display_qty_string} {unit_type}")
         ws.cell(row=current_row, column=colE + 3, value=item_total_cost_for_display).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         current_row += 1
-    return current_row + 1, section_material_impacts
 
+    return current_row + 1, section_material_impacts
 
 def _delete_summary_section(ws):
     """Deletes the existing summary section from the worksheet."""
