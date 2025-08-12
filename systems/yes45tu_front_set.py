@@ -22,7 +22,8 @@ from utils.formulas import (
     calculate_glass_stop,
     calculate_total_glass,
     calculate_fabrication_joints,
-    calculate_total_door_area
+    calculate_total_door_area,
+    calculate_glass_to_add_back
 )
 
 def calculate_yes45tu_quantities(
@@ -38,7 +39,7 @@ def calculate_yes45tu_quantities(
     by calling dedicated formula functions.
     Returns a list of dictionaries with description, quantity, part number, and type.
     """
-
+    print('it hit the yes45tu stuff and here is dooes,opening height,opening width',doors,opening_height,opening_width)
     # Safety check for doors
     if doors is None:
         doors = []
@@ -68,7 +69,9 @@ def calculate_yes45tu_quantities(
     # --- Total area calculations ---
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
     total_door_area = calculate_total_door_area(doors)
-    adjusted_glass_area = max(total_glass_area - total_door_area, 0)  # Prevent negative glass area
+    total_glass_to_add_back = calculate_glass_to_add_back(doors)
+    print(total_glass_area,total_door_area,total_glass_to_add_back,'helllo world')
+    adjusted_glass_area = max(total_glass_area - total_door_area + total_glass_to_add_back, 0)  # Prevent negative glass area
 
     results = []
 

@@ -1,4 +1,5 @@
 from typing import Union
+import re
 
 def calculate_rectangle_area(length: float, width: float) -> float:
     """Calculates the area of a rectangle."""
@@ -139,6 +140,7 @@ def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int)
 
 def calculate_total_glass(opening_width: float, opening_height: float, total_count: int, bays_wide: int, bays_tall: int) -> float:
     return ((opening_width - (2 * (bays_wide + 1))) * (opening_height - (2 * (bays_tall + 1))) * total_count)/144
+
 def calculate_door_size(door_size_str: str) -> float:
     """
     Calculates the area of a single door from a size string like "3' X 7'".
@@ -160,6 +162,7 @@ def calculate_door_size(door_size_str: str) -> float:
     except Exception as e:
         print(f"Error calculating door area for '{door_size_str}': {e}")
         return 0.0
+
 def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, finish: str) -> float:
     """
     Calculates total price of a door given size (e.g. "3' X 8'"), width_type ("Narrow", "Medium", "Wide"),
@@ -284,6 +287,7 @@ def calculate_door_info(doors: list,finish='Clear') -> list:
     return door_items
 
 def calculate_total_door_area(doors: list) -> float:
+
     """
     Calculates the total area (in sqft) of all doors in the list.
     Args:
@@ -299,3 +303,63 @@ def calculate_total_door_area(doors: list) -> float:
             area = calculate_door_size(size_str)
             total_area += area * count
     return total_area
+
+def calculate_glass_to_add_back(doors):
+    """
+    Calculate total glass back area in sqft based on door sizes.
+
+    Args:
+        doors (list of dict): List of doors with 'size', 'count', 'stile' keys.
+
+    Returns:
+        float: Total glass back area in sqft.
+    """
+
+    deductions = {
+        'Narrow': {'height': 13.5625, 'width': 4.875},
+        'Medium': {'height': 15.1875, 'width': 7.625},
+        'Wide': {'height': 16.25, 'width': 10.625},
+    }
+
+    if not doors or not isinstance(doors, list):
+        return 0
+
+    total_area = 0.0
+
+    for door in doors:
+        stile = door.get('stile', '').title()
+        if stile not in deductions:
+            continue
+
+        count = door.get('count', 1)
+        size_str = door.get('size', '')
+        if not size_str:
+            continue
+
+        # Parse door opening width and height in feet from 'size' string
+        size_match = re.match(r"\s*(\d+)' *[xX] *(\d+)'", size_str)
+        if not size_match:
+            continue
+
+        opening_width_ft = int(size_match.group(1))
+        opening_height_ft = int(size_match.group(2))
+
+        # Convert to inches
+        opening_width_in = opening_width_ft * 12
+        opening_height_in = opening_height_ft * 12
+
+        # For 6' width doors, width deduction applies after dividing width by 2 (paired door)
+        if opening_width_ft == 6:
+            glass_width = (opening_width_in / 2) - deductions[stile]['width']
+        else:
+            glass_width = opening_width_in - deductions[stile]['width']
+
+        glass_height = opening_height_in - deductions[stile]['height']
+
+        if glass_width <= 0 or glass_height <= 0:
+            continue
+
+        area_sqft = (glass_width * glass_height) / 144
+        total_area += area_sqft * count
+
+    return round(total_area, 2)
