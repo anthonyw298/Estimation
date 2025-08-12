@@ -147,7 +147,7 @@
             },
             {
                 "description": "Glass Area (Adjusted)",
-                "quantity": 41.75,
+                "quantity": 83.75,
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
@@ -156,7 +156,7 @@
             },
             {
                 "description": "Door Area (to subtract from glass)",
-                "quantity": 42.0,
+                "quantity": 0.0,
                 "part_number": "N/A",
                 "type": "Doors",
                 "unit": "sqft",
@@ -179,25 +179,6 @@
                 "unit": "ft",
                 "manual": true,
                 "price": 1.055892857142857
-            },
-            {
-                "description": "Door (6' X 7')",
-                "Style": "Narrow",
-                "quantity": 1,
-                "part_number": "N/A",
-                "type": "Door",
-                "price": 2425.25,
-                "hardware": {
-                    "Continuous Hinges": false,
-                    "Concealed Closer": false,
-                    "Exit Devices": false,
-                    "Electric Strike": true,
-                    "Extended Ladder Pull (B2B)": false,
-                    "Extended Ladder Pull (Single)": false,
-                    "Latch Lock w/ Lever Handle": false,
-                    "Lever Handle": false
-                },
-                "manual": true
             }
         ],
         "material_impact": [
@@ -412,18 +393,18 @@
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 41.75,
+                "requested_qty": 83.75,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 438.375,
+                "cost_incurred": 879.375,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00"
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 42.0,
+                "requested_qty": 0.0,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
@@ -453,17 +434,6 @@
                 "type_processed_as": "profile",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "276.00"
-            },
-            {
-                "part_number": "N/A - Manual",
-                "requested_qty": 1,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 2425.25,
-                "type_processed_as": "manual_no_pn",
-                "finish": null,
-                "leftover_generated_qty_or_length_display": "0.00"
             }
         ]
     }
