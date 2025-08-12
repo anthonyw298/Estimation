@@ -160,53 +160,93 @@ def calculate_door_size(door_size_str: str) -> float:
     except Exception as e:
         print(f"Error calculating door area for '{door_size_str}': {e}")
         return 0.0
-def calculate_door_price(size_str: str, stile: str, hardware_dict: dict) -> float:
+def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, finish: str) -> float:
     """
-    Calculates the total price of a single door unit based on its size, stile, and hardware.
-    
-    Args:
-        size_str (str): Size of the door, e.g., "3' X 8'".
-        stile (str): Stile type (e.g., "Narrow", "Medium", "Wide").
-        hardware_dict (dict): Dictionary of hardware options, with boolean values.
-    
-    Returns:
-        float: Total price for the door.
+    Calculates total price of a door given size (e.g. "3' X 8'"), width_type ("Narrow", "Medium", "Wide"),
+    finish ("Clear", "Black", "Paint"), and selected hardware.
+    Hardware prices also vary by finish.
     """
-    DOOR_BASE_PRICES = {
-        '3x7': 1200, '3x8': 1500, '3x9': 1800,
-        '6x7': 2400, '6x8': 3000, '6x9': 3600
+
+    # Full door price matrix
+    DOOR_PRICES = {
+        "3x7": {
+            "Narrow": {"Clear": 880.00, "Black": 1035.00, "Paint": 1269.00},
+            "Medium": {"Clear": 1180.00, "Black": 1245.00, "Paint": 1653.00},
+            "Wide": {"Clear": 1304.25, "Black": 1413.75, "Paint": 1744.50}
+        },
+        "3x8": {
+            "Narrow": {"Clear": 921.75, "Black": 1083.00, "Paint": 1328.25},
+            "Medium": {"Clear": 1235.25, "Black": 1304.25, "Paint": 1727.25},
+            "Wide": {"Clear": 1365.00, "Black": 1479.00, "Paint": 1825.50}
+        },
+        "3x9": {
+            "Narrow": {"Clear": 986.25, "Black": 1159.50, "Paint": 1422.75},
+            "Medium": {"Clear": 1321.50, "Black": 1395.75, "Paint": 1849.50},
+            "Wide": {"Clear": 1461.75, "Black": 1584.00, "Paint": 1953.00}
+        },
+        "6x7": {
+            "Narrow": {"Clear": 1715.25, "Black": 1863.75, "Paint": 2657.25},
+            "Medium": {"Clear": 2310.75, "Black": 2445.75, "Paint": 3156.75},
+            "Wide": {"Clear": 2559.00, "Black": 2781.00, "Paint": 3435.75}
+        },
+        "6x8": {
+            "Narrow": {"Clear": 1812.00, "Black": 1970.25, "Paint": 2799.75},
+            "Medium": {"Clear": 2442.00, "Black": 2589.75, "Paint": 3338.25},
+            "Wide": {"Clear": 2700.00, "Black": 2932.50, "Paint": 3630.00}
+        },
+        "6x9": {
+            "Narrow": {"Clear": 1943.25, "Black": 2111.25, "Paint": 2988.00},
+            "Medium": {"Clear": 2624.25, "Black": 2782.50, "Paint": 3564.00},
+            "Wide": {"Clear": 2901.00, "Black": 3150.00, "Paint": 3861.00}
+        }
     }
-    STILE_MULTIPLIERS = {'Narrow': 0.9, 'Medium': 1.0, 'Wide': 1.1}
-    HARDWARE_PRICE = 69.0
+
+    # Hardware base prices by finish
+    HARDWARE_PRICES = {
+        "Concealed Closer": {"Clear": 473.00, "Black": 473.00, "Paint": 473.00},
+        "Exit Device": {"Clear": 475.00, "Black": 475.00, "Paint": 475.00},  # Will adjust for >7 ft doors below
+        "Continuous Hinges": {"Clear": 285.00, "Black": 375.00, "Paint": 375.00},
+        "Lever Handle & Latch Lock": {"Clear": 334.00, "Black": 334.00, "Paint": 334.00},
+        "Latchlock with Paddle": {"Clear": 433.00, "Black": 433.00, "Paint": 433.00},
+        "Electric Strike": {"Clear": 355.00, "Black": 355.00, "Paint": 355.00}
+    }
 
     try:
+        # Normalize size key (e.g., "3' X 8'" → "3x8")
         parts = size_str.upper().replace("'", "").replace(" ", "").split("X")
         if len(parts) != 2:
             raise ValueError(f"Invalid door size format: {size_str}")
+        door_size_key = f"{parts[0].lower()}x{parts[1].lower()}"
 
-        door_size_key = f"{parts[0]}x{parts[1]}"
-        base_price = DOOR_BASE_PRICES.get(door_size_key, 0)
+        # Get base price
+        base_price = DOOR_PRICES[door_size_key][width_type][finish]
 
-        stile_multiplier = STILE_MULTIPLIERS.get(stile, 1.0)
-        door_frame_price = base_price * stile_multiplier
+        # Calculate hardware cost based on finish
+        hardware_total = 0
+        for hw, selected in hardware_dict.items():
+            if selected and hw in HARDWARE_PRICES:
+                price = HARDWARE_PRICES[hw][finish]
 
-        # Count only selected hardware items (those with value True)
-        hardware_count = sum(1 for selected in hardware_dict.values() if selected)
+                # Special rule: Exit Device is $550 for all doors except 3x7 and 6x7
+                if hw == "Exit Device" and door_size_key not in ["3x7", "6x7"]:
+                    price = 550.00
 
-        # Double hardware count for double doors (6' width)
-        is_double_door = size_str.strip().startswith("6'")
-        if is_double_door:
-            hardware_count *= 2
+                # Double price for double doors (all hardware)
+                if door_size_key.startswith("6x"):
+                    price *= 2
 
-        total_hardware_price = hardware_count * HARDWARE_PRICE
+                hardware_total += price
 
-        return door_frame_price + total_hardware_price
+        return base_price + hardware_total
 
+    except KeyError as e:
+        print(f"Invalid key in pricing lookup: {e}")
+        return 0.0
     except Exception as e:
-        print(f"Error calculating price for door '{size_str}': {e}")
+        print(f"Error calculating price: {e}")
         return 0.0
 
-def calculate_door_info(doors: list) -> list:
+def calculate_door_info(doors: list,finish='Clear') -> list:
     """
     Takes a list of door inputs and returns a list of dictionaries with door information,
     including calculated price and other details.
@@ -220,7 +260,7 @@ def calculate_door_info(doors: list) -> list:
               its calculated details and is formatted for the final output.
     """
     door_items = []
-    
+    print(doors,'Hello this is door list')
     if doors:
         for door_info in doors:
             door_size_str = door_info.get('size')
@@ -229,7 +269,7 @@ def calculate_door_info(doors: list) -> list:
             door_hardware = door_info.get('hardware', [])
 
             if door_size_str and door_count > 0:
-                door_price = calculate_door_price(door_size_str, door_stile, door_hardware)
+                door_price = calculate_door_price(door_size_str, door_stile, door_hardware,finish)
                 
                 door_items.append({
                     "description": f"Door ({door_size_str})", 

@@ -1,0 +1,17 @@
+[
+    {
+        "size": "6' X 7'",
+        "count": 1,
+        "stile": "Narrow",
+        "hardware": {
+            "Continuous Hinges": false,
+            "Concealed Closer": false,
+            "Exit Devices": false,
+            "Electric Strike": true,
+            "Extended Ladder Pull (B2B)": false,
+            "Extended Ladder Pull (Single)": false,
+            "Latch Lock w/ Lever Handle": false,
+            "Lever Handle": false
+        }
+    }
+]
