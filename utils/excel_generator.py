@@ -574,7 +574,8 @@ def generate_excel_report(
                 reverse_material_impact(old_elevation_data['material_impact'], extra_materials_file=extra_materials_json_path)
 
         # Include doors in calculated_outputs as manual items
-        door_items = calculate_door_info(doors) if doors else []
+        print(finish_input,'this is the finish that passes into excel to door')
+        door_items = calculate_door_info(doors,finish_input) if doors else []
         calculated_outputs.extend(door_items)
 
         current_saved_elevations[elevation_type] = {

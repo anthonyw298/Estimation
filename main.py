@@ -236,7 +236,7 @@ class App(ctk.CTk):
         
         self._add_input_row_to_frame(parent_frame, "Door Size:", ctk.CTkOptionMenu, self.vars['door_size'], self.door_options)
         self._add_input_row_to_frame(parent_frame, "Number of Doors:", ctk.CTkEntry, self.vars['door_count'])
-        self._add_input_row_to_frame(parent_frame, "Stile Style:", ctk.CTkOptionMenu, self.vars['stile'], self.stile_options)
+        self._add_input_row_to_frame(parent_frame, "Style:", ctk.CTkOptionMenu, self.vars['stile'], self.stile_options)
         
         hardware_label = ctk.CTkLabel(parent_frame, text="Select Hardware:", font=self.label_font, text_color=self.text_color)
         hardware_label.grid(row=self.door_input_row, column=0, sticky="w", padx=10, pady=5)
