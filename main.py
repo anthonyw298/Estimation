@@ -714,14 +714,16 @@ class App(ctk.CTk):
 
             glass_area = elevation_data.get('total_sqft', 0.0)
 
-            # Calculate existing total door glass area before adding new door
+            # Calculate existing total door area and glass back
             existing_door_area = calculate_total_door_area(doors)
+            existing_glass_back = calculate_glass_to_add_back(doors)
 
-            # Calculate new door glass back area (multiplied by count)
-            new_door_glass_back_area = calculate_glass_to_add_back(new_door) * door_count
+            # Calculate new door area and glass back
+            new_door_area = calculate_total_door_area([new_door])
+            new_glass_back = calculate_glass_to_add_back([new_door])
 
-            # Calculate leftover glass area after adding this door's glass back
-            leftover_glass = glass_area - existing_door_area + new_door_glass_back_area
+            # Calculate leftover glass area after adding this door
+            leftover_glass = glass_area - (existing_door_area + new_door_area) + (existing_glass_back + new_glass_back)
 
             if leftover_glass <= 0:
                 self.update_status("Error: Adding this door reduces glass back area to zero or below.", self.error_color)
@@ -736,8 +738,8 @@ class App(ctk.CTk):
         self.save_door_data(simulated_doors)
         self.update_door_listbox()
         self.clear_door_form()
+        self.save_elevation_type()
         self.update_status("Door added to the current elevation.", self.success_color)
-
     def update_door(self):
         """Updates a selected door in the current elevation."""
         if self.selected_door_index is None:
@@ -763,13 +765,16 @@ class App(ctk.CTk):
             self.update_status("Error: Please enter an elevation type first.", self.error_color)
             return
 
-        # Load doors and simulate updating one
+        # Load current doors
         doors = self.update_door_listbox()
+
+        # Prepare updated door dict
         updated_door = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
+
+        # Simulate door list with the updated door in place
         simulated_doors = doors.copy()
         simulated_doors[self.selected_door_index] = updated_door
 
-        # 🔍 Load saved glass area from elevation JSON
         try:
             if not os.path.exists(self.current_elevations_json_path):
                 raise FileNotFoundError("Elevations file not found.")
@@ -782,34 +787,57 @@ class App(ctk.CTk):
                 raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
 
             glass_area = elevation_data.get('total_sqft', 0.0)
-            door_area = calculate_total_door_area(simulated_doors)
 
-            if door_area > glass_area:
-                self.update_status("Error: Total door area exceeds available glass area.", self.error_color)
+            # Calculate existing door area and glass back excluding the door being updated
+            doors_excluding_current = doors[:self.selected_door_index] + doors[self.selected_door_index+1:]
+            existing_door_area = calculate_total_door_area(doors_excluding_current)
+            existing_glass_back = calculate_glass_to_add_back(doors_excluding_current)
+
+            # Calculate updated door area and glass back
+            updated_door_area = calculate_total_door_area([updated_door])
+            updated_glass_back = calculate_glass_to_add_back([updated_door])
+
+            # Calculate leftover glass area after update
+            leftover_glass = glass_area - (existing_door_area + updated_door_area) + (existing_glass_back + updated_glass_back)
+
+            if leftover_glass <= 0:
+                self.update_status("Error: Updating this door reduces glass back area to zero or below.", self.error_color)
                 return
 
         except Exception as e:
             self.update_status(f"Error checking area: {e}", self.error_color)
             return
 
+        door_num = self.selected_door_index + 1
+        # Save updated doors and refresh UI
         self.save_door_data(simulated_doors)
         self.update_door_listbox()
         self.clear_door_form()
-        self.update_status(f"Door {self.selected_door_index + 1} updated.", self.success_color)
-        
+        self.save_elevation_type()
+        self.update_status(f"Door {door_num} updated.", self.success_color)
+
+
     def delete_door(self):
         """Deletes a selected door from the current elevation."""
-        if self.selected_door_index is not None:
-            # Load doors, delete the selected one, and save
-            doors = self.update_door_listbox()
-            del doors[self.selected_door_index]
-            self.save_door_data(doors)
-
-            self.update_door_listbox()
-            self.clear_door_form()
-            self.update_status(f"Door {self.selected_door_index + 1} deleted.", self.success_color)
-        else:
+        if self.selected_door_index is None:
             self.update_status("Error: No door selected to delete.", self.error_color)
+            return
+
+        # Load current doors
+        doors = self.update_door_listbox()
+
+        door_num = self.selected_door_index + 1
+        # Remove the selected door
+        del doors[self.selected_door_index]
+
+        # Save updated door list
+        self.save_door_data(doors)
+
+        self.update_door_listbox()
+        self.clear_door_form()
+        self.save_elevation_type()
+        self.update_status(f"Door {door_num} deleted.", self.success_color)
+        self.selected_door_index = None
 
     def select_door_for_edit(self, event):
         """Loads the selected door's data into the input fields for editing."""
