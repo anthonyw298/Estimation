@@ -7,9 +7,9 @@ from openpyxl import Workbook # Import Workbook to create new Excel files
 
 # Assuming your utils and systems are in their respective directories
 # If these files are missing, the program will crash.
-from utils.excel_generator import generate_excel_report, create_summary_sheet
+from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
-from utils.formulas import calculate_rectangle_area, calculate_perimeter,calculate_total_door_area,calculate_total_glass
+from utils.formulas import calculate_rectangle_area, calculate_perimeter,calculate_total_door_area,calculate_glass_to_add_back
 
 # Define a directory to store all project-related files
 PROJECTS_DIR = "projects"
@@ -695,10 +695,10 @@ class App(ctk.CTk):
             self.update_status("Error: Door count must be an integer.", self.error_color)
             return
 
-        # Load doors and simulate adding the new one
-        doors = self.update_door_listbox()
+        # Load current doors
+        doors = self.update_door_listbox()  # Assuming this returns current list of doors
+
         new_door = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
-        simulated_doors = doors + [new_door]
 
         # 🔍 Load saved glass area from elevation JSON
         try:
@@ -713,20 +713,31 @@ class App(ctk.CTk):
                 raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
 
             glass_area = elevation_data.get('total_sqft', 0.0)
-            door_area = calculate_total_door_area(simulated_doors)
 
-            if door_area > glass_area:
-                self.update_status("Error: Total door area exceeds available glass area.", self.error_color)
+            # Calculate existing total door glass area before adding new door
+            existing_door_area = calculate_total_door_area(doors)
+
+            # Calculate new door glass back area (multiplied by count)
+            new_door_glass_back_area = calculate_glass_to_add_back(new_door) * door_count
+
+            # Calculate leftover glass area after adding this door's glass back
+            leftover_glass = glass_area - existing_door_area + new_door_glass_back_area
+
+            if leftover_glass <= 0:
+                self.update_status("Error: Adding this door reduces glass back area to zero or below.", self.error_color)
                 return
 
         except Exception as e:
             self.update_status(f"Error checking area: {e}", self.error_color)
             return
 
+        # If all good, add the door
+        simulated_doors = doors + [new_door]
         self.save_door_data(simulated_doors)
         self.update_door_listbox()
         self.clear_door_form()
         self.update_status("Door added to the current elevation.", self.success_color)
+
     def update_door(self):
         """Updates a selected door in the current elevation."""
         if self.selected_door_index is None:
