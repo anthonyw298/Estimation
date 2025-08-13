@@ -395,7 +395,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         return
 
     headers = [
-        "Project Total Materials", "Total Quantity", "Original Total List Price", "Discounted Total List Price",
+        "Project Total Materials", "Quantity", "List Price", "Discounted List Price",
         "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
     ]
     for col, header in enumerate(headers, start=1):
@@ -421,12 +421,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     reuse_total = total_reusable_cost
     rg_total_row = start_row + len(final_summary_data) + 1
 
-    ws.cell(row=rg_total_row, column=6, value="REUSABLE GRAND TOTAL").font = Font(bold=True)
+    ws.cell(row=rg_total_row, column=6, value="Residual Grand Total").font = Font(bold=True)
     ws.cell(row=rg_total_row, column=7, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
 
-    ws.cell(row=rg_total_row + 1, column=6, value="REUSABLE % OF RUNNING GRAND TOTAL").font = Font(bold=True)
+    ws.cell(row=rg_total_row + 1, column=6, value="Overall Waste %").font = Font(bold=True)
     ws.cell(row=rg_total_row + 1, column=7, value=f"{reuse_pct_of_gt:.2f}%")
 
     _autofit_columns(ws, 1, 7, start_row, rg_total_row + 1)

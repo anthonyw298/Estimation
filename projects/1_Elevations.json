@@ -874,5 +874,443 @@
                 "leftover_generated_qty_or_length_display": "0.00"
             }
         ]
+    },
+    "111": {
+        "system": "YES 45TU FRONT SET(OG)",
+        "finish": "Clear",
+        "total_count": 1,
+        "bays_wide": 4,
+        "bays_tall": 2,
+        "opening_width_inches": 144.0,
+        "opening_height_inches": 96.0,
+        "sqft_per_type": 96.0,
+        "total_sqft": 96.0,
+        "perimeter_ft": 40.0,
+        "total_perimeter_ft": 40.0,
+        "calculated_outputs": [
+            {
+                "description": "End Dam For Sill Flashing",
+                "quantity": 2,
+                "part_number": "E1-0199",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "Water Deflector",
+                "quantity": 8,
+                "part_number": "E2-0047",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "#12 x 1-1/4\u201d PHSMS Type AB, Zinc Plated Steel, For Screw Spline Attachment",
+                "quantity": 56,
+                "part_number": "PC-1220",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "#10-24 x 3/8\u201d PHMS, Stainless Steel, For Attachment of Sill to Sill Flashing",
+                "quantity": 12,
+                "part_number": "PM-1006-SS",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "#12 x 3/4\u201d UFHSMS Type A, Zinc Plated Steel For End Dam Attachment",
+                "quantity": 4,
+                "part_number": "UA-1212",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "Setting Block Chair Use with E2-0177 Setting Block at Sill",
+                "quantity": 8,
+                "part_number": "E1-2530",
+                "type": "accessories",
+                "price": 2.6279999999999997
+            },
+            {
+                "description": "Side Block For Intermediate Vertical Shallow Pocket",
+                "quantity": 6,
+                "part_number": "E2-0166",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "Setting Block For Sill",
+                "quantity": 8,
+                "part_number": "E2-0177",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "1-1/8\u201d \u201cW\u201d Side Block For Jamb",
+                "quantity": 4,
+                "part_number": "E2-0545",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "1/2\u201d \u201cW\u201d Side Block For Intermediate Vertical Deep Pocket",
+                "quantity": 6,
+                "part_number": "E2-0154",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "Setting Block For Intermediate Horizontal",
+                "quantity": 8,
+                "part_number": "E2-0611",
+                "type": "accessories",
+                "price": 0.0
+            },
+            {
+                "description": "Sill/Jamb Screw Spline Assembly",
+                "quantity": 16.0,
+                "part_number": "BE9-2513",
+                "type": "profiles",
+                "price": 15.2935
+            },
+            {
+                "description": "Sill/Jamb Screw Spline Assembly",
+                "quantity": 12.0,
+                "part_number": "BE9-2513",
+                "type": "profiles",
+                "price": 20.391333333333332
+            },
+            {
+                "description": "Flush Filler",
+                "quantity": 24.0,
+                "part_number": "E9-2512",
+                "type": "profiles",
+                "price": 3.65
+            },
+            {
+                "description": "Two Piece Mullion Screw Spline Assembly",
+                "quantity": 24.0,
+                "part_number": "BE9-2511",
+                "type": "profiles",
+                "price": 12.093666666666666
+            },
+            {
+                "description": "Horizontal Screw Spline Assembly",
+                "quantity": 12.0,
+                "part_number": "BE9-2515",
+                "type": "profiles",
+                "price": 25.647333333333332
+            },
+            {
+                "description": "Head",
+                "quantity": 12.0,
+                "part_number": "BE9-2514",
+                "type": "profiles",
+                "price": 21.608
+            },
+            {
+                "description": "Thermal Sill Flashing",
+                "quantity": 12.0,
+                "part_number": "BE9-2578",
+                "type": "profiles",
+                "price": 12.847999999999999
+            },
+            {
+                "description": "Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
+                "quantity": 24.0,
+                "part_number": "E9-2519",
+                "type": "profiles",
+                "price": 2.06955
+            },
+            {
+                "description": "Glass Area (Adjusted)",
+                "quantity": 83.75,
+                "part_number": "N/A",
+                "type": "Glass",
+                "price": 10.5,
+                "unit": "sqft",
+                "manual": true
+            },
+            {
+                "description": "Door Area (to subtract from glass)",
+                "quantity": 0.0,
+                "part_number": "N/A",
+                "type": "Doors",
+                "unit": "sqft",
+                "manual": true
+            },
+            {
+                "description": "Joints Fabrication Labor",
+                "quantity": 24,
+                "part_number": "N/A",
+                "type": "Fabrication",
+                "price": 15.0,
+                "unit": "joints",
+                "manual": true
+            },
+            {
+                "description": "Gasket",
+                "quantity": 224.0,
+                "part_number": "E2-0052",
+                "type": "Glazing Gasket",
+                "unit": "ft",
+                "manual": true,
+                "price": 1.055892857142857
+            }
+        ],
+        "material_impact": [
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 16.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 8.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 419.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "8.00"
+            },
+            {
+                "part_number": "BE9-2513",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 419.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "12.00"
+            },
+            {
+                "part_number": "E9-2512",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 150.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "BE9-2511",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 497.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "BE9-2515",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 527.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "12.00"
+            },
+            {
+                "part_number": "BE9-2514",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 444.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "12.00"
+            },
+            {
+                "part_number": "BE9-2578",
+                "requested_qty": 12.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 12.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 264.0,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "12.00"
+            },
+            {
+                "part_number": "E9-2519",
+                "requested_qty": 24.0,
+                "purchased_qty_or_length": 24.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 85.05,
+                "type_processed_as": "profile",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E1-0199",
+                "requested_qty": 2,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 2,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0047",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "PC-1220",
+                "requested_qty": 56,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 56,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "PM-1006-SS",
+                "requested_qty": 12,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 12,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "UA-1212",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 4,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E1-2530",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 8,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 36.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0166",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 6,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0177",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0545",
+                "requested_qty": 4,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 4,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0154",
+                "requested_qty": 6,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 6,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0611",
+                "requested_qty": 8,
+                "purchased_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 0,
+                "used_from_leftover_qty_or_length": 8,
+                "cost_incurred": 0.0,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 83.75,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 879.375,
+                "type_processed_as": "manual_no_pn",
+                "finish": null,
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 0.0,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 0.0,
+                "type_processed_as": "manual_no_pn",
+                "finish": null,
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "N/A - Manual",
+                "requested_qty": 24,
+                "purchased_qty_or_length": 0.0,
+                "leftover_generated_qty_or_length": 0.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 360.0,
+                "type_processed_as": "manual_no_pn",
+                "finish": null,
+                "leftover_generated_qty_or_length_display": "0.00"
+            },
+            {
+                "part_number": "E2-0052",
+                "requested_qty": 224.0,
+                "purchased_qty_or_length": 500.0,
+                "leftover_generated_qty_or_length": 276.0,
+                "used_from_leftover_qty_or_length": 0.0,
+                "cost_incurred": 405.0,
+                "type_processed_as": "profile",
+                "finish": null,
+                "leftover_generated_qty_or_length_display": "276.00"
+            }
+        ]
     }
 }
