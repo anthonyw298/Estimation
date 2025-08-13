@@ -75,7 +75,7 @@ def _recalculate_running_grand_total(ws, price_col):
                     running_grand_total += float(val.strip("$").replace(",", ""))
                 except ValueError:
                     pass
-        if ws.cell(row=r, column=price_col).value == "ORIGINAL SYSTEM TOTAL":
+        if ws.cell(row=r, column=price_col).value == "ORIGINAL ELEVATION TOTAL":
             val = ws.cell(row=r + 1, column=price_col).value
             if isinstance(val, (float, int)):
                 original_running_grand_total += val
@@ -182,7 +182,7 @@ def _delete_summary_section(ws):
         print("ℹ️ Worksheet is largely empty. Skipping summary section deletion.")
         return
 
-    summary_start_row = _find_row_by_value(ws, 1, "Part Number / Description")
+    summary_start_row = _find_row_by_value(ws, 1, "Project Total Materials")
     if summary_start_row:
         current_row_to_delete = summary_start_row
         while current_row_to_delete <= ws.max_row:
@@ -395,8 +395,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         return
 
     headers = [
-        "Part Number / Description", "Total Quantity", "Original Total Price", "Discounted Total Price",
-        "Reusable Material Quantity", "Reusable % of Total", "Reusable Material Cost"
+        "Project Total Materials", "Total Quantity", "Original Total List Price", "Discounted Total List Price",
+        "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
     ]
     for col, header in enumerate(headers, start=1):
         header_cell = ws.cell(row=start_row, column=col, value=header)
@@ -433,48 +433,6 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated in sheet.")
-
-def create_residual_waste_sheet(ws, extra_materials_json_path):
-    """
-    Creates a sheet for residual waste (leftovers) from extra_materials.json.
-    """
-    try:
-        extra_materials = load_extra_materials(extra_materials_json_path)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"⚠️ Could not load extra materials JSON: {e}")
-        return
-
-    start_row = 1
-    headers = ["Part Number", "Finish", "Leftover Quantity", "Unit"]
-    for col, header in enumerate(headers, start=1):
-        header_cell = ws.cell(row=start_row, column=col, value=header)
-        header_cell.font = Font(bold=True)
-        header_cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-
-    row_idx = start_row + 1
-    valid_finishes = {'clear', 'black', 'paint'}
-    for key, data in extra_materials.items():
-        part, finish = key, None
-        if '-' in key and key.rsplit('-', 1)[0] in PART_NUMBER_MAP.get('profiles', {}):
-            part, finish = key.rsplit('-', 1)
-        finish = finish.lower() if finish else None
-        if finish not in valid_finishes:
-            finish = "N/A"
-        if "length_pieces" in data and data["length_pieces"]:
-            leftover_qty = sum(data["length_pieces"])
-            unit = "ft"
-        else:
-            leftover_qty = data.get("quantity", 0.0)
-            unit = "pcs"
-
-        ws.cell(row=row_idx, column=1, value=key)  # Display full part number including finish
-        ws.cell(row=row_idx, column=2, value=finish or "N/A")
-        ws.cell(row=row_idx, column=3, value=leftover_qty)
-        ws.cell(row=row_idx, column=4, value=unit)
-        row_idx += 1
-
-    _autofit_columns(ws, 1, 4, start_row, row_idx - 1)
-    print("✅ Residual Waste sheet created.")
 
 def _format_door_summary(calculated_outputs):
     if not calculated_outputs:
@@ -678,11 +636,11 @@ def generate_excel_report(
             current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
 
             system_total_row = ws.max_row + 2
-            orig_total_cell = ws.cell(row=system_total_row, column=PRICE_COL, value="ORIGINAL SYSTEM TOTAL")
+            orig_total_cell = ws.cell(row=system_total_row, column=PRICE_COL, value="ORIGINAL ELEVATION TOTAL")
             orig_total_cell.font = Font(bold=True)
             orig_total_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
             ws.cell(row=system_total_row + 1, column=PRICE_COL, value=original_system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            disc_total_cell = ws.cell(row=system_total_row + 2, column=PRICE_COL, value="DISCOUNTED SYSTEM TOTAL")
+            disc_total_cell = ws.cell(row=system_total_row + 2, column=PRICE_COL, value="DISCOUNTED ELEVATION TOTAL")
             disc_total_cell.font = Font(bold=True)
             disc_total_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
             ws.cell(row=system_total_row + 3, column=PRICE_COL, value=system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -695,9 +653,6 @@ def generate_excel_report(
 
     summary_ws = wb.create_sheet(title="Summary")
     create_summary_sheet(summary_ws, elevations_json_path, extra_materials_json_path)
-
-    waste_ws = wb.create_sheet(title="Residual Waste")
-    create_residual_waste_sheet(waste_ws, extra_materials_json_path)
 
     try:
         wb.save(excel_path)
