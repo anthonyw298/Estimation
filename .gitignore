@@ -42,7 +42,7 @@ coverage.xml
 
 # Environments
 .env
-.venv
+.venv/
 venv/
 env/
 
