@@ -2,10 +2,8 @@
     "BE9-2513-clear": {
         "quantity": 0.0,
         "length_pieces": [
-            8.0,
-            8.0,
-            8.0,
-            12.0
+            0.6666666666666649,
+            22.333333333333336
         ]
     },
     "E9-2512-clear": {
@@ -19,43 +17,45 @@
     "BE9-2515-clear": {
         "quantity": 0.0,
         "length_pieces": [
-            12.0
+            15.666666666666677
         ]
     },
     "BE9-2514-clear": {
         "quantity": 0.0,
         "length_pieces": [
-            12.0
+            15.666666666666677
         ]
     },
     "BE9-2578-clear": {
         "quantity": 0.0,
         "length_pieces": [
-            12.0
+            15.666666666666677
         ]
     },
     "E9-2519-clear": {
+        "quantity": 0.0,
+        "length_pieces": [
+            15.666666666666677
+        ]
+    },
+    "E1-0199": {
         "quantity": 0,
         "length_pieces": []
     },
-    "E1-0199": {
-        "quantity": 14,
-        "length_pieces": []
-    },
     "E2-0047": {
-        "quantity": 26,
+        "quantity": 30,
         "length_pieces": []
     },
     "PC-1220": {
-        "quantity": 32,
+        "quantity": 20,
         "length_pieces": []
     },
     "PM-1006-SS": {
-        "quantity": 64,
+        "quantity": 70,
         "length_pieces": []
     },
     "UA-1212": {
-        "quantity": 88,
+        "quantity": 60,
         "length_pieces": []
     },
     "E1-2530": {
@@ -63,30 +63,29 @@
         "length_pieces": []
     },
     "E2-0166": {
-        "quantity": 32,
+        "quantity": 0,
         "length_pieces": []
     },
     "E2-0177": {
-        "quantity": 26,
+        "quantity": 30,
         "length_pieces": []
     },
     "E2-0545": {
-        "quantity": 38,
+        "quantity": 30,
         "length_pieces": []
     },
     "E2-0154": {
-        "quantity": 32,
+        "quantity": 0,
         "length_pieces": []
     },
     "E2-0611": {
-        "quantity": 26,
+        "quantity": 30,
         "length_pieces": []
     },
     "E2-0052": {
-        "quantity": 0.0,
+        "quantity": 0,
         "length_pieces": [
-            52.0,
-            276.0
+            433.3333333333333
         ]
     }
 }
