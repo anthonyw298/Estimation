@@ -1,7 +1,7 @@
 import os
 import json
 from openpyxl import Workbook
-from openpyxl.styles import Font, numbers, PatternFill
+from openpyxl.styles import Font, numbers, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 from collections import Counter
 
@@ -112,33 +112,40 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     for item in items:
         qty_raw = item.get('quantity', 0)
         pn, manual = item.get('part_number'), item.get('manual', False)
+        is_profile = pn in PART_NUMBER_MAP.get('profiles', {})
+        is_accessory = pn in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
+        is_glass = pn == "GLASS_AREA" or item.get('type', '').lower() == 'glass'
 
         individual_quantities = qty_raw if isinstance(qty_raw, list) else [qty_raw]
         qty_sum = sum(individual_quantities)
 
+        # Force units: profiles use 'ft', accessories use 'pcs', others use item unit or default
+        unit_type = 'ft' if is_profile else 'pcs' if is_accessory else item.get('unit', 'pcs' if not is_glass else 'sqft')
+        display_unit = unit_type
+
         if isinstance(qty_raw, list):
             if len(qty_raw) > 1 and all(x == qty_raw[0] for x in qty_raw):
-                display_qty_string = f"{qty_raw[0]:.2f} x {len(qty_raw)}"
+                display_qty_string = f"{qty_raw[0]:.2f} {display_unit} x {len(qty_raw)}"
             else:
-                display_qty_string = ", ".join([f"{q:.2f}" for q in qty_raw])
+                display_qty_string = ", ".join([f"{q:.2f} {display_unit}" for q in qty_raw])
         else:
-            display_qty_string = f"{qty_raw:.2f}"
+            display_qty_string = f"{qty_raw:.2f} {display_unit}"
 
         item_total_cost_for_display = 0.0
         original_item_total_cost = 0.0
 
         for single_qty_for_calc in individual_quantities:
-            total_item_price_single_cut, unit_type, material_impact_details = 0.0, "pcs", None
+            total_item_price_single_cut, calculated_unit_type, material_impact_details = 0.0, unit_type, None
 
             if manual:
                 if pn and pn != "N/A":
                     price_calculated, unit_calculated, material_impact_details = \
                         get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)
                     total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
-                    unit_type = unit_calculated or item.get('unit', 'pcs')
+                    calculated_unit_type = unit_type if is_profile or is_accessory else (unit_calculated or item.get('unit', 'pcs'))
                 else:
                     total_item_price_single_cut = item.get('price', 0.0) * single_qty_for_calc
-                    unit_type = item.get('unit', 'pcs')
+                    calculated_unit_type = item.get('unit', 'pcs')
                     material_impact_details = {
                         'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
                         'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
@@ -146,21 +153,21 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                         'finish': None
                     }
             else:
-                total_price, unit_type, material_impact_details = \
+                total_price, unit_from_pricing, material_impact_details = \
                     get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
                 total_item_price_single_cut = total_price or 0.0
-                unit_type = unit_type or "pcs"
+                calculated_unit_type = unit_type if is_profile or is_accessory else (unit_from_pricing or item.get('unit', 'pcs'))
 
             item_total_cost_for_display += total_item_price_single_cut
             original_item_total_cost += total_item_price_single_cut
 
             if material_impact_details:
-                material_impact_details['leftover_generated_qty_or_length_display'] = f"{material_impact_details.get('leftover_generated_qty_or_length', 0.0):.2f}"
+                leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
+                material_impact_details['leftover_generated_qty_or_length_display'] = f"{leftover_qty:.2f} {display_unit}"
                 section_material_impacts.append(material_impact_details)
                 apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
-        is_profile_or_accessory = pn in PART_NUMBER_MAP.get('profiles', {}) or pn in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
-        if is_profile_or_accessory:
+        if is_profile or is_accessory:
             item_total_cost_for_display *= multiplier
             if qty_sum > 0:
                 item['price'] = item_total_cost_for_display / qty_sum
@@ -170,7 +177,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
 
         ws.cell(row=current_row, column=colE, value=item.get('description', ''))
         ws.cell(row=current_row, column=colE + 1, value=pn or 'N/A')
-        ws.cell(row=current_row, column=colE + 2, value=f"{display_qty_string} {unit_type}")
+        ws.cell(row=current_row, column=colE + 2, value=display_qty_string)
         ws.cell(row=current_row, column=colE + 3, value=original_item_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + 4, value=item_total_cost_for_display).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         current_row += 1
@@ -251,6 +258,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             qty = output.get('quantity', 0)
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
             is_profile_part = part in PART_NUMBER_MAP.get('profiles', {})
+            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
             is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
             is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor'
 
@@ -276,7 +284,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     'display': display,
                     'part_number': part,
                     'manual': manual,
-                    'unit': output.get('unit', 'pcs' if not is_glass else 'sqft'),
+                    'unit': 'ft' if is_profile_part else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
                     'finish': elevation_finish if is_profile_part or (manual and part and part != "N/A" and is_profile_part) else None,
                     'is_glass': is_glass,
                     'is_joints_fab_labor': is_joints_fab_labor
@@ -293,14 +301,17 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         manual = item['manual']
         part = item['part_number']
         display = item['display']
-        original_unit_from_item = item['unit']
-        item_finish = item.get('finish')
+        is_profile = part in PART_NUMBER_MAP.get('profiles', {})
+        is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
         is_glass = item.get('is_glass', False)
         is_joints_fab_labor = item.get('is_joints_fab_labor', False)
+        item_finish = item.get('finish')
+
+        display_unit = 'ft' if is_profile else 'pcs' if is_accessory else item['unit']
 
         original_total_cost_for_item = 0.0
         total_cost_for_item = 0.0
-        calculated_unit_type = original_unit_from_item 
+        calculated_unit_type = display_unit
         reusable_qty_sum = 0.0
         reusable_pct = 0.0
         reusable_cost = 0.0
@@ -310,7 +321,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             if part and part != "N/A":
                 price_from_part, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True, group=True)
                 original_total_cost_for_item = price_from_part if price_from_part is not None else (item.get('price', 0.0) * quantity_aggregated)
-                calculated_unit_type = original_unit_from_item or unit_type_from_pricing
+                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (item['unit'] or unit_type_from_pricing or 'pcs')
             else:
                 try:
                     price = float(item.get('price', 0.0))
@@ -321,14 +332,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 except (TypeError, ValueError):
                     qty_float = 0.0
                 original_total_cost_for_item = price * qty_float
-                calculated_unit_type = original_unit_from_item
+                calculated_unit_type = item['unit'] or 'pcs'
         else:
             total_price, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True)
             original_total_cost_for_item = total_price if total_price is not None else 0.0
-            calculated_unit_type = unit_type_from_pricing or original_unit_from_item
+            calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
 
-        is_profile_or_accessory = part in PART_NUMBER_MAP.get('profiles', {}) or part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
-        if is_profile_or_accessory and not (is_glass or is_joints_fab_labor):
+        if is_profile or is_accessory and not (is_glass or is_joints_fab_labor):
             total_cost_for_item = original_total_cost_for_item * multiplier
         else:
             total_cost_for_item = original_total_cost_for_item
@@ -348,11 +358,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 reusable_qty_sum = sum(lengths)
                 if lengths:
                     counter = Counter([f"{l:.2f}" for l in lengths])
-                    reuse_lengths_formatted = [f"{length} x{count}" if count > 1 else length for length, count in sorted(counter.items(), key=lambda x: float(x[0]))]
+                    reuse_lengths_formatted = [f"{length} {display_unit} x{count}" if count > 1 else f"{length} {display_unit}" for length, count in sorted(counter.items(), key=lambda x: float(x[0]))]
                     reusable_qty_display_string = ", ".join(reuse_lengths_formatted)
             else:
                 reusable_qty_sum = part_data.get("quantity", 0.0)
-                reusable_qty_display_string = f"{float(reusable_qty_sum):.2f}"
+                reusable_qty_display_string = f"{float(reusable_qty_sum):.2f} {display_unit}"
 
             try:
                 reusable_qty_sum = float(reusable_qty_sum)
@@ -370,20 +380,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 reusable_pct = 0.0
 
             unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(part, finish=item_finish, extra_materials_file=extra_materials_json_path)
-            reusable_cost = reusable_qty_sum * unit_price_for_reuse * multiplier if unit_price_for_reuse is not None and is_profile_or_accessory else reusable_qty_sum * unit_price_for_reuse if unit_price_for_reuse is not None else 0.0
+            reusable_cost = reusable_qty_sum * unit_price_for_reuse * multiplier if unit_price_for_reuse is not None and (is_profile or is_accessory) else reusable_qty_sum * unit_price_for_reuse if unit_price_for_reuse is not None else 0.0
             total_reusable_cost += reusable_cost
             
             if manual and part and part != "N/A":
-                calculated_unit_type = original_unit_from_item or unit_type_for_reusable_calc or calculated_unit_type
+                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (item['unit'] or unit_type_for_reusable_calc or calculated_unit_type)
             else:
-                calculated_unit_type = unit_type_for_reusable_calc or calculated_unit_type
+                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_for_reusable_calc or calculated_unit_type)
         
         final_summary_data.append((
             display,
-            f"{quantity_aggregated:.2f} {calculated_unit_type}",
+            f"{quantity_aggregated:.2f} {display_unit}",
             original_total_cost_for_item,
             total_cost_for_item,
-            f"{reusable_qty_display_string} {calculated_unit_type}" if part and part != "N/A" and not (is_glass or is_joints_fab_labor) else "N/A",
+            reusable_qty_display_string if part and part != "N/A" and not (is_glass or is_joints_fab_labor) else "N/A",
             reusable_pct if not (is_glass or is_joints_fab_labor) else "N/A",
             reusable_cost if not (is_glass or is_joints_fab_labor) else 0.0,
             part
@@ -560,14 +570,16 @@ def generate_excel_report(
             input_data = [
                 ("System Input", elev_data.get("system")),
                 ("Finish", elev_data.get("finish")),
-                ("Elevation Type", elev_name), ("Total Count", elev_data.get("total_count")),
-                ("Bays Wide", elev_data.get("bays_wide")), ("Bays Tall", elev_data.get("bays_tall")),
-                ("Opening Width", elev_data.get("opening_width_inches")),
-                ("Opening Height", elev_data.get("opening_height_inches")),
-                ("Sq Ft per Type", elev_data.get("sqft_per_type")),
-                ("Total Sq Ft", elev_data.get("total_sqft")),
-                ("Perimeter Ft", elev_data.get("perimeter_ft")),
-                ("Total Perimeter Ft", elev_data.get("total_perimeter_ft")),
+                ("Elevation Type", elev_name),
+                ("Total Count", elev_data.get("total_count")),
+                ("Bays Wide", elev_data.get("bays_wide")),
+                ("Bays Tall", elev_data.get("bays_tall")),
+                ("Opening Width", f"{elev_data.get('opening_width_inches'):.2f} ft"),
+                ("Opening Height", f"{elev_data.get('opening_height_inches'):.2f} ft"),
+                ("Sq Ft per Type", f"{elev_data.get('sqft_per_type'):.2f} sqft"),
+                ("Total Sq Ft", f"{elev_data.get('total_sqft'):.2f} sqft"),
+                ("Perimeter Ft", f"{elev_data.get('perimeter_ft'):.2f} ft"),
+                ("Total Perimeter Ft", f"{elev_data.get('total_perimeter_ft'):.2f} ft"),
                 ("Doors", _format_door_summary(elev_data.get("calculated_outputs", [])))
             ]
 
@@ -576,8 +588,11 @@ def generate_excel_report(
                 header_cell = ws.cell(row=current_excel_row + i, column=COL_A, value=header)
                 header_cell.font = Font(bold=True)
                 header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
-                ws.cell(row=current_excel_row + i, column=COL_B, value=value)
-
+                value_cell = ws.cell(row=current_excel_row + i, column=COL_B, value=value)
+                # Left-align "Total Count", "Bays Wide", and "Bays Tall"
+                if header in ["Total Count", "Bays Wide", "Bays Tall"]:
+                    value_cell.alignment = Alignment(horizontal='left')
+            
             output_section_current_row = 1
 
             profiles_for_section, accessories_for_section, other_items_for_section = [], [], []
@@ -591,7 +606,7 @@ def generate_excel_report(
                         other_items_for_section.append(item)
                     elif pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", {}):
+                    elif pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
                         accessories_for_section.append(item)
                     else:
                         other_items_for_section.append(item)
