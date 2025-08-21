@@ -2,50 +2,50 @@
     "1": {
         "system": "YES 45TU FRONT SET(OG)",
         "finish": "Clear",
-        "total_count": 10,
+        "total_count": 1,
         "bays_wide": 1,
         "bays_tall": 1,
-        "opening_width_inches": 10.0,
-        "opening_height_inches": 10.0,
-        "sqft_per_type": 0.6944444444444445,
-        "total_sqft": 6.9444444444444455,
-        "perimeter_ft": 3.3333333333333335,
-        "total_perimeter_ft": 33.333333333333336,
+        "opening_width_inches": 1.0,
+        "opening_height_inches": 1.0,
+        "sqft_per_type": 0.006944444444444444,
+        "total_sqft": 0.006944444444444444,
+        "perimeter_ft": 0.3333333333333333,
+        "total_perimeter_ft": 0.3333333333333333,
         "calculated_outputs": [
             {
                 "description": "End Dam For Sill Flashing",
-                "quantity": 20,
+                "quantity": 2,
                 "part_number": "E1-0199",
                 "type": "accessories",
-                "price": 1.8921599999999998
+                "price": 18.921599999999998
             },
             {
                 "description": "Water Deflector",
-                "quantity": 20,
+                "quantity": 2,
                 "part_number": "E2-0047",
                 "type": "accessories",
-                "price": 3.4747999999999997
+                "price": 34.748
             },
             {
                 "description": "#12 x 1-1/4\u201d PHSMS Type AB, Zinc Plated Steel, For Screw Spline Attachment",
-                "quantity": 80,
+                "quantity": 8,
                 "part_number": "PC-1220",
                 "type": "accessories",
-                "price": 0.13359
+                "price": 1.3358999999999999
             },
             {
                 "description": "#10-24 x 3/8\u201d PHMS, Stainless Steel, For Attachment of Sill to Sill Flashing",
-                "quantity": 30,
+                "quantity": 3,
                 "part_number": "PM-1006-SS",
                 "type": "accessories",
-                "price": 0.9081199999999999
+                "price": 9.081199999999999
             },
             {
                 "description": "#12 x 3/4\u201d UFHSMS Type A, Zinc Plated Steel For End Dam Attachment",
-                "quantity": 40,
+                "quantity": 4,
                 "part_number": "UA-1212",
                 "type": "accessories",
-                "price": 0.70956
+                "price": 7.0956
             },
             {
                 "description": "Setting Block Chair Use with E2-0177 Setting Block at Sill",
@@ -62,17 +62,17 @@
             },
             {
                 "description": "Setting Block For Sill",
-                "quantity": 20,
+                "quantity": 2,
                 "part_number": "E2-0177",
                 "type": "accessories",
-                "price": 2.24694
+                "price": 22.4694
             },
             {
                 "description": "1-1/8\u201d \u201cW\u201d Side Block For Jamb",
-                "quantity": 20,
+                "quantity": 2,
                 "part_number": "E2-0545",
                 "type": "accessories",
-                "price": 4.2924
+                "price": 42.924
             },
             {
                 "description": "1/2\u201d \u201cW\u201d Side Block For Intermediate Vertical Deep Pocket",
@@ -82,156 +82,75 @@
             },
             {
                 "description": "Setting Block For Intermediate Horizontal",
-                "quantity": 20,
+                "quantity": 2,
                 "part_number": "E2-0611",
                 "type": "accessories",
-                "price": 2.7813
+                "price": 27.813
             },
             {
                 "description": "Sill/Jamb Screw Spline Assembly",
-                "quantity": [
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667,
-                    1.6666666666666667
-                ],
+                "quantity": 0.16666666666666666,
                 "part_number": "BE9-2513",
                 "type": "profiles",
-                "price": 14.681759999999999
+                "price": 1468.1760000000002
             },
             {
                 "description": "Sill/Jamb Screw Spline Assembly",
-                "quantity": [
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334
-                ],
+                "quantity": 0.08333333333333333,
                 "part_number": "BE9-2513",
                 "type": "profiles",
-                "price": 29.363519999999998
+                "price": 0.0
             },
             {
                 "description": "Flush Filler",
-                "quantity": [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0
-                ],
+                "quantity": 0.0,
                 "part_number": "E9-2512",
                 "type": "profiles"
             },
             {
                 "description": "Two Piece Mullion Screw Spline Assembly",
-                "quantity": [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0
-                ],
+                "quantity": 0.0,
                 "part_number": "BE9-2511",
                 "type": "profiles"
             },
             {
                 "description": "Horizontal Screw Spline Assembly",
-                "quantity": [
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334
-                ],
+                "quantity": 0.08333333333333333,
                 "part_number": "BE9-2515",
                 "type": "profiles",
-                "price": 36.932159999999996
+                "price": 3693.216
             },
             {
                 "description": "Head",
-                "quantity": [
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334
-                ],
+                "quantity": 0.08333333333333333,
                 "part_number": "BE9-2514",
                 "type": "profiles",
-                "price": 31.115519999999997
+                "price": 3111.552
             },
             {
                 "description": "Thermal Sill Flashing",
-                "quantity": [
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334
-                ],
+                "quantity": 0.08333333333333333,
                 "part_number": "BE9-2578",
                 "type": "profiles",
-                "price": 18.501119999999997
+                "price": 1850.1119999999999
             },
             {
                 "description": "Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
-                "quantity": [
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334,
-                    0.8333333333333334
-                ],
+                "quantity": 0.08333333333333333,
                 "part_number": "E9-2519",
                 "type": "profiles",
-                "price": 5.960303999999999
+                "price": 596.0304
+            },
+            {
+                "description": "Glazing Gasket For 1\u201d Glazing",
+                "quantity": 0.6666666666666666,
+                "part_number": "E2-0052",
+                "type": "accessories",
+                "price": 0.7095600000000001
             },
             {
                 "description": "Glass Area (Adjusted)",
-                "quantity": 2.5,
+                "quantity": 0.0625,
                 "part_number": "N/A",
                 "type": "Glass",
                 "price": 10.5,
@@ -248,239 +167,32 @@
             },
             {
                 "description": "Joints Fabrication Labor",
-                "quantity": 40,
+                "quantity": 4,
                 "part_number": "N/A",
                 "type": "Fabrication",
                 "price": 15.0,
                 "unit": "joints",
                 "manual": true
-            },
-            {
-                "description": "Gasket",
-                "quantity": 66.66666666666667,
-                "part_number": "E2-0052",
-                "type": "Glazing Gasket",
-                "unit": "ft",
-                "manual": true,
-                "price": 3.5477999999999996
             }
         ],
         "material_impact": [
             {
                 "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
+                "requested_qty": 0.16666666666666666,
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 22.333333333333332,
+                "leftover_generated_qty_or_length": 23.833333333333332,
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 419.0,
                 "type_processed_as": "profile",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "22.33 ft"
+                "leftover_generated_qty_or_length_display": "23.83 ft"
             },
             {
                 "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
+                "requested_qty": 0.08333333333333333,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 1.6666666666666667,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 1.6666666666666667,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 23.166666666666668,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 419.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "23.17 ft"
-            },
-            {
-                "part_number": "BE9-2513",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
+                "used_from_leftover_qty_or_length": 0.08333333333333333,
                 "cost_incurred": 0.0,
                 "type_processed_as": "profile",
                 "finish": "Clear",
@@ -488,204 +200,6 @@
             },
             {
                 "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2512",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
-                "requested_qty": 0.0,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2511",
                 "requested_qty": 0.0,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
@@ -708,498 +222,102 @@
             },
             {
                 "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
+                "requested_qty": 0.08333333333333333,
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 23.166666666666668,
+                "leftover_generated_qty_or_length": 23.916666666666668,
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 527.0,
                 "type_processed_as": "profile",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "23.17 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2515",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "23.92 ft"
             },
             {
                 "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
+                "requested_qty": 0.08333333333333333,
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 23.166666666666668,
+                "leftover_generated_qty_or_length": 23.916666666666668,
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 444.0,
                 "type_processed_as": "profile",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "23.17 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2514",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "23.92 ft"
             },
             {
                 "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
+                "requested_qty": 0.08333333333333333,
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 23.166666666666668,
+                "leftover_generated_qty_or_length": 23.916666666666668,
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 264.0,
                 "type_processed_as": "profile",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "23.17 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "BE9-2578",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "23.92 ft"
             },
             {
                 "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
+                "requested_qty": 0.08333333333333333,
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 23.166666666666668,
+                "leftover_generated_qty_or_length": 23.916666666666668,
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 85.05,
                 "type_processed_as": "profile",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "23.17 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
-            },
-            {
-                "part_number": "E9-2519",
-                "requested_qty": 0.8333333333333334,
-                "purchased_qty_or_length": 0.0,
-                "leftover_generated_qty_or_length": 0.0,
-                "used_from_leftover_qty_or_length": 0.8333333333333334,
-                "cost_incurred": 0.0,
-                "type_processed_as": "profile",
-                "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "23.92 ft"
             },
             {
                 "part_number": "E1-0199",
-                "requested_qty": 20,
+                "requested_qty": 2,
                 "purchased_qty_or_length": 20,
-                "leftover_generated_qty_or_length": 0,
+                "leftover_generated_qty_or_length": 18,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 64.8,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "0.00 pcs"
+                "leftover_generated_qty_or_length_display": "18.00 pcs"
             },
             {
                 "part_number": "E2-0047",
-                "requested_qty": 20,
+                "requested_qty": 2,
                 "purchased_qty_or_length": 50,
-                "leftover_generated_qty_or_length": 30,
+                "leftover_generated_qty_or_length": 48,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 119.0,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "30.00 pcs"
+                "leftover_generated_qty_or_length_display": "48.00 pcs"
             },
             {
                 "part_number": "PC-1220",
-                "requested_qty": 80,
+                "requested_qty": 8,
                 "purchased_qty_or_length": 100,
-                "leftover_generated_qty_or_length": 20,
+                "leftover_generated_qty_or_length": 92,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 18.3,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "20.00 pcs"
+                "leftover_generated_qty_or_length_display": "92.00 pcs"
             },
             {
                 "part_number": "PM-1006-SS",
-                "requested_qty": 30,
+                "requested_qty": 3,
                 "purchased_qty_or_length": 100,
-                "leftover_generated_qty_or_length": 70,
+                "leftover_generated_qty_or_length": 97,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 46.65,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "70.00 pcs"
+                "leftover_generated_qty_or_length_display": "97.00 pcs"
             },
             {
                 "part_number": "UA-1212",
-                "requested_qty": 40,
+                "requested_qty": 4,
                 "purchased_qty_or_length": 100,
-                "leftover_generated_qty_or_length": 60,
+                "leftover_generated_qty_or_length": 96,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 48.6,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "60.00 pcs"
+                "leftover_generated_qty_or_length_display": "96.00 pcs"
             },
             {
                 "part_number": "E1-2530",
@@ -1225,25 +343,25 @@
             },
             {
                 "part_number": "E2-0177",
-                "requested_qty": 20,
+                "requested_qty": 2,
                 "purchased_qty_or_length": 50,
-                "leftover_generated_qty_or_length": 30,
+                "leftover_generated_qty_or_length": 48,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 76.95,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "30.00 pcs"
+                "leftover_generated_qty_or_length_display": "48.00 pcs"
             },
             {
                 "part_number": "E2-0545",
-                "requested_qty": 20,
+                "requested_qty": 2,
                 "purchased_qty_or_length": 50,
-                "leftover_generated_qty_or_length": 30,
+                "leftover_generated_qty_or_length": 48,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 147.0,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "30.00 pcs"
+                "leftover_generated_qty_or_length_display": "48.00 pcs"
             },
             {
                 "part_number": "E2-0154",
@@ -1258,22 +376,33 @@
             },
             {
                 "part_number": "E2-0611",
-                "requested_qty": 20,
+                "requested_qty": 2,
                 "purchased_qty_or_length": 50,
-                "leftover_generated_qty_or_length": 30,
+                "leftover_generated_qty_or_length": 48,
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 95.25,
                 "type_processed_as": "accessory",
                 "finish": "Clear",
-                "leftover_generated_qty_or_length_display": "30.00 pcs"
+                "leftover_generated_qty_or_length_display": "48.00 pcs"
+            },
+            {
+                "part_number": "E2-0052",
+                "requested_qty": 0.6666666666666666,
+                "purchased_qty_or_length": 1,
+                "leftover_generated_qty_or_length": 0.33333333333333337,
+                "used_from_leftover_qty_or_length": 0,
+                "cost_incurred": 0.81,
+                "type_processed_as": "accessory",
+                "finish": "Clear",
+                "leftover_generated_qty_or_length_display": "0.33 pcs"
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 2.5,
+                "requested_qty": 0.0625,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 26.25,
+                "cost_incurred": 0.65625,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00 sqft"
@@ -1291,25 +420,14 @@
             },
             {
                 "part_number": "N/A - Manual",
-                "requested_qty": 40,
+                "requested_qty": 4,
                 "purchased_qty_or_length": 0.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 600.0,
+                "cost_incurred": 60.0,
                 "type_processed_as": "manual_no_pn",
                 "finish": null,
                 "leftover_generated_qty_or_length_display": "0.00 joints"
-            },
-            {
-                "part_number": "E2-0052",
-                "requested_qty": 66.66666666666667,
-                "purchased_qty_or_length": 500.0,
-                "leftover_generated_qty_or_length": 433.3333333333333,
-                "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 405.0,
-                "type_processed_as": "profile",
-                "finish": null,
-                "leftover_generated_qty_or_length_display": "433.33 pcs"
             }
         ]
     }

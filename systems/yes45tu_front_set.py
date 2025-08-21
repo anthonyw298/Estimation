@@ -64,6 +64,7 @@ def calculate_yes45tu_quantities(
         ("BE9-2514", calculate_og_head_h(opening_width, total_count)),
         ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
         ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
+        ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count))
     ]
 
     # --- Total area calculations ---
@@ -139,14 +140,6 @@ def calculate_yes45tu_quantities(
             "type": "Fabrication",
             'price': 15.0,
             'unit': 'joints',
-            'manual': True
-        },
-        {
-            "description": "Gasket",
-            "quantity": calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count),
-            "part_number": "E2-0052",
-            "type": "Glazing Gasket",
-            'unit': 'ft',
             'manual': True
         }
     ]
