@@ -54,45 +54,6 @@ def _clean_trailing_blank_rows(ws, start_row):
         else: current_row += 1
     if rows_deleted > 0: print(f"Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
 
-def _recalculate_running_grand_total(ws, price_col):
-    """Recalculates and updates the 'RUNNING GRAND TOTAL' and 'DISCOUNTED TOTAL' in the worksheet."""
-    for r in range(ws.max_row, 0, -1):
-        if isinstance(ws.cell(row=r, column=price_col).value, str) and ws.cell(row=r, column=price_col).value.strip() == "RUNNING GRAND TOTAL":
-            ws.delete_rows(r, 4)
-            break
-
-    running_grand_total = 0.0
-    original_running_grand_total = 0.0
-    last_system_total_row = None
-    for r in range(1, ws.max_row + 1):
-        if ws.cell(row=r, column=price_col).value == "DISCOUNTED SYSTEM TOTAL":
-            last_system_total_row = r
-            val = ws.cell(row=r + 1, column=price_col).value
-            if isinstance(val, (float, int)):
-                running_grand_total += val
-            elif isinstance(val, str) and val.strip().startswith("$"):
-                try:
-                    running_grand_total += float(val.strip("$").replace(",", ""))
-                except ValueError:
-                    pass
-        if ws.cell(row=r, column=price_col).value == "ORIGINAL ELEVATION TOTAL":
-            val = ws.cell(row=r + 1, column=price_col).value
-            if isinstance(val, (float, int)):
-                original_running_grand_total += val
-            elif isinstance(val, str) and val.strip().startswith("$"):
-                try:
-                    original_running_grand_total += float(val.strip("$").replace(",", ""))
-                except ValueError:
-                    pass
-
-    new_gt_row = (last_system_total_row + 3) if last_system_total_row else (ws.max_row + 2)
-
-    if running_grand_total > 0 or last_system_total_row is not None:
-        ws.cell(row=new_gt_row, column=price_col, value="ORIGINAL RUNNING GRAND TOTAL").font = Font(bold=True)
-        ws.cell(row=new_gt_row + 1, column=price_col, value=original_running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=new_gt_row + 2, column=price_col, value="RUNNING GRAND TOTAL").font = Font(bold=True)
-        ws.cell(row=new_gt_row + 3, column=price_col, value=running_grand_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier):
     """Writes a section of calculated outputs to the worksheet."""
     if not items: return start_output_row, []
@@ -375,7 +336,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 quantity_aggregated_f = 0.0
 
             if reusable_qty_sum > 0:
-                reusable_pct = min((quantity_aggregated_f / reusable_qty_sum) * 100, 100.0)
+                reusable_pct = min((reusable_qty_sum / (quantity_aggregated_f + reusable_qty_sum)) * 100, 100.0)
             else:
                 reusable_pct = 0.0
 
