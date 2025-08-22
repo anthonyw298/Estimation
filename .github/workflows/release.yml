@@ -1,0 +1,31 @@
+name: Auto Release Main.py
+
+# Trigger workflow only on new tags
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # e.g., v1.0.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload main.py to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: main.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+#git tag v1.0.0
+#git push origin v1.0.0
