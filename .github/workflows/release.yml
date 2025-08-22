@@ -24,3 +24,4 @@ jobs:
           files: main.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#after git add .,git commit,git push, so git tag -a vx.x.x -m 'comment',git push origin vx.x.x
