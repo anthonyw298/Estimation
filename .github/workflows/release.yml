@@ -6,6 +6,11 @@ on:
     tags:
       - 'v*.*.*'  # e.g., v1.0.0
 
+permissions:
+  contents: write   # allows pushing/updating files
+  packages: write   # optional, if you need packages
+  releases: write   # explicitly allows creating/updating releases
+
 jobs:
   release:
     runs-on: ubuntu-latest
