@@ -3,26 +3,23 @@ name: Auto Release main.py
 on:
   push:
     tags:
-      - 'v*.*.*'  # e.g., v1.0.0
-
-permissions:
-  contents: write   # For checking out the repo
-  releases: write   # For creating/updating releases and uploading assets
+      - 'v*.*.*'  # Trigger only on tags like v1.0.0
 
 jobs:
   release:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write   # Needed to checkout and create release
     steps:
       # Checkout the repository
-      - uses: actions/checkout@v4  # Updated to latest version
+      - uses: actions/checkout@v4
 
-      # Create release and upload main.py
-      - name: Create Release and Upload main.py
-        uses: softprops/action-gh-release@v2  # Use latest version
+      # Create or update the release and upload main.py
+      - name: Create or Update Release with main.py
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          update: true  # Allows updating existing release
-          files: main.py  # Path to main.py in repo root
+          update: true
+          files: main.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
