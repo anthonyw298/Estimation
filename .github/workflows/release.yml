@@ -3,13 +3,14 @@ name: Auto Release main.py
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger only on tags like v1.0.0
+      - 'v*.*.*'  # Trigger on tags like v1.0.0
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # Needed to checkout and create release
+      contents: write   # Needed for checkout and release actions
+
     steps:
       # Checkout the repository
       - uses: actions/checkout@v4
