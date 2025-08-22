@@ -638,11 +638,12 @@ def generate_excel_report(
         if completion_callback: completion_callback(f"Error saving report: {save_err}")
         return
 
-    try:
-        with open(elevations_json_path, 'w') as f:
-            json.dump(current_saved_elevations, f, indent=4)
-    except IOError as e:
-        print(f"Error saving all elevations to {elevations_json_path} after rebuild: {e}")
+    if mode != "export_all":
+        try:
+            with open(elevations_json_path, 'w') as f:
+                json.dump(current_saved_elevations, f, indent=4)
+        except IOError as e:
+            print(f"Error saving all elevations to {elevations_json_path} after rebuild: {e}")
 
     if completion_callback:
         completion_callback()
