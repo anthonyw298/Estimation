@@ -1,4 +1,4 @@
-name: Auto Release Main.py
+name: Auto Release main.py
 
 # Trigger workflow only on new tags
 on:
@@ -11,21 +11,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout the repository
       - uses: actions/checkout@v3
 
-      - name: Create Release
+      # Create or update the GitHub release
+      - name: Create or Update Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
+          allowUpdates: true       # Allows updating if release already exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload main.py to Release
+      # Upload main.py to the release
+      - name: Upload main.py
         uses: softprops/action-gh-release@v1
         with:
-          files: main.py
+          files: main.py           # Path relative to repo root
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-#git tag vX.X.X
-#git push origin vX.X.X
