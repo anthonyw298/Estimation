@@ -24,4 +24,8 @@ jobs:
           files: main.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#after git add .,git commit,git push, so git tag -a vx.x.x -m 'comment',git push origin vx.x.x
+#normally just do git add .,git commit,git push
+#git add .github/workflows/release.yml main.py
+#git commit -m "Add improved auto-release workflow"
+#git push origin main
+#git tag -a vx.x.x -m 'comment',git push origin vx.x.x
