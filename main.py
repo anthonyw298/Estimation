@@ -1,4 +1,3 @@
-
 import customtkinter as ctk
 import tkinter as tk
 import json
@@ -172,6 +171,7 @@ class App(ctk.CTk):
         button_frame.grid(row=self.left_row, column=0, columnspan=2, pady=(20, 10))
         ctk.CTkButton(button_frame, text="Save Elevation", command=self.save_elevation_type, font=self.button_font, fg_color=self.accent_color, hover_color=self.accent_hover).pack(side="left", padx=10)
         ctk.CTkButton(button_frame, text="Delete Elevation", fg_color=self.error_color, hover_color="#8b1a1a", command=self.delete_elevation_type, font=self.button_font).pack(side="left", padx=10)
+        ctk.CTkButton(button_frame, text="Generate Extra Report", command=self.generate_unique_report, font=self.button_font, fg_color=self.accent_color, hover_color=self.accent_hover).pack(side="left", padx=10)
         self.left_row += 1
 
         right_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
@@ -860,6 +860,45 @@ class App(ctk.CTk):
     def update_status(self, message, color):
         """Updates the status label with a new message and color."""
         self.elevation_status_label.configure(text=message, text_color=color)
+
+    def generate_unique_report(self):
+        """Generates a unique Excel report snapshot for the current project."""
+        if not self.current_project_name:
+            self.update_status("Error: No project selected.", self.error_color)
+            return
+
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
+        unique_excel_path = f"{base_name}_Report_{timestamp}.xlsx"
+
+        try:
+            generate_excel_report(
+                excel_path=unique_excel_path,
+                elevations_json_path=self.current_elevations_json_path,
+                extra_materials_json_path=self.current_extra_materials_json_path,
+                system_input="",
+                finish_input="",
+                elevation_type="",
+                total_count=0,
+                bays_wide=0,
+                bays_tall=0,
+                opening_width=0,
+                opening_height=0,
+                sqft_per_type=0,
+                total_sqft=0,
+                perimeter_ft=0,
+                total_perimeter_ft=0,
+                calculated_outputs=[],
+                completion_callback=None,
+                reset=False,
+                delete_elevation_type=None,
+                doors=None,
+                mode="export_all"
+            )
+            self.update_status(f"Unique report generated at {unique_excel_path}", self.success_color)
+        except Exception as e:
+            self.update_status(f"Error generating unique report: {e}", self.error_color)
 
 if __name__ == "__main__":
     app = App()
