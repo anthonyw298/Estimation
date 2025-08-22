@@ -1,15 +1,13 @@
 name: Auto Release main.py
 
-# Trigger workflow only on new tags
 on:
   push:
     tags:
       - 'v*.*.*'  # e.g., v1.0.0
 
 permissions:
-  contents: write   # allows pushing/updating files
-  packages: write   # optional, if you need packages
-  releases: write   # explicitly allows creating/updating releases
+  contents: write   # For checking out the repo
+  releases: write   # For creating/updating releases and uploading assets
 
 jobs:
   release:
@@ -17,21 +15,14 @@ jobs:
 
     steps:
       # Checkout the repository
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4  # Updated to latest version
 
-      # Create or update the GitHub release
-      - name: Create or Update Release
-        uses: softprops/action-gh-release@v1
+      # Create release and upload main.py
+      - name: Create Release and Upload main.py
+        uses: softprops/action-gh-release@v2  # Use latest version
         with:
           tag_name: ${{ github.ref_name }}
-          allowUpdates: true       # Allows updating if release already exists
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Upload main.py to the release
-      - name: Upload main.py
-        uses: softprops/action-gh-release@v1
-        with:
-          files: main.py           # Path relative to repo root
+          update: true  # Allows updating existing release
+          files: main.py  # Path to main.py in repo root
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
