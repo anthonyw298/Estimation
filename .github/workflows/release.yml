@@ -1,9 +1,10 @@
-name: Auto Release main.py
+name: Auto Release main.exe
 
+# Trigger workflow on new tags
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on tags like v1.0.0
+      - 'v*.*.*'  # e.g., v1.0.0
 
 jobs:
   release:
@@ -12,20 +13,31 @@ jobs:
       contents: write   # Needed for checkout and release actions
 
     steps:
-      # Checkout the repository
+      # 1. Checkout the repository
       - uses: actions/checkout@v4
 
-      # Create or update the release and upload main.py
-      - name: Create or Update Release with main.py
+      # 2. Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # 3. Install dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      # 4. Build executable with PyInstaller
+      - name: Build main.exe
+        run: pyinstaller --onefile main.py
+
+      # 5. Create or update the GitHub release and upload main.exe
+      - name: Create or Update Release with main.exe
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           update: true
-          files: main.py
+          files: dist/main.exe   # PyInstaller outputs here
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#normally just do git add .,git commit,git push
-#git add .github/workflows/release.yml main.py
-#git commit -m "Add improved auto-release workflow"
-#git push origin main
-#git tag -a vx.x.x -m 'comment',git push origin vx.x.x
