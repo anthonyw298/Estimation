@@ -37,7 +37,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          update: true
           files: dist/main.exe   # PyInstaller outputs here
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
