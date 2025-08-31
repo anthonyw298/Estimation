@@ -170,7 +170,7 @@ def _delete_summary_section(ws):
 
 def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     """
-    Reads elevation data, aggregates quantities and prices by part number,
+    Reads elevation data, aggregates quantities and prices by part number across all elevations,
     and writes a clean summary section into the provided worksheet, including reusable material data.
     """
     try:
@@ -190,28 +190,39 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         print("ℹ️ No data found, summary cleared if existed.")
         return
 
+    # Step 1: Calculate full_running_grand_total for multiplier
     full_running_grand_total = 0.0
-    total_reusable_cost = 0.0
-    total_discounted_price = 0.0
     for elev_key, elev in data.items():
-        elevation_finish = elev.get('finish')
+        elevation_finish = elev.get('finish', '').lower()
         for output in elev.get('calculated_outputs', []):
             qty = output.get('quantity', 0)
             qty = sum(qty) if isinstance(qty, list) else qty
-            price, _, _ = get_price_by_part(
-                output.get('part_number'), 
-                qty, 
-                finish=elevation_finish, 
-                extra_materials_file=extra_materials_json_path, 
-                summary=True
-            )
-            full_running_grand_total += price if price is not None else 0.0
+            manual = output.get('manual', False)
+            part = output.get('part_number', '').strip()
+            item_type = output.get('type', '').lower()
+            price = 0.0
+            if manual or part == "GLASS_AREA" or item_type in ['glass', 'joints_fab_labor', 'door', 'doors']:
+                price = output.get('price', 0.0) * qty
+                print(f"Debug: Elevation {elev_key}, Part {part}, Type {item_type}, Manual: {manual}, Qty: {qty}, Price: {output.get('price', 0.0)}, Total: {price}")
+            else:
+                price, _, _ = get_price_by_part(
+                    part,
+                    qty,
+                    finish=elevation_finish,
+                    extra_materials_file=extra_materials_json_path,
+                    summary=True,
+                    group=True if manual else False
+                )
+                price = price if price is not None else 0.0
+            full_running_grand_total += price
 
     multiplier = _get_multiplier(full_running_grand_total)
+    print(f"Debug: Full running grand total: {full_running_grand_total}, Multiplier: {multiplier}")
 
+    # Step 2: Aggregate quantities and prices across all elevations
     aggregated = {}
-    for elev in data.values():
-        elevation_finish = elev.get('finish')
+    for elev_key, elev in data.items():
+        elevation_finish = elev.get('finish', '').lower()
         for output in elev.get('calculated_outputs', []):
             part = output.get('part_number', '').strip()
             desc = output.get('description', '').strip()
@@ -222,17 +233,19 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
             is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
             is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor'
+            is_door = output.get('type', '').lower() in ['door', 'doors']
 
-            if manual:
+            # Create a unique key for aggregation
+            if manual or is_glass or is_joints_fab_labor or is_door:
                 if part and part != "N/A":
-                    key = f"MANUAL_{part}-{elevation_finish.lower()}" if is_profile_part and elevation_finish else f"MANUAL_{part}"
-                    display = f"{desc} ({part} - {elevation_finish})" if is_profile_part and elevation_finish else f"{desc} ({part})"
+                    key = f"MANUAL_{part}-{elevation_finish}" if (is_profile_part or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"MANUAL_{part}"
+                    display = f"{desc} ({part} - {elevation_finish})" if (is_profile_part or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"{desc} ({part})"
                 else:
                     key = f"MANUAL_NO_PN_{desc}"
                     display = desc
             else:
-                if is_profile_part and elevation_finish:
-                    key = f"{part}-{elevation_finish.lower()}"
+                if (is_profile_part or is_joints_fab_labor or is_door or is_glass) and elevation_finish:
+                    key = f"{part}-{elevation_finish}"
                     display = f"{part} ({elevation_finish})"
                 else:
                     key = part
@@ -246,17 +259,22 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     'part_number': part,
                     'manual': manual,
                     'unit': 'ft' if is_profile_part else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
-                    'finish': elevation_finish if is_profile_part or (manual and part and part != "N/A" and is_profile_part) else None,
+                    'finish': elevation_finish if (is_profile_part or is_joints_fab_labor or is_door or is_glass) else '',
                     'is_glass': is_glass,
-                    'is_joints_fab_labor': is_joints_fab_labor
+                    'is_joints_fab_labor': is_joints_fab_labor,
+                    'is_door': is_door,
+                    'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
                 }
 
             try:
                 aggregated[key]['quantity'] += float(qty_for_aggregation)
             except (TypeError, ValueError):
-                pass
+                print(f"Debug: Failed to aggregate quantity for {key}, Qty: {qty_for_aggregation}")
 
+    # Step 3: Calculate prices for aggregated items
     final_summary_data = []
+    total_discounted_price = 0.0
+    total_reusable_cost = 0.0
     for key, item in aggregated.items():
         quantity_aggregated = item['quantity']
         manual = item['manual']
@@ -264,12 +282,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         display = item['display']
         is_profile = part in PART_NUMBER_MAP.get('profiles', {})
         is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
-        is_glass = item.get('is_glass', False)
-        is_joints_fab_labor = item.get('is_joints_fab_labor', False)
-        item_finish = item.get('finish')
+        is_glass = item['is_glass']
+        is_joints_fab_labor = item['is_joints_fab_labor']
+        is_door = item['is_door']
+        item_finish = item['finish']
 
         display_unit = 'ft' if is_profile else 'pcs' if is_accessory else item['unit']
-
         original_total_cost_for_item = 0.0
         total_cost_for_item = 0.0
         calculated_unit_type = display_unit
@@ -278,42 +296,37 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         reusable_cost = 0.0
         reusable_qty_display_string = "N/A"
 
-        if manual:
-            if part and part != "N/A":
-                price_from_part, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True, group=True)
-                original_total_cost_for_item = price_from_part if price_from_part is not None else (item.get('price', 0.0) * quantity_aggregated)
-                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (item['unit'] or unit_type_from_pricing or 'pcs')
-            else:
-                try:
-                    price = float(item.get('price', 0.0))
-                except (TypeError, ValueError):
-                    price = 0.0
-                try:
-                    qty_float = float(quantity_aggregated)
-                except (TypeError, ValueError):
-                    qty_float = 0.0
-                original_total_cost_for_item = price * qty_float
-                calculated_unit_type = item['unit'] or 'pcs'
+        if manual or is_glass or is_joints_fab_labor or is_door:
+            price = float(item.get('price', 0.0))
+            qty_float = float(quantity_aggregated)
+            original_total_cost_for_item = price * qty_float
+            calculated_unit_type = item['unit'] or ('sqft' if is_glass else 'pcs')
+            print(f"Debug: Aggregated {key}, Price: {price}, Qty: {qty_float}, Total Cost: {original_total_cost_for_item}")
         else:
-            total_price, unit_type_from_pricing, _ = get_price_by_part(part, quantity_aggregated, finish=item_finish, extra_materials_file=extra_materials_json_path, summary=True)
+            total_price, unit_type_from_pricing, _ = get_price_by_part(
+                part,
+                quantity_aggregated,
+                finish=item_finish,
+                extra_materials_file=extra_materials_json_path,
+                summary=True
+            )
             original_total_cost_for_item = total_price if total_price is not None else 0.0
             calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
 
-        if is_profile or is_accessory and not (is_glass or is_joints_fab_labor):
+        if is_profile or is_accessory:
             total_cost_for_item = original_total_cost_for_item * multiplier
         else:
             total_cost_for_item = original_total_cost_for_item
 
         total_discounted_price += total_cost_for_item
 
-        if part and part != "N/A" and not (is_glass or is_joints_fab_labor):
+        # Calculate reusable material data for profiles and accessories only
+        if part and part != "N/A" and (is_profile or is_accessory):
             extra_materials_key_for_reuse = part
-            is_profile_part_for_reuse = part in PART_NUMBER_MAP.get('profiles', {})
-            if is_profile_part_for_reuse and item_finish:
-                extra_materials_key_for_reuse = f"{part}-{item_finish.lower()}"
+            if is_profile and item_finish:
+                extra_materials_key_for_reuse = f"{part}-{item_finish}"
 
             part_data = extra_materials.get(extra_materials_key_for_reuse, {})
-            
             if part_data.get("length_pieces"):
                 lengths = [float(x) for x in part_data["length_pieces"] if isinstance(x, (int, float, str))]
                 reusable_qty_sum = sum(lengths)
@@ -335,31 +348,34 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             except (TypeError, ValueError):
                 quantity_aggregated_f = 0.0
 
-            if reusable_qty_sum > 0:
+            if reusable_qty_sum > 0 and quantity_aggregated_f > 0:
                 reusable_pct = min((reusable_qty_sum / (quantity_aggregated_f + reusable_qty_sum)) * 100, 100.0)
             else:
                 reusable_pct = 0.0
 
-            unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(part, finish=item_finish, extra_materials_file=extra_materials_json_path)
-            reusable_cost = reusable_qty_sum * unit_price_for_reuse * multiplier if unit_price_for_reuse is not None and (is_profile or is_accessory) else reusable_qty_sum * unit_price_for_reuse if unit_price_for_reuse is not None else 0.0
+            unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(
+                part, finish=item_finish, extra_materials_file=extra_materials_json_path
+            )
+            reusable_cost = (
+                reusable_qty_sum * unit_price_for_reuse * multiplier
+                if unit_price_for_reuse is not None
+                else 0.0
+            )
             total_reusable_cost += reusable_cost
-            
-            if manual and part and part != "N/A":
-                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (item['unit'] or unit_type_for_reusable_calc or calculated_unit_type)
-            else:
-                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_for_reusable_calc or calculated_unit_type)
-        
+            print(f"Debug: Reusable for {key}, Qty: {reusable_qty_sum}, Pct: {reusable_pct}, Cost: {reusable_cost}")
+
         final_summary_data.append((
             display,
             f"{quantity_aggregated:.2f} {display_unit}",
             original_total_cost_for_item,
             total_cost_for_item,
-            reusable_qty_display_string if part and part != "N/A" and not (is_glass or is_joints_fab_labor) else "N/A",
-            reusable_pct if not (is_glass or is_joints_fab_labor) else "N/A",
-            reusable_cost if not (is_glass or is_joints_fab_labor) else 0.0,
+            reusable_qty_display_string,
+            reusable_pct if (is_profile or is_accessory) else "N/A",
+            reusable_cost if (is_profile or is_accessory) else 0.0,
             part
         ))
 
+    # Step 4: Write to worksheet
     start_row = 1
     if not final_summary_data:
         print("ℹ️ Nothing to summarize.")
@@ -379,15 +395,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         ws.cell(row=idx, column=2, value=qty_disp)
         ws.cell(row=idx, column=3, value=original_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=idx, column=4, value=total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-
-        if part and part != "N/A" and not (item.get('is_glass', False) or item.get('is_joints_fab_labor', False)):
-            ws.cell(row=idx, column=5, value=reuse_qty_disp)
-            ws.cell(row=idx, column=6, value=f"{reuse_pct:.2f}%")
-            ws.cell(row=idx, column=7, value=reuse_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        else:
-            ws.cell(row=idx, column=5, value="N/A")
-            ws.cell(row=idx, column=6, value="N/A").number_format = numbers.FORMAT_TEXT
-            ws.cell(row=idx, column=7, value="").number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=idx, column=5, value=reuse_qty_disp)
+        ws.cell(row=idx, column=6, value=f"{reuse_pct:.2f}%" if isinstance(reuse_pct, (int, float)) else reuse_pct)
+        ws.cell(row=idx, column=7, value=reuse_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
     reuse_total = total_reusable_cost
     rg_total_row = start_row + len(final_summary_data) + 1
@@ -396,15 +406,14 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     ws.cell(row=rg_total_row, column=7, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
-
     ws.cell(row=rg_total_row + 1, column=6, value="Overall Waste %").font = Font(bold=True)
     ws.cell(row=rg_total_row + 1, column=7, value=f"{reuse_pct_of_gt:.2f}%")
 
     _autofit_columns(ws, 1, 7, start_row, rg_total_row + 1)
     _clean_trailing_blank_rows(ws, 1)
 
-    print(f"✅ Summary updated in sheet.")
-
+    print(f"✅ Summary updated with totals across all elevations.")
+    
 def _format_door_summary(calculated_outputs):
     if not calculated_outputs:
         return ""
