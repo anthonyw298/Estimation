@@ -12,7 +12,7 @@ from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_total_door_area, calculate_glass_to_add_back
 
 # Define a directory to store all project-related files, now a hidden folder
-PROJECTS_DIR = ".projects"
+PROJECTS_DIR = ".files"
 MASTER_PROJECT_LIST_FILE = os.path.join(PROJECTS_DIR, "projects_list.json")
 
 class App(ctk.CTk):

@@ -476,7 +476,7 @@ def generate_excel_report(
 
     # Corrected path logic: all working files go into the private .projects folder
     project_root = os.getcwd()
-    private_projects_dir = os.path.join(project_root, '.projects')
+    private_projects_dir = os.path.join(project_root, '.files')
     public_reports_dir = os.path.join(project_root, 'reports')
 
     os.makedirs(private_projects_dir, exist_ok=True)
