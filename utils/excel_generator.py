@@ -10,7 +10,7 @@ from utils.pricing import get_price_by_part, reverse_material_impact, load_extra
 from data.part_number import PART_NUMBER_MAP
 from utils.formulas import calculate_door_info
 
-# --- Helper Functions (Your existing helper functions are assumed to be here) ---
+# --- Helper Functions ---
 
 def _get_multiplier(running_grand_total):
     """Returns multiplier based on running grand total."""
@@ -81,7 +81,6 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         individual_quantities = qty_raw if isinstance(qty_raw, list) else [qty_raw]
         qty_sum = sum(individual_quantities)
 
-        # Force units: profiles use 'ft', accessories use 'pcs', others use item unit or default
         unit_type = 'ft' if is_profile else 'pcs' if is_accessory else item.get('unit', 'pcs' if not is_glass else 'sqft')
         display_unit = unit_type
 
@@ -121,7 +120,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                 calculated_unit_type = unit_type if is_profile or is_accessory else (unit_from_pricing or item.get('unit', 'pcs'))
 
             item_total_cost_for_display += total_item_price_single_cut
-            original_item_total_cost += original_item_total_cost
+            original_item_total_cost += total_item_price_single_cut
 
             if material_impact_details:
                 leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
@@ -241,7 +240,6 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor'
             is_door = output.get('type', '').lower() in ['door', 'doors']
 
-            # Determine category
             if is_profile:
                 category = 'PROFILES'
             elif is_accessory:
@@ -253,9 +251,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             elif is_joints_fab_labor:
                 category = 'LABOR'
             else:
-                continue  # Skip items that don't fit these categories
+                continue
 
-            # Create a unique key for aggregation
             if manual or is_glass or is_joints_fab_labor or is_door:
                 if part and part != "N/A":
                     key = f"MANUAL_{part}-{elevation_finish}" if (is_profile or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"MANUAL_{part}"
@@ -271,23 +268,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     key = part
                     display = part
 
-            # Aggregate into category
-            for cat_key, cat_items in categories.items():
-                if cat_key == category:
-                    cat_items.append({
-                        'key': key,
-                        'quantity': qty_for_aggregation,
-                        'description': desc,
-                        'display': display,
-                        'part_number': part,
-                        'manual': manual,
-                        'unit': 'ft' if is_profile else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
-                        'finish': elevation_finish if (is_profile or is_joints_fab_labor or is_door or is_glass) else '',
-                        'is_glass': is_glass,
-                        'is_joints_fab_labor': is_joints_fab_labor,
-                        'is_door': is_door,
-                        'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
-                    })
+            categories[category].append({
+                'key': key,
+                'quantity': qty_for_aggregation,
+                'description': desc,
+                'display': display,
+                'part_number': part,
+                'manual': manual,
+                'unit': 'ft' if is_profile else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
+                'finish': elevation_finish if (is_profile or is_joints_fab_labor or is_door or is_glass) else '',
+                'is_glass': is_glass,
+                'is_joints_fab_labor': is_joints_fab_labor,
+                'is_door': is_door,
+                'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
+            })
 
     # Step 3: Calculate prices for aggregated items and prepare final data
     final_summary_data = []
@@ -340,7 +334,6 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
 
             total_discounted_price += total_cost_for_item
 
-            # Calculate reusable material data for profiles and accessories only
             if part and part != "N/A" and (is_profile or is_accessory):
                 extra_materials_key_for_reuse = part
                 if is_profile and item_finish:
@@ -441,7 +434,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
-    
+
 def _format_door_summary(calculated_outputs):
     if not calculated_outputs:
         return ""
@@ -469,12 +462,11 @@ def generate_excel_report(
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
     calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    doors=None, mode=None
+    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 9
 
-    # Corrected path logic: all working files go into the private .projects folder
     project_root = os.getcwd()
     private_projects_dir = os.path.join(project_root, '.files')
     public_reports_dir = os.path.join(project_root, 'reports')
@@ -486,7 +478,6 @@ def generate_excel_report(
     private_extra_materials_path = os.path.join(private_projects_dir, os.path.basename(extra_materials_json_path))
     private_excel_path = os.path.join(private_projects_dir, os.path.basename(excel_path))
     
-    # The final report path depends on whether it's a unique export
     output_excel_path = public_reports_dir if mode == "export_all" else private_excel_path
     
     current_saved_elevations = {}
@@ -529,7 +520,9 @@ def generate_excel_report(
             "opening_height_inches": opening_height, "sqft_per_type": sqft_per_type, "total_sqft": total_sqft,
             "perimeter_ft": perimeter_ft, "total_perimeter_ft": total_perimeter_ft,
             "calculated_outputs": calculated_outputs,
-            "material_impact": []
+            "material_impact": [],
+            "custom_bay_widths": custom_bay_widths or [],
+            "custom_bay_heights": custom_bay_heights or []
         }
 
         try:
@@ -577,6 +570,10 @@ def generate_excel_report(
             ws = wb.create_sheet(title=elev_name)
             elev_data = current_saved_elevations[elev_name]
 
+            # Format custom bay dimensions for display
+            custom_bay_widths_str = ", ".join([f"{w:.2f} in" for w in elev_data.get('custom_bay_widths', [])]) if elev_data.get('custom_bay_widths') else "Equal distribution"
+            custom_bay_heights_str = ", ".join([f"{h:.2f} in" for h in elev_data.get('custom_bay_heights', [])]) if elev_data.get('custom_bay_heights') else "Equal distribution"
+
             input_data = [
                 ("System Input", elev_data.get("system")),
                 ("Finish", elev_data.get("finish")),
@@ -584,6 +581,8 @@ def generate_excel_report(
                 ("Total Count", elev_data.get("total_count")),
                 ("Bays Wide", elev_data.get("bays_wide")),
                 ("Bays Tall", elev_data.get("bays_tall")),
+                ("Custom Bay Widths", custom_bay_widths_str),
+                ("Custom Bay Heights", custom_bay_heights_str),
                 ("Opening Width", f"{elev_data.get('opening_width_inches'):.2f} ft"),
                 ("Opening Height", f"{elev_data.get('opening_height_inches'):.2f} ft"),
                 ("Sq Ft per Type", f"{elev_data.get('sqft_per_type'):.2f} sqft"),
@@ -677,7 +676,6 @@ def generate_excel_report(
     summary_ws = wb.create_sheet(title="Summary")
     create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path)
     
-    # Save the Excel report to the correct location based on the mode
     final_save_path = os.path.join(public_reports_dir, os.path.basename(excel_path)) if mode == "export_all" else private_excel_path
     
     try:

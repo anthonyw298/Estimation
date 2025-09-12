@@ -4,7 +4,7 @@ import json
 import os
 import tkinter.messagebox
 from openpyxl import Workbook
-import datetime # <- This is the line that was missing
+import datetime
 
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
@@ -78,7 +78,9 @@ class App(ctk.CTk):
             opening_height=tk.StringVar(),
             saved_elevation_types=tk.StringVar(),
             new_project_name=tk.StringVar(),
-            selected_project=tk.StringVar()
+            selected_project=tk.StringVar(),
+            custom_bay_widths=tk.StringVar(),  # New variable for custom bay widths
+            custom_bay_heights=tk.StringVar()  # New variable for custom bay heights
         )
         self.hardware_vars = {opt: tk.BooleanVar(value=False) for opt in self.hardware_options}
         self.widgets = {}
@@ -157,12 +159,14 @@ class App(ctk.CTk):
         self.bays_tall_label, self.bays_tall_entry = self._add_input_row(left_frame, "# Bays Tall:", ctk.CTkEntry, self.vars['bays_tall'], None)
         self.opening_width_label, self.opening_width_entry = self._add_input_row(left_frame, "Opening Width (in):", ctk.CTkEntry, self.vars['opening_width'], None)
         self.opening_height_label, self.opening_height_entry = self._add_input_row(left_frame, "Opening Height (in):", ctk.CTkEntry, self.vars['opening_height'], None)
+        self.custom_bay_widths_label, self.custom_bay_widths_entry = self._add_input_row(left_frame, "Custom Bay Widths (comma-separated):", ctk.CTkEntry, self.vars['custom_bay_widths'], None)
+        self.custom_bay_heights_label, self.custom_bay_heights_entry = self._add_input_row(left_frame, "Custom Bay Heights (comma-separated):", ctk.CTkEntry, self.vars['custom_bay_heights'], None)
         
         button_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
         button_frame.grid(row=self.left_row, column=0, columnspan=2, pady=(20, 10))
         ctk.CTkButton(button_frame, text="Save Elevation", command=self.save_elevation_type, font=self.button_font, fg_color=self.accent_color, hover_color=self.accent_hover).pack(side="left", padx=10)
         ctk.CTkButton(button_frame, text="Delete Elevation", fg_color=self.error_color, hover_color="#8b1a1a", command=self.delete_elevation_type, font=self.button_font).pack(side="left", padx=10)
-        ctk.CTkButton(button_frame, text="Generate Unique Report", command=self.generate_unique_report, font=self.button_font, fg_color=self.accent_color, hover_color=self.accent_hover).pack(side="left", padx=10)
+        ctk.CTkButton(button_frame, text="Generate Report", command=self.generate_unique_report, font=self.button_font, fg_color=self.accent_color, hover_color=self.accent_hover).pack(side="left", padx=10)
         self.left_row += 1
 
         right_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
@@ -192,8 +196,8 @@ class App(ctk.CTk):
         
         self.elevation_status_label = ctk.CTkLabel(self.elevation_tab, text="", text_color=self.text_color, font=self.label_font)
         self.elevation_status_label.grid(row=1, column=0, columnspan=2, pady=10)
+
     def _add_section_header(self, parent, text, right_row_counter=False):
-        """Helper to add a bold section header within a frame and increment the appropriate row counter."""
         row_attr_name = "right_row" if right_row_counter else "left_row"
         current_row = getattr(self, row_attr_name)
         
@@ -203,7 +207,6 @@ class App(ctk.CTk):
         setattr(self, row_attr_name, current_row + 1)
         
     def _add_input_row(self, parent, label_text, widget_type, variable, options=None, **kwargs):
-        """Helper to create a label and input widget in a grid row, and increment the row counter."""
         current_row = self.left_row
         
         lbl = ctk.CTkLabel(parent, text=label_text, font=self.label_font, text_color=self.text_color)
@@ -257,26 +260,35 @@ class App(ctk.CTk):
         self.door_input_row += 1
     
     def on_system_change(self, *args):
-        """
-        Handles visibility of widgets based on the selected system type.
-        This method replaces the now-removed _reposition_widgets.
-        """
         show_bays = self.vars['system'].get() == "YES 45TU FRONT SET(OG)"
         if show_bays:
             self.bays_wide_label.grid(row=self.bays_wide_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
             self.bays_wide_entry.grid(row=self.bays_wide_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
             self.bays_tall_label.grid(row=self.bays_tall_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
             self.bays_tall_entry.grid(row=self.bays_tall_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
+            self.opening_width_label.grid(row=self.opening_width_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.opening_width_entry.grid(row=self.opening_width_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
+            self.opening_height_label.grid(row=self.opening_height_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.opening_height_entry.grid(row=self.opening_height_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
+            self.custom_bay_widths_label.grid(row=self.custom_bay_widths_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.custom_bay_widths_entry.grid(row=self.custom_bay_widths_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
+            self.custom_bay_heights_label.grid(row=self.custom_bay_heights_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.custom_bay_heights_entry.grid(row=self.custom_bay_heights_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
         else:
             self.bays_wide_label.grid_forget()
             self.bays_wide_entry.grid_forget()
             self.bays_tall_label.grid_forget()
             self.bays_tall_entry.grid_forget()
+            self.custom_bay_widths_label.grid_forget()
+            self.custom_bay_widths_entry.grid_forget()
+            self.custom_bay_heights_label.grid_forget()
+            self.custom_bay_heights_entry.grid_forget()
+            self.opening_width_label.grid(row=self.opening_width_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.opening_width_entry.grid(row=self.opening_width_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
+            self.opening_height_label.grid(row=self.opening_height_entry.grid_info()['row'], column=0, sticky="w", padx=10, pady=5)
+            self.opening_height_entry.grid(row=self.opening_height_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
             
-    # --- Project Management Methods ---
-    
     def load_project_list(self):
-        """Loads the list of all project names from the master JSON file."""
         if os.path.exists(MASTER_PROJECT_LIST_FILE):
             try:
                 with open(MASTER_PROJECT_LIST_FILE, 'r') as f:
@@ -289,12 +301,10 @@ class App(ctk.CTk):
             self.update_project_dropdown()
 
     def save_project_list(self):
-        """Saves the current list of project names to the master JSON file."""
         with open(MASTER_PROJECT_LIST_FILE, 'w') as f:
             json.dump(self.all_projects, f, indent=4)
 
     def update_project_dropdown(self):
-        """Updates the project selection dropdown with current project names."""
         self.project_dropdown.configure(values=self.all_projects)
         if self.all_projects and self.current_project_name in self.all_projects:
             self.vars['selected_project'].set(self.current_project_name)
@@ -306,7 +316,6 @@ class App(ctk.CTk):
             self.vars['selected_project'].set("")
 
     def create_new_project(self):
-        """Creates a new project, setting up its files and making it the current project."""
         new_name = self.vars['new_project_name'].get().strip()
         if not new_name:
             self.update_status("Error: Please enter a name for the new project.", self.error_color)
@@ -325,7 +334,6 @@ class App(ctk.CTk):
         self.vars['new_project_name'].set("")
 
     def on_project_select(self, project_name):
-        """Handles selection of a project from the dropdown."""
         self.current_project_name = project_name
         self.set_current_project_paths()
         self.load_saved_elevations_for_current_project()
@@ -334,7 +342,6 @@ class App(ctk.CTk):
         self.tab_view.set("Elevation Details")
 
     def set_current_project_paths(self):
-        """Defines the project-specific file paths and ensures initial files exist."""
         private_projects_root = PROJECTS_DIR
 
         if not self.current_project_name:
@@ -361,7 +368,6 @@ class App(ctk.CTk):
                 json.dump({}, f, indent=4)
 
     def load_saved_elevations_for_current_project(self):
-        """Loads saved elevations for the currently selected project."""
         if os.path.exists(self.current_elevations_json_path):
             try:
                 with open(self.current_elevations_json_path, 'r') as f:
@@ -384,7 +390,6 @@ class App(ctk.CTk):
                 json.dump({}, f, indent=4)
 
     def delete_current_project(self):
-        """Deletes the currently selected project and all its associated files."""
         if not self.current_project_name:
             self.update_status("Error: No project selected to delete.", self.error_color)
             return
@@ -434,7 +439,6 @@ class App(ctk.CTk):
             self.update_status(f"Error deleting project '{self.current_project_name}': {e}", self.error_color)
 
     def on_saved_elevation_select(self, elev_type):
-        """Loads selected elevation data into the form fields."""
         self.door_listbox.delete(0, tk.END)
         self.clear_door_form()
         
@@ -452,9 +456,11 @@ class App(ctk.CTk):
             ('bays_tall', 'bays_tall'),
             ('opening_width_inches', 'opening_width'),
             ('opening_height_inches', 'opening_height'),
+            ('custom_bay_widths', 'custom_bay_widths'),
+            ('custom_bay_heights', 'custom_bay_heights')
         ]:
             if key in data:
-                self.vars[var_key].set(str(data[key]))
+                self.vars[var_key].set(str(data[key]) if key not in ['custom_bay_widths', 'custom_bay_heights'] else ','.join(map(str, data[key])))
                 
         self.vars['elevation_type'].set(elev_type)
         self.on_system_change(self.vars['system'].get())
@@ -465,7 +471,6 @@ class App(ctk.CTk):
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
 
     def _get_door_json_path(self, elev_type):
-        """Helper to generate the specific door JSON file path for a given elevation."""
         if not self.current_project_name or not elev_type:
             return None
         
@@ -474,7 +479,6 @@ class App(ctk.CTk):
         return f"{project_base_name}_{safe_elev_type}_doors.json"
 
     def update_door_listbox(self):
-        """Loads doors from the specific JSON file and populates the listbox."""
         self.door_listbox.delete(0, tk.END)
         if not self.current_door_json_path or not os.path.exists(self.current_door_json_path):
             return []
@@ -495,7 +499,6 @@ class App(ctk.CTk):
         return doors
 
     def save_door_data(self, doors):
-        """Saves the doors list to the current elevation's dedicated JSON file."""
         if not self.current_door_json_path:
             self.update_status("Error: No elevation selected to save doors.", self.error_color)
             return
@@ -506,8 +509,32 @@ class App(ctk.CTk):
         except Exception as e:
             self.update_status(f"Error saving door data: {e}", self.error_color)
     
+    def parse_custom_bays(self, input_str, total_dimension, num_bays):
+        """Parses custom bay dimensions and distributes remaining dimension equally."""
+        if not input_str.strip():
+            return [total_dimension / num_bays] * num_bays if num_bays > 0 else []
+        
+        try:
+            custom_dims = [float(x) for x in input_str.split(',') if x.strip()]
+            if not custom_dims:
+                return [total_dimension / num_bays] * num_bays if num_bays > 0 else []
+            
+            if len(custom_dims) > num_bays:
+                raise ValueError(f"Too many dimensions provided. Expected {num_bays}, got {len(custom_dims)}.")
+            
+            total_custom = sum(custom_dims)
+            if total_custom > total_dimension:
+                raise ValueError(f"Custom dimensions ({total_custom} in) exceed total dimension ({total_dimension} in).")
+            
+            remaining_bays = num_bays - len(custom_dims)
+            if remaining_bays > 0:
+                remaining_dim = (total_dimension - total_custom) / remaining_bays
+                return custom_dims + [remaining_dim] * remaining_bays
+            return custom_dims
+        except ValueError as e:
+            raise ValueError(f"Invalid custom bay input: {e}")
+
     def save_elevation_type(self):
-        """Saves or updates an elevation and generates the Excel report."""
         if not self.current_project_name:
             self.update_status("Error: Please create or select a project first.", self.error_color)
             return
@@ -548,8 +575,14 @@ class App(ctk.CTk):
             if system == self.system_options[0]:
                 bays_wide = int(v['bays_wide'].get())
                 bays_tall = int(v['bays_tall'].get())
+                custom_bay_widths = self.parse_custom_bays(v['custom_bay_widths'].get(), opening_width, bays_wide)
+                custom_bay_heights = self.parse_custom_bays(v['custom_bay_heights'].get(), opening_height, bays_tall)
+                
                 elevation_data['bays_wide'] = bays_wide
                 elevation_data['bays_tall'] = bays_tall
+                elevation_data['custom_bay_widths'] = custom_bay_widths
+                elevation_data['custom_bay_heights'] = custom_bay_heights
+                
                 calculated_outputs = calculate_yes45tu_quantities(
                     bays_wide, bays_tall, total_count,
                     opening_width, opening_height, doors
@@ -585,7 +618,9 @@ class App(ctk.CTk):
                 total_perimeter_ft=total_perimeter,
                 calculated_outputs=calculated_outputs,
                 completion_callback=None,
-                doors=doors
+                doors=doors,
+                custom_bay_widths=elevation_data.get('custom_bay_widths', []),
+                custom_bay_heights=elevation_data.get('custom_bay_heights', [])
             )
 
             self.update_saved_elevation_dropdown()
@@ -598,7 +633,6 @@ class App(ctk.CTk):
             self.update_status(f"An unexpected error occurred: {e}", self.error_color)
 
     def delete_elevation_type(self):
-        """Deletes a selected elevation and its associated door file."""
         if not self.current_project_name:
             self.update_status("Error: Please select a project first.", self.error_color)
             return
@@ -619,7 +653,6 @@ class App(ctk.CTk):
                 self.update_status(f"Elevation '{elev}' and its doors deleted successfully.", self.success_color)
 
     def update_saved_elevation_dropdown(self):
-        """Updates the saved elevation dropdown with current elevation types."""
         elevations = sorted(self.saved_elevations.keys())
         self.saved_elevations_option_menu.configure(values=elevations if elevations else [""])
         if elevations:
@@ -628,11 +661,12 @@ class App(ctk.CTk):
             self.vars['saved_elevation_types'].set("")
             
     def clear_form(self):
-        """Clears all form fields."""
         self.vars['elevation_type'].set("")
         self.vars['total_count'].set("")
         self.vars['bays_wide'].set("")
         self.vars['bays_tall'].set("")
+        self.vars['custom_bay_widths'].set("")
+        self.vars['custom_bay_heights'].set("")
         self.vars['opening_width'].set("")
         self.vars['opening_height'].set("")
         self.vars['system'].set(self.system_options[0])
@@ -641,7 +675,6 @@ class App(ctk.CTk):
         self.clear_door_form()
 
     def clear_door_form(self):
-        """Clears the door input fields."""
         self.vars['door_size'].set(self.door_options[0])
         self.vars['door_count'].set("")
         self.vars['stile'].set(self.stile_options[0])
@@ -650,7 +683,6 @@ class App(ctk.CTk):
             var.set(False)
 
     def add_door(self):
-        """Adds a door to the current elevation and updates the listbox."""
         door_size = self.vars['door_size'].get()
         door_count = self.vars['door_count'].get()
         stile = self.vars['stile'].get()
@@ -717,7 +749,6 @@ class App(ctk.CTk):
         self.update_status("Door added to the current elevation.", self.success_color)
 
     def update_door(self):
-        """Updates a selected door in the current elevation."""
         if self.selected_door_index is None:
             self.update_status("Error: No door selected to update.", self.error_color)
             return
@@ -786,7 +817,6 @@ class App(ctk.CTk):
         self.update_status(f"Door {door_num} updated.", self.success_color)
 
     def delete_door(self):
-        """Deletes a selected door from the current elevation."""
         if self.selected_door_index is None:
             self.update_status("Error: No door selected to delete.", self.error_color)
             return
@@ -805,7 +835,6 @@ class App(ctk.CTk):
         self.selected_door_index = None
 
     def select_door_for_edit(self, event):
-        """Loads the selected door's data into the input fields for editing."""
         selected_index = self.door_listbox.curselection()
         if selected_index:
             self.selected_door_index = selected_index[0]
@@ -821,11 +850,9 @@ class App(ctk.CTk):
                     var.set(door_data['hardware'].get(opt, False))
 
     def update_status(self, message, color):
-        """Updates the status label with a new message and color."""
         self.elevation_status_label.configure(text=message, text_color=color)
 
     def generate_unique_report(self):
-        """Generates a unique Excel report snapshot for the current project."""
         if not self.current_project_name:
             self.update_status("Error: No project selected.", self.error_color)
             return
@@ -859,9 +886,11 @@ class App(ctk.CTk):
                 reset=False,
                 delete_elevation_type=None,
                 doors=None,
-                mode="export_all"
+                mode="export_all",
+                custom_bay_widths=[],
+                custom_bay_heights=[]
             )
-            self.update_status(f"Unique report generated at '{unique_excel_path}'", self.success_color)
+            self.update_status(f"Report generated at '{unique_excel_path}'", self.success_color)
         except Exception as e:
             self.update_status(f"Error generating unique report: {e}", self.error_color)
 
