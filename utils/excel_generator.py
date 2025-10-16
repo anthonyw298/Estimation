@@ -53,7 +53,7 @@ def _clean_trailing_blank_rows(ws, start_row):
             ws.delete_rows(current_row, 1)
             rows_deleted += 1
         else: current_row += 1
-    if rows_deleted > 0: print(f"Cleaned {rows_deleted} trailing blank rows starting from row {start_row}.")
+    
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier):
     """Writes a section of calculated outputs to the worksheet."""
@@ -144,29 +144,6 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         current_row += 1
     return current_row + 1, section_material_impacts
 
-def _delete_summary_section(ws):
-    """Deletes the existing summary section from the worksheet."""
-    if ws.max_row <= 1:
-        print("ℹ️ Worksheet is largely empty. Skipping summary section deletion.")
-        return
-
-    summary_start_row = _find_row_by_value(ws, 1, "Project Total Materials")
-    if summary_start_row:
-        current_row_to_delete = summary_start_row
-        while current_row_to_delete <= ws.max_row:
-            if ws.cell(row=current_row_to_delete, column=1).value is None and \
-               ws.cell(row=current_row_to_delete, column=2).value is None and \
-               ws.cell(row=current_row_to_delete, column=3).value is None:
-                break
-            current_row_to_delete += 1
-        
-        if current_row_to_delete > summary_start_row:
-            rows_to_delete = current_row_to_delete - summary_start_row
-            ws.delete_rows(summary_start_row, rows_to_delete)
-            print(f"🗑️ Existing summary section cleared ({rows_to_delete} rows) starting at row {summary_start_row}.")
-            _clean_trailing_blank_rows(ws, summary_start_row)
-        else: print("ℹ️ Summary header found but no data rows to delete.")
-    else: print("ℹ️ No existing summary section found to delete.")
 
 def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     """
