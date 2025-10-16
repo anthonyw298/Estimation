@@ -558,7 +558,7 @@ class App(ctk.CTk):
             total_perimeter = perimeter * total_count
 
             doors = self.update_door_listbox()
-
+            print(doors,'doooor')
             elevation_data = {
                 'system': system,
                 'finish': finish,

@@ -263,7 +263,6 @@ def calculate_door_info(doors: list,finish='Clear') -> list:
               its calculated details and is formatted for the final output.
     """
     door_items = []
-    print(doors,'Hello this is door list')
     if doors:
         for door_info in doors:
             door_size_str = door_info.get('size')
