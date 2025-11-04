@@ -488,15 +488,20 @@ def generate_excel_report(
             if 'material_impact' in old_elevation_data:
                 reverse_material_impact(old_elevation_data['material_impact'], extra_materials_file=private_extra_materials_path)
 
-        door_items = calculate_door_info(doors) if doors else []
-        calculated_outputs.extend(door_items)
+        # Build door items from UI doors, but avoid double-adding if base outputs already include doors
+        base_outputs = list(calculated_outputs or [])
+        # Only treat existing purchase-door lines (type == 'door') as a signal to skip; ignore 'doors' area rows
+        has_purchase_doors = any(((item.get('type', '') or '').lower() == 'door') for item in base_outputs)
+        door_items = calculate_door_info(doors, finish_input) if (doors and not has_purchase_doors) else []
+        # Avoid mutating the incoming list reference
+        elevation_outputs = base_outputs + door_items
 
         current_saved_elevations[elevation_type] = {
             "system": system_input, "finish": finish_input, "total_count": total_count,
             "bays_wide": bays_wide, "bays_tall": bays_tall, "opening_width_inches": opening_width,
             "opening_height_inches": opening_height, "sqft_per_type": sqft_per_type, "total_sqft": total_sqft,
             "perimeter_ft": perimeter_ft, "total_perimeter_ft": total_perimeter_ft,
-            "calculated_outputs": calculated_outputs,
+            "calculated_outputs": elevation_outputs,
             "material_impact": [],
             "custom_bay_widths": custom_bay_widths or [],
             "custom_bay_heights": custom_bay_heights or []
