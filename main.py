@@ -465,7 +465,7 @@ class App(ctk.CTk):
         self.vars['elevation_type'].set(elev_type)
         self.on_system_change(self.vars['system'].get())
 
-        self.current_door_json_path = self._get_door_json_path(elev_type)
+        self.current_door_json_path = self._ensure_door_file(elev_type)
         self.update_door_listbox()
         
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
@@ -477,6 +477,19 @@ class App(ctk.CTk):
         project_base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
         safe_elev_type = elev_type.replace(" ", "_").replace("/", "_").replace("\\", "_")
         return f"{project_base_name}_{safe_elev_type}_doors.json"
+
+    def _ensure_door_file(self, elev_type):
+        """Ensure the door JSON file for this elevation exists (creates empty list if missing)."""
+        path = self._get_door_json_path(elev_type)
+        if not path:
+            return None
+        if not os.path.exists(path):
+            try:
+                with open(path, 'w') as f:
+                    json.dump([], f, indent=4)
+            except Exception:
+                pass
+        return path
 
     def update_door_listbox(self):
         self.door_listbox.delete(0, tk.END)
@@ -557,6 +570,8 @@ class App(ctk.CTk):
             perimeter = calculate_perimeter(opening_width / 12, opening_height / 12)
             total_perimeter = perimeter * total_count
 
+            # Ensure we read doors for the elevation being saved, and ensure file exists
+            self.current_door_json_path = self._ensure_door_file(elev)
             doors = self.update_door_listbox()
             print(doors,'doooor')
             elevation_data = {
@@ -697,7 +712,7 @@ class App(ctk.CTk):
             self.update_status("Error: Please enter an elevation type before adding doors.", self.error_color)
             return
 
-        self.current_door_json_path = self._get_door_json_path(elevation_name)
+        self.current_door_json_path = self._ensure_door_file(elevation_name)
 
         try:
             door_count = int(door_count)
