@@ -49,3 +49,37 @@ env/
 # My own stuff
 *.log
 *.sqlite3
+
+# Monorepo structure
+.files/
+reports/
+
+# Frontend (Node/Bun)
+node_modules/
+.pnp
+.pnp.js
+bun.lockb
+package-lock.json
+yarn.lock
+
+# Frontend build outputs
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
