@@ -1,17 +1,51 @@
-# React + TypeScript + Vite
+# Estimation Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An Electron desktop application built with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+## Getting Started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Prerequisites
+- [Bun](https://bun.sh/) runtime installed
 
-## React Compiler
+### Installation
+```bash
+bun install
+```
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+### Development
+Start the development server with hot reload:
+```bash
+bun dev
+```
 
-Note: This will impact Vite dev & build performances.
+### Building
+Build the application for production:
+```bash
+bun run prebuild
+```
+
+### Preview
+Preview the production build:
+```bash
+bun start
+```
+
+## Build System & Tooling
+
+This project uses **electron-vite** as the primary build tool, which orchestrates three separate Vite build processes:
+
+1. **Main Process** (`electron/main/`) - Node.js environment running the Electron app lifecycle. Built as CommonJS with electron externalized.
+2. **Preload Scripts** (`electron/preload/`) - Sandboxed scripts that expose safe APIs to the renderer via `contextBridge`.
+3. **Renderer Process** (React app in `src/`) - Browser environment running the React UI with full HMR support.
+
+**Key Technologies:**
+- **Rolldown-Vite** - Fast Rust-based bundler (Vite 7 fork) for blazing build speeds
+- **React Compiler** - Automatic optimization of React components (may impact dev performance)
+- **Tailwind CSS v4** - Utility-first CSS via `@tailwindcss/vite` plugin
+- **shadcn/ui** - Headless component library with Radix UI primitives
+- **Bun** - JavaScript runtime and package manager for faster installs and execution
+
+The `electron.vite.config.ts` defines entry points for all three processes. The main and preload scripts are compiled to `out/` directory, while the renderer dev server runs on `localhost:5173`. In production, the renderer HTML is bundled and served from the filesystem.
 
 ## Expanding the ESLint configuration
 
