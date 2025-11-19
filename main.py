@@ -1,19 +1,54 @@
 import customtkinter as ctk
 import tkinter as tk
-import json
-import os
 import tkinter.messagebox
-from openpyxl import Workbook
-import datetime
+import os
 
-# Assuming your utils and systems are in their respective directories
+# Refactored utility modules
 from utils.excel_generator import generate_excel_report
-from systems.yes45tu_front_set import calculate_yes45tu_quantities
-from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_total_door_area, calculate_glass_to_add_back
-
-# Define a directory to store all project-related files, now a hidden folder
-PROJECTS_DIR = ".files"
-MASTER_PROJECT_LIST_FILE = os.path.join(PROJECTS_DIR, "projects_list.json")
+from utils.formulas import calculate_total_door_area, calculate_glass_to_add_back
+from utils.path_manager import (
+    PROJECTS_DIR,
+    get_project_paths,
+    get_door_json_path,
+    get_unique_report_path
+)
+from utils.file_operations import (
+    load_project_list,
+    save_project_list,
+    load_elevations,
+    save_elevations,
+    load_doors,
+    save_doors,
+    ensure_json_file_exists,
+    create_excel_file,
+    load_elevation_data
+)
+from utils.project_manager import (
+    create_project,
+    delete_project,
+    load_projects,
+    initialize_project_files
+)
+from utils.elevation_manager import (
+    transform_elevation_data_to_ui,
+    build_elevation_data,
+    save_elevation,
+    delete_elevation,
+    get_elevation_names
+)
+from utils.door_manager import (
+    get_door_file_path,
+    ensure_door_file,
+    load_doors_for_elevation,
+    save_doors_for_elevation,
+    format_door_for_display
+)
+from utils.validation import (
+    parse_custom_bays,
+    validate_door_addition,
+    validate_door_update,
+    validate_door_count
+)
 
 class App(ctk.CTk):
 
@@ -289,20 +324,19 @@ class App(ctk.CTk):
             self.opening_height_entry.grid(row=self.opening_height_entry.grid_info()['row'], column=1, sticky="ew", padx=10, pady=5)
             
     def load_project_list(self):
-        if os.path.exists(MASTER_PROJECT_LIST_FILE):
-            try:
-                with open(MASTER_PROJECT_LIST_FILE, 'r') as f:
-                    self.all_projects = json.load(f)
-                self.update_project_dropdown()
-            except Exception as e:
-                self.update_status(f"Error loading project list: {e}", self.error_color)
-        else:
+        try:
+            self.all_projects = load_projects()
+            self.update_project_dropdown()
+        except Exception as e:
+            self.update_status(f"Error loading project list: {e}", self.error_color)
             self.all_projects = []
             self.update_project_dropdown()
 
     def save_project_list(self):
-        with open(MASTER_PROJECT_LIST_FILE, 'w') as f:
-            json.dump(self.all_projects, f, indent=4)
+        try:
+            save_project_list(self.all_projects)
+        except Exception as e:
+            self.update_status(f"Error saving project list: {e}", self.error_color)
 
     def update_project_dropdown(self):
         self.project_dropdown.configure(values=self.all_projects)
@@ -317,16 +351,13 @@ class App(ctk.CTk):
 
     def create_new_project(self):
         new_name = self.vars['new_project_name'].get().strip()
-        if not new_name:
-            self.update_status("Error: Please enter a name for the new project.", self.error_color)
+        success, error_msg, updated_projects = create_project(new_name, self.all_projects)
+        
+        if not success:
+            self.update_status(f"Error: {error_msg}", self.error_color)
             return
         
-        if new_name in self.all_projects:
-            self.update_status(f"Error: Project '{new_name}' already exists.", self.error_color)
-            return
-        
-        self.all_projects.append(new_name)
-        self.save_project_list()
+        self.all_projects = updated_projects
         self.update_project_dropdown()
         self.vars['selected_project'].set(new_name)
         self.on_project_select(new_name)
@@ -342,52 +373,32 @@ class App(ctk.CTk):
         self.tab_view.set("Elevation Details")
 
     def set_current_project_paths(self):
-        private_projects_root = PROJECTS_DIR
-
-        if not self.current_project_name:
-            self.current_excel_path = os.path.join(private_projects_root, "default_report.xlsx")
-            self.current_elevations_json_path = os.path.join(private_projects_root, "default_elevations.json")
-            self.current_extra_materials_json_path = os.path.join(private_projects_root, "default_extra_materials.json")
-            return
-
-        sanitized_project_name = self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        base_name = os.path.join(private_projects_root, sanitized_project_name)
+        paths = get_project_paths(self.current_project_name)
+        self.current_excel_path = paths['excel_path']
+        self.current_elevations_json_path = paths['elevations_json_path']
+        self.current_extra_materials_json_path = paths['extra_materials_json_path']
         
-        self.current_excel_path = f"{base_name}_Report.xlsx"
-        self.current_elevations_json_path = f"{base_name}_Elevations.json"
-        self.current_extra_materials_json_path = f"{base_name}_ExtraMaterials.json"
-        
-        if not os.path.exists(self.current_excel_path):
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Report"
-            wb.save(self.current_excel_path)
-            
-        if not os.path.exists(self.current_extra_materials_json_path):
-            with open(self.current_extra_materials_json_path, 'w') as f:
-                json.dump({}, f, indent=4)
+        # Initialize project files if they don't exist
+        if self.current_project_name:
+            initialize_project_files(self.current_project_name)
 
     def load_saved_elevations_for_current_project(self):
-        if os.path.exists(self.current_elevations_json_path):
-            try:
-                with open(self.current_elevations_json_path, 'r') as f:
-                    self.saved_elevations = json.load(f)
-                
-                self.update_saved_elevation_dropdown()
-                if self.saved_elevations:
-                    first_elevation = sorted(self.saved_elevations.keys())[0]
-                    self.vars['saved_elevation_types'].set(first_elevation)
-                    self.on_saved_elevation_select(first_elevation)
-                
-                self.update_status(f"Loaded elevations for '{self.current_project_name}'.", self.success_color)
-            except Exception as e:
-                self.update_status(f"Error loading elevations: {e}", self.error_color)
-        else:
+        try:
+            self.saved_elevations = load_elevations(self.current_elevations_json_path)
+            
+            self.update_saved_elevation_dropdown()
+            if self.saved_elevations:
+                first_elevation = sorted(self.saved_elevations.keys())[0]
+                self.vars['saved_elevation_types'].set(first_elevation)
+                self.on_saved_elevation_select(first_elevation)
+            
+            self.update_status(f"Loaded elevations for '{self.current_project_name}'.", self.success_color)
+        except Exception as e:
+            self.update_status(f"Error loading elevations: {e}", self.error_color)
             self.saved_elevations = {}
             self.update_saved_elevation_dropdown()
             self.clear_form()
-            with open(self.current_elevations_json_path, 'w') as f:
-                json.dump({}, f, indent=4)
+            ensure_json_file_exists(self.current_elevations_json_path, default_data={})
 
     def delete_current_project(self):
         if not self.current_project_name:
@@ -401,42 +412,28 @@ class App(ctk.CTk):
             self.update_status("Project deletion cancelled.", self.text_color)
             return
 
-        try:
-            project_base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
-            files_to_delete = [
-                f"{project_base_name}_Report.xlsx",
-                f"{project_base_name}_Elevations.json",
-                f"{project_base_name}_ExtraMaterials.json"
-            ]
+        success, error_msg, updated_projects, next_project = delete_project(
+            self.current_project_name, self.all_projects
+        )
+        
+        if not success:
+            self.update_status(f"Error: {error_msg}", self.error_color)
+            return
 
-            for file_path in os.listdir(PROJECTS_DIR):
-                if file_path.startswith(os.path.basename(project_base_name)) and "_doors.json" in file_path:
-                    files_to_delete.append(os.path.join(PROJECTS_DIR, file_path))
-            
-            for file_path in files_to_delete:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            
-            if self.current_project_name in self.all_projects:
-                self.all_projects.remove(self.current_project_name)
-                self.save_project_list()
-                self.update_project_dropdown()
-
-            self.update_status(f"Project '{self.current_project_name}' deleted.", self.success_color)
-            
-            if self.all_projects:
-                self.vars['selected_project'].set(self.all_projects[0])
-                self.on_project_select(self.all_projects[0])
-            else:
-                self.vars['selected_project'].set("")
-                self.current_project_name = ""
-                self.clear_form()
-                self.saved_elevations = {}
-                self.update_saved_elevation_dropdown()
-                self.update_status("Info: No projects remaining. Create a new project.", self.text_color)
-
-        except Exception as e:
-            self.update_status(f"Error deleting project '{self.current_project_name}': {e}", self.error_color)
+        self.all_projects = updated_projects
+        self.update_project_dropdown()
+        self.update_status(f"Project '{self.current_project_name}' deleted.", self.success_color)
+        
+        if next_project:
+            self.vars['selected_project'].set(next_project)
+            self.on_project_select(next_project)
+        else:
+            self.vars['selected_project'].set("")
+            self.current_project_name = ""
+            self.clear_form()
+            self.saved_elevations = {}
+            self.update_saved_elevation_dropdown()
+            self.update_status("Info: No projects remaining. Create a new project.", self.text_color)
 
     def on_saved_elevation_select(self, elev_type):
         self.door_listbox.delete(0, tk.END)
@@ -447,20 +444,11 @@ class App(ctk.CTk):
             return
             
         data = self.saved_elevations[elev_type]
+        ui_data = transform_elevation_data_to_ui(data)
         
-        for key, var_key in [
-            ('system', 'system'),
-            ('finish', 'finish'),
-            ('total_count', 'total_count'),
-            ('bays_wide', 'bays_wide'),
-            ('bays_tall', 'bays_tall'),
-            ('opening_width_inches', 'opening_width'),
-            ('opening_height_inches', 'opening_height'),
-            ('custom_bay_widths', 'custom_bay_widths'),
-            ('custom_bay_heights', 'custom_bay_heights')
-        ]:
-            if key in data:
-                self.vars[var_key].set(str(data[key]) if key not in ['custom_bay_widths', 'custom_bay_heights'] else ','.join(map(str, data[key])))
+        for var_key, value in ui_data.items():
+            if var_key in self.vars:
+                self.vars[var_key].set(value)
                 
         self.vars['elevation_type'].set(elev_type)
         self.on_system_change(self.vars['system'].get())
@@ -471,45 +459,25 @@ class App(ctk.CTk):
         self.update_status(f"Elevation '{elev_type}' loaded.", self.success_color)
 
     def _get_door_json_path(self, elev_type):
-        if not self.current_project_name or not elev_type:
-            return None
-        
-        project_base_name = os.path.join(PROJECTS_DIR, self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_"))
-        safe_elev_type = elev_type.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        return f"{project_base_name}_{safe_elev_type}_doors.json"
+        return get_door_file_path(self.current_project_name, elev_type)
 
     def _ensure_door_file(self, elev_type):
         """Ensure the door JSON file for this elevation exists (creates empty list if missing)."""
-        path = self._get_door_json_path(elev_type)
-        if not path:
-            return None
-        if not os.path.exists(path):
-            try:
-                with open(path, 'w') as f:
-                    json.dump([], f, indent=4)
-            except Exception:
-                pass
-        return path
+        return ensure_door_file(self.current_project_name, elev_type)
 
     def update_door_listbox(self):
         self.door_listbox.delete(0, tk.END)
-        if not self.current_door_json_path or not os.path.exists(self.current_door_json_path):
+        if not self.current_door_json_path:
             return []
         
         try:
-            with open(self.current_door_json_path, 'r') as f:
-                doors = json.load(f)
-        except (IOError, json.JSONDecodeError):
-            doors = []
-
-        for i, door in enumerate(doors):
-            door_text = f"Door {i+1}: {door['size']}, {door['stile']} Stile, Count: {door['count']}"
-            hardware = [hw for hw, var in door['hardware'].items() if var]
-            if hardware:
-                door_text += f" - Hardware: {', '.join(hardware)}"
-            self.door_listbox.insert(tk.END, door_text)
-        
-        return doors
+            doors = load_doors(self.current_door_json_path)
+            for i, door in enumerate(doors):
+                door_text = format_door_for_display(door, i)
+                self.door_listbox.insert(tk.END, door_text)
+            return doors
+        except Exception:
+            return []
 
     def save_door_data(self, doors):
         if not self.current_door_json_path:
@@ -517,35 +485,10 @@ class App(ctk.CTk):
             return
 
         try:
-            with open(self.current_door_json_path, 'w') as f:
-                json.dump(doors, f, indent=4)
+            save_doors(self.current_door_json_path, doors)
         except Exception as e:
             self.update_status(f"Error saving door data: {e}", self.error_color)
     
-    def parse_custom_bays(self, input_str, total_dimension, num_bays):
-        """Parses custom bay dimensions and distributes remaining dimension equally."""
-        if not input_str.strip():
-            return [total_dimension / num_bays] * num_bays if num_bays > 0 else []
-        
-        try:
-            custom_dims = [float(x) for x in input_str.split(',') if x.strip()]
-            if not custom_dims:
-                return [total_dimension / num_bays] * num_bays if num_bays > 0 else []
-            
-            if len(custom_dims) > num_bays:
-                raise ValueError(f"Too many dimensions provided. Expected {num_bays}, got {len(custom_dims)}.")
-            
-            total_custom = sum(custom_dims)
-            if total_custom > total_dimension:
-                raise ValueError(f"Custom dimensions ({total_custom} in) exceed total dimension ({total_dimension} in).")
-            
-            remaining_bays = num_bays - len(custom_dims)
-            if remaining_bays > 0:
-                remaining_dim = (total_dimension - total_custom) / remaining_bays
-                return custom_dims + [remaining_dim] * remaining_bays
-            return custom_dims
-        except ValueError as e:
-            raise ValueError(f"Invalid custom bay input: {e}")
 
     def save_elevation_type(self):
         if not self.current_project_name:
@@ -565,56 +508,33 @@ class App(ctk.CTk):
             opening_width = float(v['opening_width'].get())
             opening_height = float(v['opening_height'].get())
 
-            sqft_per = calculate_rectangle_area(opening_width / 12, opening_height / 12)
-            total_sqft = sqft_per * total_count
-            perimeter = calculate_perimeter(opening_width / 12, opening_height / 12)
-            total_perimeter = perimeter * total_count
-
             # Ensure we read doors for the elevation being saved, and ensure file exists
             self.current_door_json_path = self._ensure_door_file(elev)
             doors = self.update_door_listbox()
-            print(doors,'doooor')
-            elevation_data = {
-                'system': system,
-                'finish': finish,
-                'total_count': total_count,
-                'opening_width_inches': opening_width,
-                'opening_height_inches': opening_height,
-                'sqft_per_type': sqft_per,
-                'total_sqft': total_sqft,
-                'perimeter_ft': perimeter,
-                'total_perimeter_ft': total_perimeter,
-            }
             
-            calculated_outputs = []
-            if system == self.system_options[0]:
-                bays_wide = int(v['bays_wide'].get())
-                bays_tall = int(v['bays_tall'].get())
-                custom_bay_widths = self.parse_custom_bays(v['custom_bay_widths'].get(), opening_width, bays_wide)
-                custom_bay_heights = self.parse_custom_bays(v['custom_bay_heights'].get(), opening_height, bays_tall)
-                
-                elevation_data['bays_wide'] = bays_wide
-                elevation_data['bays_tall'] = bays_tall
-                elevation_data['custom_bay_widths'] = custom_bay_widths
-                elevation_data['custom_bay_heights'] = custom_bay_heights
-                
-                calculated_outputs = calculate_yes45tu_quantities(
-                    bays_wide, bays_tall, total_count,
-                    opening_width, opening_height, doors
-                )
+            # Build elevation data using refactored function
+            elevation_data = build_elevation_data(
+                system=system,
+                finish=finish,
+                total_count=total_count,
+                opening_width=opening_width,
+                opening_height=opening_height,
+                bays_wide=int(v['bays_wide'].get()) if v['bays_wide'].get() else None,
+                bays_tall=int(v['bays_tall'].get()) if v['bays_tall'].get() else None,
+                custom_bay_widths_str=v['custom_bay_widths'].get(),
+                custom_bay_heights_str=v['custom_bay_heights'].get(),
+                doors=doors,
+                system_options=self.system_options
+            )
 
-            elevation_data['calculated_outputs'] = calculated_outputs
-
-            if os.path.exists(self.current_elevations_json_path):
-                with open(self.current_elevations_json_path, 'r') as f:
-                    self.saved_elevations = json.load(f)
-            self.saved_elevations[elev] = elevation_data
-
-            with open(self.current_elevations_json_path, 'w') as f:
-                json.dump(self.saved_elevations, f, indent=4)
+            # Save elevation
+            save_elevation(self.current_elevations_json_path, elev, elevation_data)
             
+            # Reload elevations to keep in sync
+            self.saved_elevations = load_elevations(self.current_elevations_json_path)
             self.current_door_json_path = self._get_door_json_path(elev)
 
+            # Generate Excel report
             generate_excel_report(
                 excel_path=self.current_excel_path,
                 elevations_json_path=self.current_elevations_json_path,
@@ -627,11 +547,11 @@ class App(ctk.CTk):
                 bays_tall=elevation_data.get('bays_tall', 0),
                 opening_width=opening_width,
                 opening_height=opening_height,
-                sqft_per_type=sqft_per,
-                total_sqft=total_sqft,
-                perimeter_ft=perimeter,
-                total_perimeter_ft=total_perimeter,
-                calculated_outputs=calculated_outputs,
+                sqft_per_type=elevation_data['sqft_per_type'],
+                total_sqft=elevation_data['total_sqft'],
+                perimeter_ft=elevation_data['perimeter_ft'],
+                total_perimeter_ft=elevation_data['total_perimeter_ft'],
+                calculated_outputs=elevation_data['calculated_outputs'],
                 completion_callback=None,
                 doors=doors,
                 custom_bay_widths=elevation_data.get('custom_bay_widths', []),
@@ -654,13 +574,13 @@ class App(ctk.CTk):
 
         elev = self.vars['saved_elevation_types'].get().strip()
         if elev:
-            if elev in self.saved_elevations:
-                del self.saved_elevations[elev]
-                with open(self.current_elevations_json_path, 'w') as f:
-                    json.dump(self.saved_elevations, f, indent=4)
+            if delete_elevation(self.current_elevations_json_path, elev):
+                # Reload elevations
+                self.saved_elevations = load_elevations(self.current_elevations_json_path)
                 
+                # Delete door file
                 door_file_path = self._get_door_json_path(elev)
-                if os.path.exists(door_file_path):
+                if door_file_path and os.path.exists(door_file_path):
                     os.remove(door_file_path)
 
                 self.update_saved_elevation_dropdown()
@@ -668,7 +588,7 @@ class App(ctk.CTk):
                 self.update_status(f"Elevation '{elev}' and its doors deleted successfully.", self.success_color)
 
     def update_saved_elevation_dropdown(self):
-        elevations = sorted(self.saved_elevations.keys())
+        elevations = get_elevation_names(self.current_elevations_json_path) if self.current_elevations_json_path else []
         self.saved_elevations_option_menu.configure(values=elevations if elevations else [""])
         if elevations:
             self.vars['saved_elevation_types'].set(elevations[0])
@@ -699,11 +619,11 @@ class App(ctk.CTk):
 
     def add_door(self):
         door_size = self.vars['door_size'].get()
-        door_count = self.vars['door_count'].get()
+        door_count_str = self.vars['door_count'].get()
         stile = self.vars['stile'].get()
         hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
 
-        if door_size == "None" or not door_count:
+        if door_size == "None" or not door_count_str:
             self.update_status("Error: Please select a door size and count.", self.error_color)
             return
 
@@ -712,44 +632,28 @@ class App(ctk.CTk):
             self.update_status("Error: Please enter an elevation type before adding doors.", self.error_color)
             return
 
-        self.current_door_json_path = self._ensure_door_file(elevation_name)
-
-        try:
-            door_count = int(door_count)
-            if door_count <= 0:
-                self.update_status("Error: Door count must be a positive number.", self.error_color)
-                return
-        except ValueError:
-            self.update_status("Error: Door count must be an integer.", self.error_color)
+        # Validate door count
+        is_valid, error_msg, door_count = validate_door_count(door_count_str)
+        if not is_valid:
+            self.update_status(f"Error: {error_msg}", self.error_color)
             return
 
+        self.current_door_json_path = self._ensure_door_file(elevation_name)
         doors = self.update_door_listbox()
 
         new_door = {'size': door_size, 'count': door_count, 'stile': stile, 'hardware': hardware}
 
         try:
-            if not os.path.exists(self.current_elevations_json_path):
-                raise FileNotFoundError("Elevations file not found.")
-
-            with open(self.current_elevations_json_path, 'r') as f:
-                elevations_data = json.load(f)
-
-            elevation_data = elevations_data.get(elevation_name)
+            elevation_data = load_elevation_data(self.current_elevations_json_path, elevation_name)
             if not elevation_data:
                 raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
 
             glass_area = elevation_data.get('total_sqft', 0.0)
 
-            existing_door_area = calculate_total_door_area(doors)
-            existing_glass_back = calculate_glass_to_add_back(doors)
-
-            new_door_area = calculate_total_door_area([new_door])
-            new_glass_back = calculate_glass_to_add_back([new_door])
-
-            leftover_glass = glass_area - (existing_door_area + new_door_area) + (existing_glass_back + new_glass_back)
-
-            if leftover_glass <= 0:
-                self.update_status("Error: Adding this door reduces glass back area to zero or below.", self.error_color)
+            # Validate door addition
+            is_valid, error_msg, _ = validate_door_addition(glass_area, doors, new_door)
+            if not is_valid:
+                self.update_status(f"Error: {error_msg}", self.error_color)
                 return
 
         except Exception as e:
@@ -769,17 +673,14 @@ class App(ctk.CTk):
             return
 
         door_size = self.vars['door_size'].get()
-        door_count = self.vars['door_count'].get()
+        door_count_str = self.vars['door_count'].get()
         stile = self.vars['stile'].get()
         hardware = {opt: self.hardware_vars[opt].get() for opt in self.hardware_options}
 
-        try:
-            door_count = int(door_count)
-            if door_count <= 0:
-                self.update_status("Error: Door count must be a positive number.", self.error_color)
-                return
-        except ValueError:
-            self.update_status("Error: Door count must be an integer.", self.error_color)
+        # Validate door count
+        is_valid, error_msg, door_count = validate_door_count(door_count_str)
+        if not is_valid:
+            self.update_status(f"Error: {error_msg}", self.error_color)
             return
 
         elevation_name = self.vars['elevation_type'].get().strip()
@@ -795,29 +696,16 @@ class App(ctk.CTk):
         simulated_doors[self.selected_door_index] = updated_door
 
         try:
-            if not os.path.exists(self.current_elevations_json_path):
-                raise FileNotFoundError("Elevations file not found.")
-
-            with open(self.current_elevations_json_path, 'r') as f:
-                elevations_data = json.load(f)
-
-            elevation_data = elevations_data.get(elevation_name)
+            elevation_data = load_elevation_data(self.current_elevations_json_path, elevation_name)
             if not elevation_data:
                 raise ValueError(f"Elevation '{elevation_name}' not found in saved data.")
 
             glass_area = elevation_data.get('total_sqft', 0.0)
 
-            doors_excluding_current = doors[:self.selected_door_index] + doors[self.selected_door_index+1:]
-            existing_door_area = calculate_total_door_area(doors_excluding_current)
-            existing_glass_back = calculate_glass_to_add_back(doors_excluding_current)
-
-            updated_door_area = calculate_total_door_area([updated_door])
-            updated_glass_back = calculate_glass_to_add_back([updated_door])
-
-            leftover_glass = glass_area - (existing_door_area + updated_door_area) + (existing_glass_back + updated_glass_back)
-
-            if leftover_glass <= 0:
-                self.update_status("Error: Updating this door reduces glass back area to zero or below.", self.error_color)
+            # Validate door update
+            is_valid, error_msg, _ = validate_door_update(glass_area, doors, self.selected_door_index, updated_door)
+            if not is_valid:
+                self.update_status(f"Error: {error_msg}", self.error_color)
                 return
 
         except Exception as e:
@@ -872,12 +760,7 @@ class App(ctk.CTk):
             self.update_status("Error: No project selected.", self.error_color)
             return
             
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
-        os.makedirs(reports_dir, exist_ok=True)
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        sanitized_project_name = self.current_project_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        unique_excel_path = os.path.join(reports_dir, f"{sanitized_project_name}_Report_{timestamp}.xlsx")
+        unique_excel_path = get_unique_report_path(self.current_project_name)
 
         try:
             generate_excel_report(
