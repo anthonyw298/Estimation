@@ -1,29 +1,66 @@
-# Estimation Application for United Glass Ventures
+# United Glass Estimation Tool
 
-A robust Python-based cost estimation tool to streamline the quoting process for custom glass and door systems. Built with Clear architecture and modular design, this tool combines GUI interaction, part calculations, and Excel report generation.
+A monorepo containing the backend (Python) and frontend (React + Vite) for the United Glass Estimation Calculation Tool.
 
----
+## Project Structure
 
-##  Overview
+```
+.
+├── backend/          # Python backend application
+│   ├── data/        # Data files and database
+│   ├── systems/     # System calculation modules
+│   ├── utils/       # Utility modules
+│   └── main.py      # Main application entry point
+├── frontend/        # React + Vite frontend application
+│   ├── src/         # React source code
+│   └── public/      # Static assets
+└── reports/         # Generated Excel reports
+```
 
-The Estimation Script allows users to:
+## Backend (Python)
 
-- Define project configurations using a clean GUI
-- Automatically calculate quantities for various parts (glass, gasketing, screws, etc.)
-- Easily add, modify, or delete items (e.g., doors, finishes) with consistent pricing logic
-- Generate Excel-based estimates with detail-rich breakdowns
-- Expand functionality via modular `systems/` and `utils/` directories
+The backend is a Python application that handles all business logic, calculations, and data management.
 
----
-
-##  Installation
+### Setup
 
 ```bash
-git clone https://github.com/anthonyw298/Estimation.git
-cd Estimation
-
-python -m venv venv           # optional
-venv\Scripts\activate      # Windows
-
+cd backend
 pip install -r requirements.txt
+```
+
+### Running
+
+```bash
 python main.py
+```
+
+## Frontend (React + Vite)
+
+The frontend is a modern React application built with Vite and managed with Bun.
+
+### Setup
+
+```bash
+cd frontend
+bun install
+```
+
+### Development
+
+```bash
+bun run dev
+```
+
+The application will be available at `http://localhost:5173`
+
+### Build
+
+```bash
+bun run build
+```
+
+## Technology Stack
+
+- **Backend**: Python 3.x
+- **Frontend**: React 19, Vite 7, Bun
+- **Package Manager**: Bun
