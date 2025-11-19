@@ -4,18 +4,18 @@ import { contextBridge, ipcRenderer } from 'electron'
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electron', {
   // Example API - you can add your own methods here
-  send: (channel: string, data: any) => {
+  send: (channel: string, data: unknown) => {
     // Whitelist channels
     const validChannels = ['toMain']
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data)
     }
   },
-  receive: (channel: string, func: (...args: any[]) => void) => {
+  receive: (channel: string, func: (...args: unknown[]) => void) => {
     const validChannels = ['fromMain']
     if (validChannels.includes(channel)) {
       // Strip event as it includes `sender`
-      ipcRenderer.on(channel, (event, ...args) => func(...args))
+      ipcRenderer.on(channel, (_event, ...args) => func(...args))
     }
   }
 })

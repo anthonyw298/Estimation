@@ -1,11 +1,10 @@
-import './App.css'
+import { ThemeProvider } from "@/components/theme-provider"
+import { EstimationDashboard } from "@/features/estimation/EstimationDashboard"
 
-function App() {
+export default function App() {
   return (
-    <>
-      <div className='text-2xl text-red-400'>hello</div>
-    </>
+    <ThemeProvider>
+      <EstimationDashboard />
+    </ThemeProvider>
   )
 }
-
-export default App
