@@ -27,9 +27,9 @@ def main(page: ft.Page):
     page.padding = 0
     page.bgcolor = COLOR_BG
     
-    # Set Comic Sans as requested
+    # Set Arial as requested
     page.theme = ft.Theme(
-        font_family="Comic Sans MS",
+        font_family="Arial",
         color_scheme=ft.ColorScheme(
             primary=COLOR_ACCENT,
             background=COLOR_BG,
@@ -242,7 +242,7 @@ def main(page: ft.Page):
             [
                 ft.Container(
                     content=ft.Column([
-                        ft.Text("UNITED GLASS ESTIMATOR", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Comic Sans MS"),
+                        ft.Text("UNITED GLASS ESTIMATOR", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
                         ft.Text("Select or create a project to begin", size=16, color=COLOR_TEXT_DIM),
                         ft.Divider(color="transparent", height=20),
                         ft.Row([
