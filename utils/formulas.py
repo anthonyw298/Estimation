@@ -204,14 +204,17 @@ def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, fi
         }
     }
 
-    # Hardware base prices by finish
+    # Hardware base prices by finish - Updated keys to match UI options
     HARDWARE_PRICES = {
         "Concealed Closer": {"Clear": 473.00, "Black": 473.00, "Paint": 473.00},
-        "Exit Device": {"Clear": 475.00, "Black": 475.00, "Paint": 475.00},  # Will adjust for >7 ft doors below
+        "Exit Devices": {"Clear": 475.00, "Black": 475.00, "Paint": 475.00},  # "Exit Devices" in UI
+        "Exit Device": {"Clear": 475.00, "Black": 475.00, "Paint": 475.00},    # Legacy key
         "Continuous Hinges": {"Clear": 285.00, "Black": 375.00, "Paint": 375.00},
-        "Lever Handle & Latch Lock": {"Clear": 334.00, "Black": 334.00, "Paint": 334.00},
-        "Latchlock with Paddle": {"Clear": 433.00, "Black": 433.00, "Paint": 433.00},
-        "Electric Strike": {"Clear": 355.00, "Black": 355.00, "Paint": 355.00}
+        "Latch Lock w/ Lever Handle": {"Clear": 334.00, "Black": 334.00, "Paint": 334.00}, # "Latch Lock w/ Lever Handle" in UI
+        "Lever Handle": {"Clear": 167.00, "Black": 167.00, "Paint": 167.00}, # Estimation: Half of Latch+Lever set
+        "Electric Strike": {"Clear": 355.00, "Black": 355.00, "Paint": 355.00},
+        "Extended Ladder Pull (B2B)": {"Clear": 350.00, "Black": 400.00, "Paint": 400.00}, # Placeholder price
+        "Extended Ladder Pull (Single)": {"Clear": 175.00, "Black": 200.00, "Paint": 200.00}, # Placeholder price
     }
 
     try:
@@ -221,17 +224,22 @@ def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, fi
             raise ValueError(f"Invalid door size format: {size_str}")
         door_size_key = f"{parts[0].lower()}x{parts[1].lower()}"
 
+        # Normalize finish to Title Case (e.g. "clear" -> "Clear") to match keys
+        finish_key = finish.title()
+        if finish_key not in ["Clear", "Black", "Paint"]:
+            finish_key = "Clear" # Default to Clear if unknown
+
         # Get base price
-        base_price = DOOR_PRICES[door_size_key][width_type][finish]
+        base_price = DOOR_PRICES[door_size_key][width_type][finish_key]
 
         # Calculate hardware cost based on finish
         hardware_total = 0
         for hw, selected in hardware_dict.items():
             if selected and hw in HARDWARE_PRICES:
-                price = HARDWARE_PRICES[hw][finish]
+                price = HARDWARE_PRICES[hw][finish_key]
 
                 # Special rule: Exit Device is $550 for all doors except 3x7 and 6x7
-                if hw == "Exit Device" and door_size_key not in ["3x7", "6x7"]:
+                if (hw == "Exit Device" or hw == "Exit Devices") and door_size_key not in ["3x7", "6x7"]:
                     price = 550.00
 
                 # Double price for double doors (all hardware)
@@ -278,7 +286,7 @@ def calculate_door_info(doors: list,finish='Clear') -> list:
                     "Style": door_stile,
                     "quantity": door_count,
                     "part_number": "N/A",
-                    "type": "Door",
+                    "type": "Doors",
                     'price': door_price,
                     'hardware': door_hardware,
                     'manual': True

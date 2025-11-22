@@ -127,7 +127,7 @@ def calculate_yes45tu_quantities(
             "description": "Door Area (to subtract from glass)",
             "quantity": total_door_area,
             "part_number": "N/A",
-            "type": "Doors",
+            "type": "Calculations",
             'unit': 'sqft',
             'manual': True
         },
