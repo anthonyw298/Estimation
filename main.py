@@ -125,7 +125,7 @@ def main(page: ft.Page):
 
     # --- UI Building Blocks ---
     
-    def create_input_field(label, key, expand=True, value="", numeric=False):
+    def create_input_field(label, key, expand=True, value="", numeric=False, on_change=None):
         field = ft.TextField(
             label=label,
             value=value,
@@ -136,7 +136,8 @@ def main(page: ft.Page):
             color="white",
             label_style=ft.TextStyle(color=COLOR_TEXT_DIM),
             focused_border_color=COLOR_ACCENT,
-            border_radius=5
+            border_radius=5,
+            on_change=on_change
         )
         inputs[key] = field
         return field
@@ -163,6 +164,11 @@ def main(page: ft.Page):
         page.snack_bar = ft.SnackBar(content=ft.Text(msg, color="white"), bgcolor=COLOR_SURFACE)
         page.snack_bar.open = True
         page.update()
+
+        # Helper to assign ref to inputs dict easily (hacky but works for keeping existing structure)
+    def assign_ref(k, control):
+        inputs[k] = control
+        return control
 
     # --- Views ---
 
@@ -263,12 +269,183 @@ def main(page: ft.Page):
     def build_workspace_view():
         # --- Event Handlers ---
         def update_bay_visibility(e):
+            # Guard against unmounted inputs
+            if not inputs.get("bays_wide") or not inputs["bays_wide"].parent:
+                return
+
             is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
             inputs["bays_wide"].parent.visible = is_yes45
             inputs["bays_tall"].parent.visible = is_yes45
-            inputs["custom_w"].parent.visible = is_yes45
-            inputs["custom_h"].parent.visible = is_yes45
-            page.update()
+            if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45
+            if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45
+            
+            if is_yes45:
+                update_dynamic_bay_inputs(None)
+            
+            if page.views: 
+                page.update()
+
+        def update_dynamic_bay_inputs(e):
+            # Handler to regenerate dynamic inputs when bays_wide/tall change
+            try:
+                bw = int(inputs["bays_wide"].value) if inputs["bays_wide"].value else 0
+                bh = int(inputs["bays_tall"].value) if inputs["bays_tall"].value else 0
+            except:
+                bw, bh = 0, 0
+            
+            # --- Dynamic Widths ---
+            current_w_fields = inputs.get("dynamic_w_fields", [])
+            # Store current values to persist if possible
+            current_w_vals = [f.value for f in current_w_fields]
+            
+            new_w_fields = []
+            inputs["custom_w_col"].controls.clear()
+            
+            if bw > 0:
+                inputs["custom_w_col"].controls.append(ft.Text("Custom Bay Widths (leave blank to auto-fill)", size=12, color=COLOR_TEXT_DIM))
+                for i in range(bw):
+                    val = current_w_vals[i] if i < len(current_w_vals) else ""
+                    field = create_input_field(f"Bay {i+1} Width", f"bay_w_{i}", expand=True, value=val)
+                    new_w_fields.append(field)
+                
+                # Group fields in rows of 4 for cleaner layout
+                rows = []
+                for i in range(0, len(new_w_fields), 4):
+                    chunk = new_w_fields[i:i+4]
+                    rows.append(ft.Row(chunk))
+                
+                inputs["custom_w_col"].controls.extend(rows)
+                
+                # Add Auto-Fill Button
+                def auto_fill_w(e):
+                    try:
+                        total_w = float(inputs["width"].value)
+                    except:
+                        show_snack("Please set valid Opening Width first", "red")
+                        return
+
+                    filled_sum = 0.0
+                    blank_count = 0
+                    
+                    for f in new_w_fields:
+                        try:
+                            v = float(f.value)
+                            filled_sum += v
+                        except:
+                            blank_count += 1
+                    
+                    if filled_sum > total_w:
+                         show_snack(f"Error: Filled widths ({filled_sum:.2f}) exceed total ({total_w:.2f})", "red")
+                         return
+
+                    if blank_count > 0:
+                        remaining = total_w - filled_sum
+                        share = remaining / blank_count
+                        for f in new_w_fields:
+                            if not f.value:
+                                f.value = f"{share:.4f}"
+                        page.update()
+                        
+                        # Validate again after filling
+                        filled_sum = 0.0
+                        for f in new_w_fields:
+                            try:
+                                v = float(f.value)
+                                filled_sum += v
+                            except: pass
+                        
+                        if abs(filled_sum - total_w) > 0.01:
+                             show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_w:.2f})", "orange")
+                        else:
+                             show_snack("Auto-fill complete.", "green")
+                    else:
+                        if abs(filled_sum - total_w) > 0.01:
+                             show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_w:.2f})", "orange")
+                        else:
+                             show_snack("All fields filled.", "green")
+
+                inputs["custom_w_col"].controls.append(
+                    ft.ElevatedButton("Auto-Fill Remaining Widths", on_click=auto_fill_w, bgcolor=COLOR_SURFACE, color="white")
+                )
+
+            inputs["dynamic_w_fields"] = new_w_fields
+
+            # --- Dynamic Heights ---
+            current_h_fields = inputs.get("dynamic_h_fields", [])
+            current_h_vals = [f.value for f in current_h_fields]
+            
+            new_h_fields = []
+            inputs["custom_h_col"].controls.clear()
+            
+            if bh > 0:
+                inputs["custom_h_col"].controls.append(ft.Text("Custom Bay Heights (leave blank to auto-fill)", size=12, color=COLOR_TEXT_DIM))
+                for i in range(bh):
+                    val = current_h_vals[i] if i < len(current_h_vals) else ""
+                    field = create_input_field(f"Bay {i+1} Height", f"bay_h_{i}", expand=True, value=val)
+                    new_h_fields.append(field)
+                
+                rows = []
+                for i in range(0, len(new_h_fields), 4):
+                    chunk = new_h_fields[i:i+4]
+                    rows.append(ft.Row(chunk))
+                
+                inputs["custom_h_col"].controls.extend(rows)
+
+                # Add Auto-Fill Button
+                def auto_fill_h(e):
+                    try:
+                        total_h = float(inputs["height"].value)
+                    except:
+                        show_snack("Please set valid Opening Height first", "red")
+                        return
+
+                    filled_sum = 0.0
+                    blank_count = 0
+                    
+                    for f in new_h_fields:
+                        try:
+                            v = float(f.value)
+                            filled_sum += v
+                        except:
+                            blank_count += 1
+                    
+                    if filled_sum > total_h:
+                         show_snack(f"Error: Filled heights ({filled_sum:.2f}) exceed total ({total_h:.2f})", "red")
+                         return
+
+                    if blank_count > 0:
+                        remaining = total_h - filled_sum
+                        share = remaining / blank_count
+                        for f in new_h_fields:
+                            if not f.value:
+                                f.value = f"{share:.4f}"
+                        page.update()
+                        
+                        # Validate again after filling
+                        filled_sum = 0.0
+                        for f in new_h_fields:
+                            try:
+                                v = float(f.value)
+                                filled_sum += v
+                            except: pass
+                        
+                        if abs(filled_sum - total_h) > 0.01:
+                             show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_h:.2f})", "orange")
+                        else:
+                             show_snack("Auto-fill complete.", "green")
+                    else:
+                        if abs(filled_sum - total_h) > 0.01:
+                             show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_h:.2f})", "orange")
+                        else:
+                             show_snack("All fields filled.", "green")
+
+                inputs["custom_h_col"].controls.append(
+                     ft.ElevatedButton("Auto-Fill Remaining Heights", on_click=auto_fill_h, bgcolor=COLOR_SURFACE, color="white")
+                )
+
+            inputs["dynamic_h_fields"] = new_h_fields
+            if page.views:
+                page.update()
 
         def on_elevation_load(e):
             elev_name = inputs["saved_elev"].value
@@ -286,12 +463,29 @@ def main(page: ft.Page):
             
             inputs["bays_wide"].value = str(data.get("bays_wide", ""))
             inputs["bays_tall"].value = str(data.get("bays_tall", ""))
-            inputs["custom_w"].value = ",".join(map(str, data.get("custom_bay_widths", [])))
-            inputs["custom_h"].value = ",".join(map(str, data.get("custom_bay_heights", [])))
             
+            # Load legacy CSV if exists, else populate dynamic inputs?
+            # Ideally we reconstruct dynamic inputs from stored list
+            # But stored data uses list of floats.
+            
+            update_bay_visibility(None) # This sets visibility and triggers update_dynamic_bay_inputs
+            
+            # Populate dynamic fields from data
+            saved_w = data.get("custom_bay_widths", [])
+            saved_h = data.get("custom_bay_heights", [])
+            
+            # Wait for UI update cycle? No, direct update.
+            # update_dynamic_bay_inputs recreated the fields. We just fill them.
+            w_fields = inputs.get("dynamic_w_fields", [])
+            for i, val in enumerate(saved_w):
+                if i < len(w_fields): w_fields[i].value = str(val)
+
+            h_fields = inputs.get("dynamic_h_fields", [])
+            for i, val in enumerate(saved_h):
+                if i < len(h_fields): h_fields[i].value = str(val)
+
             load_doors(elev_name)
             render_doors()
-            update_bay_visibility(None)
             page.update()
 
         def clear_workspace():
@@ -301,8 +495,12 @@ def main(page: ft.Page):
             inputs["height"].value = ""
             inputs["bays_wide"].value = ""
             inputs["bays_tall"].value = ""
-            inputs["custom_w"].value = ""
-            inputs["custom_h"].value = ""
+            # Clear dynamic fields
+            inputs["custom_w_col"].controls.clear()
+            inputs["custom_h_col"].controls.clear()
+            inputs["dynamic_w_fields"] = []
+            inputs["dynamic_h_fields"] = []
+            
             state["current_doors"] = []
             render_doors()
             page.update()
@@ -405,7 +603,7 @@ def main(page: ft.Page):
                     bw = int(inputs["bays_wide"].value)
                     bh = int(inputs["bays_tall"].value)
                     
-                    # Helper to parse CSV
+                    # Helper to parse CSV (Legacy / Unused now but kept for safety if needed)
                     def parse_csv(txt, total_len, count):
                         try:
                             parts = [float(x) for x in txt.split(',') if x.strip()]
@@ -420,8 +618,81 @@ def main(page: ft.Page):
 
                     data["bays_wide"] = bw
                     data["bays_tall"] = bh
-                    data["custom_bay_widths"] = parse_csv(inputs["custom_w"].value, w, bw)
-                    data["custom_bay_heights"] = parse_csv(inputs["custom_h"].value, h, bh)
+                    
+                    # Gather values from dynamic fields and validate
+                    # If user partially fills, auto-fill the rest before validation
+                    w_vals = []
+                    dynamic_w = inputs.get("dynamic_w_fields", [])
+                    if dynamic_w:
+                        filled_w_sum = 0.0
+                        filled_count = 0
+                        for f in dynamic_w:
+                            try:
+                                if f.value:
+                                    v = float(f.value)
+                                    filled_w_sum += v
+                                    filled_count += 1
+                            except: pass
+                        
+                        if filled_count > 0: # Custom mode active
+                            blank_count = len(dynamic_w) - filled_count
+                            if blank_count > 0:
+                                remaining = w - filled_w_sum
+                                if remaining < 0:
+                                     raise ValueError(f"Custom widths sum ({filled_w_sum:.2f}) exceeds Opening Width ({w:.2f})")
+                                share = remaining / blank_count
+                                # Fill values in memory list
+                                for f in dynamic_w:
+                                    try:
+                                        val = float(f.value) if f.value else share
+                                        w_vals.append(val)
+                                    except:
+                                        w_vals.append(share)
+                            else:
+                                # All filled, just collect
+                                for f in dynamic_w:
+                                    try: w_vals.append(float(f.value))
+                                    except: pass
+
+                    h_vals = []
+                    dynamic_h = inputs.get("dynamic_h_fields", [])
+                    if dynamic_h:
+                        filled_h_sum = 0.0
+                        filled_count = 0
+                        for f in dynamic_h:
+                            try:
+                                if f.value:
+                                    v = float(f.value)
+                                    filled_h_sum += v
+                                    filled_count += 1
+                            except: pass
+                        
+                        if filled_count > 0:
+                            blank_count = len(dynamic_h) - filled_count
+                            if blank_count > 0:
+                                remaining = h - filled_h_sum
+                                if remaining < 0:
+                                     raise ValueError(f"Custom heights sum ({filled_h_sum:.2f}) exceeds Opening Height ({h:.2f})")
+                                share = remaining / blank_count
+                                for f in dynamic_h:
+                                    try:
+                                        val = float(f.value) if f.value else share
+                                        h_vals.append(val)
+                                    except:
+                                        h_vals.append(share)
+                            else:
+                                for f in dynamic_h:
+                                    try: h_vals.append(float(f.value))
+                                    except: pass
+
+                    # Validate totals if custom values exist (w_vals will be populated if custom mode was active)
+                    if w_vals and abs(sum(w_vals) - w) > 0.01:
+                        raise ValueError(f"Custom widths sum ({sum(w_vals):.2f}) does not match Opening Width ({w:.2f})")
+                    if h_vals and abs(sum(h_vals) - h) > 0.01:
+                        raise ValueError(f"Custom heights sum ({sum(h_vals):.2f}) does not match Opening Height ({h:.2f})")
+
+                    data["custom_bay_widths"] = w_vals
+                    data["custom_bay_heights"] = h_vals
                     
                     data["calculated_outputs"] = calculate_yes45tu_quantities(
                         bw, bh, total, w, h, state["current_doors"]
@@ -537,9 +808,21 @@ def main(page: ft.Page):
             # Bays (Hidden by default if not Yes45)
             ft.Container(content=ft.Column([
                 ft.Text("BAY CONFIGURATION", size=12, weight="bold", color=COLOR_TEXT_DIM),
-                ft.Row([create_input_field("Bays Wide", "bays_wide"), create_input_field("Bays Tall", "bays_tall")]),
-                ft.Row([create_input_field("Custom Widths (csv)", "custom_w"), create_input_field("Custom Heights (csv)", "custom_h")]),
+                ft.Row([
+                    create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=update_dynamic_bay_inputs), 
+                    create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=update_dynamic_bay_inputs)
+                ]),
             ]), margin=ft.margin.only(top=10)),
+            
+            # Containers for dynamic inputs
+            assign_ref("custom_w_container", ft.Container(
+                content=inputs.setdefault("custom_w_col", ft.Column([], spacing=10)),
+                visible=False
+            )),
+            assign_ref("custom_h_container", ft.Container(
+                content=inputs.setdefault("custom_h_col", ft.Column([], spacing=10)),
+                visible=False
+            )),
 
             ft.Container(
                 content=ft.Row([
@@ -581,6 +864,63 @@ def main(page: ft.Page):
             )
         ], expand=True)
 
+        # Initial visibility check
+        # The view is returned but not yet added to page.views in route_change,
+        # so page.update() in update_bay_visibility fails if called directly.
+        # Instead, we just set the initial visibility state of the controls.
+        
+        is_yes45_init = inputs["system"].value == "YES 45TU FRONT SET(OG)"
+        
+        # Safely set initial visibility on containers if they exist
+        if inputs.get("bays_wide") and inputs["bays_wide"].parent:
+             inputs["bays_wide"].parent.visible = is_yes45_init
+        if inputs.get("bays_tall") and inputs["bays_tall"].parent:
+             inputs["bays_tall"].parent.visible = is_yes45_init
+             
+        if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45_init
+        if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45_init
+        
+        if is_yes45_init:
+            # Manually populate dynamic inputs without triggering page.update
+            # Copy logic from update_dynamic_bay_inputs but remove page.update()
+            try:
+                bw = int(inputs["bays_wide"].value) if inputs["bays_wide"].value else 0
+                bh = int(inputs["bays_tall"].value) if inputs["bays_tall"].value else 0
+            except:
+                bw, bh = 0, 0
+            
+            # Helper to reuse creation logic without update
+            def populate_dynamic_fields_init(count, prefix, col_key, store_key):
+                new_fields = []
+                inputs[col_key].controls.clear()
+                if count > 0:
+                    inputs[col_key].controls.append(ft.Text(f"Custom Bay {'Widths' if 'w' in prefix else 'Heights'} (leave blank to auto-fill)", size=12, color=COLOR_TEXT_DIM))
+                    saved_vals = [f.value for f in inputs.get(store_key, [])]
+                    for i in range(count):
+                        val = saved_vals[i] if i < len(saved_vals) else ""
+                        field = create_input_field(f"Bay {i+1} {'Width' if 'w' in prefix else 'Height'}", f"{prefix}_{i}", expand=True, value=val)
+                        new_fields.append(field)
+                    rows = []
+                    for i in range(0, len(new_fields), 4):
+                        rows.append(ft.Row(new_fields[i:i+4]))
+                    inputs[col_key].controls.extend(rows)
+                    # Add button (dummy handler for init)
+                    # We need the real handlers here for them to work immediately
+                    # Accessing them from outer scope is tricky if they rely on closures inside update_dynamic_bay_inputs
+                    # For initialization, we can just call update_dynamic_bay_inputs(None) safely because 
+                    # page.update is now guarded inside it.
+                    pass
+                inputs[store_key] = new_fields
+
+            # Actually, simpler: just let the update_bay_visibility run AFTER the view is mounted.
+            # But Flet doesn't have a standard "on_mount" for views easily accessible here without refs.
+            # Best approach: Defer the update until the view is returned.
+            pass 
+            
+            # Call logic to generate fields
+            # We can call the existing function because we added the page.views check inside it
+            update_dynamic_bay_inputs(None)
+
         return ft.View(
             "/workspace",
             [
@@ -590,6 +930,43 @@ def main(page: ft.Page):
             bgcolor=COLOR_BG,
             padding=0
         )
+
+    def route_change(e):
+        page.views.clear()
+        page.views.append(build_projects_view())
+        if page.route == "/workspace" and state["current_project"]:
+            ws_view = build_workspace_view()
+            page.views.append(ws_view)
+            # Now that controls are in the view list (technically), try updating visibility?
+            # Actually, safer to trigger the event manually or call the logic without page.update() inside build
+            
+            # Let's just trigger the update logic safely
+            # We need to access the inputs from the build_workspace_view closure.
+            # But inputs is in the outer scope 'build_workspace_view'. 
+            # We can't easily access it from here unless we return it or it's global. 
+            # 'inputs' is defined in 'main' scope, so it IS accessible.
+            
+            # Call update_bay_visibility but catch errors or modify it to handle 'page not ready'
+            pass 
+            
+        page.update()
+        
+        # Post-update check for workspace
+        if page.route == "/workspace" and state["current_project"]:
+             # Now controls are mounted
+             # Trigger visibility update logic
+             is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
+             inputs["bays_wide"].parent.visible = is_yes45
+             inputs["bays_tall"].parent.visible = is_yes45
+             inputs["custom_w_container"].visible = is_yes45
+             inputs["custom_h_container"].visible = is_yes45
+             # We need to trigger dynamic input generation if needed
+             # We can't call update_dynamic_bay_inputs directly easily because it's nested.
+             # But wait, inputs are global-ish in this function scope.
+             # The issue is 'update_dynamic_bay_inputs' is defined INSIDE build_workspace_view.
+             
+             # FIX: Move the initial call inside build_workspace_view but wrap page.update in a check.
+             pass
 
     def route_change(e):
         page.views.clear()
