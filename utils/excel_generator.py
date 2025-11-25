@@ -61,15 +61,19 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
 
     current_row = start_output_row
     title_cell = ws.cell(row=current_row, column=colE, value=title)
-    title_cell.font = Font(bold=True)
-    title_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+    title_cell.font = Font(bold=True, size=12)
+    # title_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
+
     for i, h in enumerate(["Description", "Part Number", "Quantity", "Original Price", "Discounted Price"]):
         header_cell = ws.cell(row=current_row + 1, column=colE + i, value=h)
         header_cell.font = Font(bold=True)
-        header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        header_cell.border = Border(bottom=Side(style='thin'))
+        # header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid") # Removed color fill for professional look
     current_row += 2
 
     section_material_impacts = []
+    section_original_total = 0.0
+    section_discounted_total = 0.0
 
     for item in items:
         qty_raw = item.get('quantity', 0)
@@ -135,6 +139,8 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
 
         system_total_ref[0] += item_total_cost_for_display
         original_system_total_ref[0] += original_item_total_cost
+        section_original_total += original_item_total_cost
+        section_discounted_total += item_total_cost_for_display
 
         ws.cell(row=current_row, column=colE, value=item.get('description', ''))
         ws.cell(row=current_row, column=colE + 1, value=pn or 'N/A')
@@ -142,7 +148,19 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         ws.cell(row=current_row, column=colE + 3, value=original_item_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + 4, value=item_total_cost_for_display).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         current_row += 1
-    return current_row + 1, section_material_impacts
+
+    # Add Section Totals
+    ws.cell(row=current_row, column=colE + 2, value=f"Total {title}").font = Font(bold=True)
+    ws.cell(row=current_row, column=colE + 3, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=current_row, column=colE + 3).font = Font(bold=True)
+    ws.cell(row=current_row, column=colE + 4, value=section_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=current_row, column=colE + 4).font = Font(bold=True)
+    
+    # Add top border for totals row
+    for col in range(colE, colE + 5):
+        ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
+
+    return current_row + 2, section_material_impacts
 
 
 def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
@@ -288,6 +306,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     final_summary_data = []
     total_discounted_price = 0.0
     total_reusable_cost = 0.0
+    grand_original_total = 0.0
+    grand_discounted_total = 0.0
+    grand_residual_total = 0.0
 
     for category, items in categories.items():
         for item in items:
@@ -400,16 +421,26 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         if not items:
             continue
         header_cell = ws.cell(row=current_row, column=1, value=category)
-        header_cell.font = Font(bold=True)
-        header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+        header_cell.font = Font(bold=True, size=12)
+        # header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
         current_row += 1
         for col, header in enumerate(headers, start=1):
             header_cell = ws.cell(row=current_row, column=col, value=header)
             header_cell.font = Font(bold=True)
-            header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+            header_cell.border = Border(bottom=Side(style='thin'))
+            # header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid") # Removed color fill for professional look
         current_row += 1
+        
+        section_original_total = 0.0
+        section_total_cost = 0.0
+        section_residual_total = 0.0
+        
         for item in final_summary_data:
             if item['category'] == category:
+                section_original_total += item['original_total_cost']
+                section_total_cost += item['total_cost']
+                section_residual_total += item['reusable_cost']
+                
                 ws.cell(row=current_row, column=1, value=item['display'])
                 ws.cell(row=current_row, column=2, value=item['quantity_display'])
                 ws.cell(row=current_row, column=3, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -418,20 +449,67 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 ws.cell(row=current_row, column=6, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
                 ws.cell(row=current_row, column=7, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 current_row += 1
+        
+        grand_original_total += section_original_total
+        grand_discounted_total += section_total_cost
+        grand_residual_total += section_residual_total
 
-        current_row += 1
+        # Add Section Totals for Summary
+        ws.cell(row=current_row, column=2, value=f"Total {category}").font = Font(bold=True)
+        ws.cell(row=current_row, column=3, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=3).font = Font(bold=True)
+        ws.cell(row=current_row, column=4, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=4).font = Font(bold=True)
+        ws.cell(row=current_row, column=7, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=7).font = Font(bold=True)
+        
+        # Add top border for totals row
+        for col in range(1, 8):
+            ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
+        current_row += 2
+
+    # Grand Totals Block
+    gt_row = current_row + 2
+    
+    # Original Total
+    ws.cell(row=gt_row, column=3, value="Overall Total Price (List)").font = Font(bold=True)
+    ws.cell(row=gt_row, column=3).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row, column=3).border = Border(left=Side(style='thin'), top=Side(style='thin'))
+    
+    ws.cell(row=gt_row, column=4, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row, column=4).font = Font(bold=True)
+    ws.cell(row=gt_row, column=4).border = Border(right=Side(style='thin'), top=Side(style='thin'))
+
+    # Discounted Total
+    ws.cell(row=gt_row+1, column=3, value="Overall Discounted Total").font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=3).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+1, column=3).border = Border(left=Side(style='thin'))
+
+    ws.cell(row=gt_row+1, column=4, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+1, column=4).font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=4).border = Border(right=Side(style='thin'))
+
+    # Residual Cost
     reuse_total = total_reusable_cost
-    rg_total_row = current_row
+    ws.cell(row=gt_row+2, column=3, value="Overall Residual Cost").font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=3).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+2, column=3).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=rg_total_row, column=6, value="Residual Grand Total").font = Font(bold=True)
-    ws.cell(row=rg_total_row, column=7, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+2, column=4, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+2, column=4).font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=4).border = Border(right=Side(style='thin'))
 
+    # Waste %
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
-    ws.cell(row=rg_total_row + 1, column=6, value="Overall Waste %").font = Font(bold=True)
-    ws.cell(row=rg_total_row + 1, column=7, value=f"{reuse_pct_of_gt:.2f}%")
+    ws.cell(row=gt_row+3, column=3, value="Overall Waste %").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=3).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+3, column=3).border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
 
-    _autofit_columns(ws, 1, 7, start_row, rg_total_row + 1)
+    ws.cell(row=gt_row+3, column=4, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=4).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
+
+    _autofit_columns(ws, 1, 7, start_row, gt_row + 4)
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
@@ -607,9 +685,9 @@ def generate_excel_report(
             for i, (header, value) in enumerate(input_data):
                 header_cell = ws.cell(row=current_excel_row + i, column=COL_A, value=header)
                 header_cell.font = Font(bold=True)
-                header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
-                header_cell.border = thin_border
-                
+                # header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
+                header_cell.border = thin_border 
+
                 value_cell = ws.cell(row=current_excel_row + i, column=COL_B, value=value)
                 value_cell.border = thin_border
                 if header in ["Total Count", "Bays Wide", "Bays Tall"]:
@@ -671,15 +749,33 @@ def generate_excel_report(
 
             current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
 
-            system_total_row = ws.max_row + 2
-            orig_total_cell = ws.cell(row=system_total_row, column=PRICE_COL, value="ORIGINAL ELEVATION TOTAL")
-            orig_total_cell.font = Font(bold=True)
-            orig_total_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-            ws.cell(row=system_total_row + 1, column=PRICE_COL, value=original_system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            disc_total_cell = ws.cell(row=system_total_row + 2, column=PRICE_COL, value="DISCOUNTED ELEVATION TOTAL")
-            disc_total_cell.font = Font(bold=True)
-            disc_total_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-            ws.cell(row=system_total_row + 3, column=PRICE_COL, value=system_total_for_this_block[0]).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            system_total_row = ws.max_row + 4
+            
+            lbl_col = PRICE_COL - 1
+            val_col = PRICE_COL
+
+            # Row 1: Original Total
+            l_orig = ws.cell(row=system_total_row, column=lbl_col, value="Original Elevation Total")
+            l_orig.font = Font(bold=True)
+            l_orig.alignment = Alignment(horizontal='right')
+            l_orig.border = Border(left=Side(style='thin'), top=Side(style='thin'))
+            
+            v_orig = ws.cell(row=system_total_row, column=val_col, value=original_system_total_for_this_block[0])
+            v_orig.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            v_orig.font = Font(bold=True)
+            v_orig.border = Border(right=Side(style='thin'), top=Side(style='thin'))
+
+            # Row 2: Discounted Total
+            l_disc = ws.cell(row=system_total_row + 1, column=lbl_col, value="Discounted Elevation Total")
+            l_disc.font = Font(bold=True)
+            l_disc.alignment = Alignment(horizontal='right')
+            l_disc.border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
+            
+            v_disc = ws.cell(row=system_total_row + 1, column=val_col, value=system_total_for_this_block[0])
+            v_disc.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            v_disc.font = Font(bold=True)
+            v_disc.border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
+            
             print(f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
 
             _autofit_columns(ws, COL_A, PRICE_COL, 1, ws.max_row)
