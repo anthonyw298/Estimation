@@ -449,9 +449,19 @@ def main(page: ft.Page):
 
         def on_elevation_load(e):
             elev_name = inputs["saved_elev"].value
-            if not elev_name or elev_name not in state["saved_elevations"]: 
+            if not elev_name or elev_name == "New Elevation": 
+                # If "New Elevation" selected or cleared, reset to Create mode
                 clear_workspace()
+                inputs["save_btn"].text = "CREATE ELEVATION"
+                inputs["saved_elev"].value = None # Reset dropdown selection visual if desired or keep "New Elevation"
+                page.update()
                 return
+            
+            if elev_name not in state["saved_elevations"]:
+                return
+
+            # Switch to Update mode
+            inputs["save_btn"].text = "UPDATE ELEVATION"
             
             data = state["saved_elevations"][elev_name]
             inputs["system"].value = data.get("system", state["system_options"][0])
@@ -495,6 +505,7 @@ def main(page: ft.Page):
             inputs["height"].value = ""
             inputs["bays_wide"].value = ""
             inputs["bays_tall"].value = ""
+            inputs["save_btn"].text = "CREATE ELEVATION"
             # Clear dynamic fields
             inputs["custom_w_col"].controls.clear()
             inputs["custom_h_col"].controls.clear()
@@ -536,17 +547,33 @@ def main(page: ft.Page):
             page.update()
 
         def delete_door(idx):
+            is_existing_elevation = inputs["saved_elev"].value is not None and inputs["saved_elev"].value != "" and inputs["saved_elev"].value != "New Elevation"
+            
             state["current_doors"].pop(idx)
             save_doors_action()
             render_doors()
+            
+            # Auto-update elevation if loaded
+            if is_existing_elevation:
+                try:
+                    save_elevation_action(None)
+                except Exception as e:
+                    print(f"Auto-update failed after door delete: {e}")
+            
+            page.update()
 
         def save_doors_action():
             # Saves current doors to file associated with current elevation input name
             elev_name = inputs["type"].value
             if elev_name:
                 save_doors(elev_name)
+            else:
+                print("Warning: save_doors_action called but no elevation name in type input.")
 
         def modify_door(action):
+            # Auto-save elevation if updating a door on an existing elevation
+            is_existing_elevation = inputs["saved_elev"].value is not None and inputs["saved_elev"].value != ""
+            
             try:
                 count = int(inputs["door_count"].value)
             except:
@@ -572,9 +599,18 @@ def main(page: ft.Page):
             inputs["door_count"].value = ""
             for cb in hardware_cbs.values(): cb.value = False
             state["selected_door_index"] = None
+            
+            # Auto-update elevation if loaded
+            if is_existing_elevation:
+                try:
+                    save_elevation_action(None)
+                except Exception as e:
+                    print(f"Auto-update failed: {e}")
+                    
             page.update()
 
         def save_elevation_action(e):
+            is_update = inputs["save_btn"].text == "UPDATE ELEVATION"
             try:
                 elev = inputs["type"].value.strip()
                 if not elev: raise ValueError("Elevation Name Required")
@@ -736,9 +772,18 @@ def main(page: ft.Page):
                 )
                 
                 # Update dropdown
-                inputs["saved_elev"].options = [ft.dropdown.Option(x) for x in sorted(state["saved_elevations"].keys())]
-                inputs["saved_elev"].value = elev
-                show_snack("Elevation Saved Successfully", "green")
+                new_opts = sorted(state["saved_elevations"].keys())
+                inputs["saved_elev"].options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
+                
+                if is_update:
+                    inputs["saved_elev"].value = elev
+                    show_snack("Elevation Updated Successfully", "green")
+                else:
+                    # Clear Inputs for new creation
+                    clear_workspace()
+                    inputs["saved_elev"].value = None # Reset dropdown to allow loading others
+                    show_snack("Elevation Created Successfully", "green")
+                
                 page.update()
 
             except Exception as ex:
@@ -757,11 +802,30 @@ def main(page: ft.Page):
                 dp = get_door_path(state["current_project"], elev)
                 if os.path.exists(dp): os.remove(dp)
                 
+                # Regenerate the report to reflect deletion
+                try:
+                    generate_excel_report(
+                        excel_path=paths["excel"], 
+                        elevations_json_path=paths["elevations"], 
+                        extra_materials_json_path=paths["materials"],
+                        system_input="", finish_input="", elevation_type="", total_count=0,
+                        bays_wide=0, bays_tall=0, opening_width=0, opening_height=0,
+                        sqft_per_type=0, total_sqft=0, perimeter_ft=0, total_perimeter_ft=0,
+                        calculated_outputs=[], doors=None, 
+                        delete_elevation_type=elev # Explicitly pass deleted name for cleanup if needed inside generator
+                    )
+                except Exception as ex:
+                    print(f"Error regenerating report after delete: {ex}")
+
                 # Update UI
-                inputs["saved_elev"].options = [ft.dropdown.Option(x) for x in sorted(state["saved_elevations"].keys())]
+                new_opts = sorted(state["saved_elevations"].keys())
+                inputs["saved_elev"].options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
                 inputs["saved_elev"].value = None
+                # Force switch to CREATE mode after deletion by clearing inputs
                 clear_workspace()
+                # Since clear_workspace resets the button text, we just need to confirm
                 show_snack("Elevation Deleted", "red")
+                page.update()
 
         def gen_full_report(e):
             try:
@@ -790,7 +854,9 @@ def main(page: ft.Page):
 
         # Left Col: Elevation Form
         elev_options = sorted(state["saved_elevations"].keys())
-        saved_dd = create_dropdown("Load Elevation", "saved_elev", elev_options, on_change=on_elevation_load)
+        # Add "New Elevation" option at the top
+        dd_options = ["New Elevation"] + elev_options
+        saved_dd = create_dropdown("Load Elevation", "saved_elev", dd_options, on_change=on_elevation_load)
         
         # Form Group
         form_col = ft.Column([
@@ -826,7 +892,7 @@ def main(page: ft.Page):
 
             ft.Container(
                 content=ft.Row([
-                    ft.ElevatedButton("SAVE ELEVATION", bgcolor=COLOR_ACCENT, color="white", on_click=save_elevation_action, expand=True, height=50),
+                    assign_ref("save_btn", ft.ElevatedButton("CREATE ELEVATION", bgcolor=COLOR_ACCENT, color="white", on_click=save_elevation_action, expand=True, height=50)),
                     ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Delete Elevation", on_click=delete_elevation_action)
                 ]),
                 margin=ft.margin.only(top=20)

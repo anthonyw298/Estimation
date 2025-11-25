@@ -287,6 +287,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 existing = aggregated_map[k]
                 # If price is manually set (manual, glass, labor, door), maintain correct total cost by updating unit price
                 if existing['manual'] or existing['is_glass'] or existing['is_joints_fab_labor'] or existing['is_door']:
+                    # Recalculate weighted average price
                     cost_existing = float(existing.get('price', 0.0)) * float(existing['quantity'])
                     cost_new = float(item.get('price', 0.0)) * float(item['quantity'])
                     total_qty = float(existing['quantity']) + float(item['quantity'])
@@ -582,7 +583,10 @@ def generate_excel_report(
             print(f"Error saving updated {private_elevations_path} during delete: {e}")
             if completion_callback: completion_callback(f"Error saving updated elevations after delete: {e}")
 
-    if mode == "export_all":
+    # Handle regeneration/cleanup case
+    if delete_elevation_type and system_input == "": 
+        pass # Don't add a new empty elevation if we are just deleting
+    elif mode == "export_all":
         pass
     else:
         if elevation_type in current_saved_elevations and not reset:
@@ -618,7 +622,9 @@ def generate_excel_report(
             return
 
     wb = Workbook()
-    wb.remove(wb.active)
+    # Remove the default "Sheet" immediately so it doesn't end up in the final report
+    if "Sheet" in wb.sheetnames:
+        del wb["Sheet"]
 
     save_extra_materials({}, private_extra_materials_path)
     overall_current_extra_materials_state = load_extra_materials(private_extra_materials_path)
@@ -633,11 +639,12 @@ def generate_excel_report(
             manual = item.get('manual', False)
             price_sum = 0.0
             for single_qty in individual_quantities:
-                if manual and pn and pn != "N/A":
-                    p, _, _ = get_price_by_part(pn, single_qty, finish=elev_data.get('finish'), summary=True, group=True)
-                    price_sum += p if p is not None else item.get('price', 0.0) * single_qty
-                elif manual:
-                    price_sum += item.get('price', 0.0) * single_qty
+                if manual:
+                    if pn and pn != "N/A":
+                        p, _, _ = get_price_by_part(pn, single_qty, finish=elev_data.get('finish'), summary=True, group=True)
+                        price_sum += p if p is not None else item.get('price', 0.0) * single_qty
+                    else:
+                        price_sum += item.get('price', 0.0) * single_qty
                 else:
                     p, _, _ = get_price_by_part(pn, single_qty, finish=elev_data.get('finish'), summary=True)
                     price_sum += p if p is not None else 0.0
