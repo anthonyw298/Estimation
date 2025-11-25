@@ -75,15 +75,28 @@ def calculate_yes45tu_quantities(
     results = []
 
     # --- Standard outputs ---
+    # Explicitly handle the two BE9-2513 entries to label them correctly
+    be9_2513_counter = 0
+
     for part_number, quantity in outputs:
         desc = None
         part_type = None
 
-        for category, parts_dict in PART_NUMBER_MAP.items():
-            if part_number in parts_dict:
-                desc = parts_dict[part_number]
-                part_type = category
-                break
+        if part_number == "BE9-2513":
+            be9_2513_counter += 1
+            # Fetch base description
+            base_desc = PART_NUMBER_MAP.get("profiles", {}).get(part_number, "UNKNOWN")
+            if be9_2513_counter == 1:
+                desc = f"{base_desc} (Jamb)"
+            else:
+                desc = f"{base_desc} (Sill)"
+            part_type = "profiles"
+        else:
+            for category, parts_dict in PART_NUMBER_MAP.items():
+                if part_number in parts_dict:
+                    desc = parts_dict[part_number]
+                    part_type = category
+                    break
 
         if desc is None:
             desc = "UNKNOWN"
