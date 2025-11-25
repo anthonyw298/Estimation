@@ -7,7 +7,7 @@ from openpyxl import Workbook
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
-from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_total_door_area, calculate_glass_to_add_back
+from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_total_door_area, calculate_glass_to_add_back, calculate_door_info
 
 # --- Constants & Config ---
 PROJECTS_DIR = ".files"
@@ -428,6 +428,11 @@ def main(page: ft.Page):
                     )
                 else:
                     data["calculated_outputs"] = []
+
+                # Append formatted door items to calculated_outputs so they are persisted in state and file
+                if state["current_doors"]:
+                    door_items = calculate_door_info(state["current_doors"], finish=data["finish"])
+                    data["calculated_outputs"].extend(door_items)
 
                 state["saved_elevations"][elev] = data
                 

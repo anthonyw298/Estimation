@@ -260,6 +260,30 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
             })
 
+    # Step 2.5: Aggregate items within each category by key to prevent duplicates across elevations
+    for category in categories:
+        aggregated_map = {}
+        for item in categories[category]:
+            k = item['key']
+            if k in aggregated_map:
+                existing = aggregated_map[k]
+                # If price is manually set (manual, glass, labor, door), maintain correct total cost by updating unit price
+                if existing['manual'] or existing['is_glass'] or existing['is_joints_fab_labor'] or existing['is_door']:
+                    cost_existing = float(existing.get('price', 0.0)) * float(existing['quantity'])
+                    cost_new = float(item.get('price', 0.0)) * float(item['quantity'])
+                    total_qty = float(existing['quantity']) + float(item['quantity'])
+                    existing['quantity'] = total_qty
+                    if total_qty > 0:
+                        existing['price'] = (cost_existing + cost_new) / total_qty
+                else:
+                    # For standard parts, just sum quantity; price is re-calculated in Step 3
+                    existing['quantity'] = float(existing['quantity']) + float(item['quantity'])
+            else:
+                # Ensure quantity is float
+                item['quantity'] = float(item['quantity'])
+                aggregated_map[k] = item
+        categories[category] = list(aggregated_map.values())
+
     # Step 3: Calculate prices for aggregated items and prepare final data
     final_summary_data = []
     total_discounted_price = 0.0
@@ -565,8 +589,8 @@ def generate_excel_report(
                 ("Bays Tall", elev_data.get("bays_tall")),
                 ("Custom Bay Widths", custom_bay_widths_str),
                 ("Custom Bay Heights", custom_bay_heights_str),
-                ("Opening Width", f"{elev_data.get('opening_width_inches'):.2f} ft"),
-                ("Opening Height", f"{elev_data.get('opening_height_inches'):.2f} ft"),
+                ("Opening Width", f"{elev_data.get('opening_width_inches'):.2f} in"),
+                ("Opening Height", f"{elev_data.get('opening_height_inches'):.2f} in"),
                 ("Sq Ft per Type", f"{elev_data.get('sqft_per_type'):.2f} sqft"),
                 ("Total Sq Ft", f"{elev_data.get('total_sqft'):.2f} sqft"),
                 ("Perimeter Ft", f"{elev_data.get('perimeter_ft'):.2f} ft"),
