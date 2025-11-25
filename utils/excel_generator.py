@@ -1,7 +1,7 @@
 import os
 import json
 from openpyxl import Workbook
-from openpyxl.styles import Font, numbers, PatternFill, Alignment
+from openpyxl.styles import Font, numbers, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from collections import Counter
 import datetime
@@ -599,11 +599,19 @@ def generate_excel_report(
             ]
 
             current_excel_row = 1
+            thin_border = Border(left=Side(style='thin'), 
+                                 right=Side(style='thin'), 
+                                 top=Side(style='thin'), 
+                                 bottom=Side(style='thin'))
+
             for i, (header, value) in enumerate(input_data):
                 header_cell = ws.cell(row=current_excel_row + i, column=COL_A, value=header)
                 header_cell.font = Font(bold=True)
                 header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+                header_cell.border = thin_border
+                
                 value_cell = ws.cell(row=current_excel_row + i, column=COL_B, value=value)
+                value_cell.border = thin_border
                 if header in ["Total Count", "Bays Wide", "Bays Tall"]:
                     value_cell.alignment = Alignment(horizontal='left')
             
