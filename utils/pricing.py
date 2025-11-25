@@ -73,36 +73,48 @@ def get_unit_price_by_part(part_number, finish=None, extra_materials_file="extra
         unit_type = "ft"
         # 1. Select base price based on finish (if list)
         if isinstance(list_price_raw, list) and len(list_price_raw) == 3:
-            if finish and finish.lower() == 'clear':
+            # Normalize finish input to handle cases where it might be None or formatted differently
+            finish_norm = finish.lower() if finish else 'clear'
+            
+            if finish_norm == 'clear':
                 list_price_effective = float(list_price_raw[0])
-            elif finish and finish.lower() == 'black':
+            elif finish_norm == 'black':
                 list_price_effective = float(list_price_raw[1])
-            elif finish and finish.lower() == 'paint':
+            elif finish_norm == 'paint':
                 list_price_effective = float(list_price_raw[2])
             else:
-                # Default to clear price if finish is not specified or recognized
+                # Default to clear price if finish is not recognized
                 list_price_effective = float(list_price_raw[0])
         else:
-            # Fallback if List Price is not a list for a profile (e.g., old data or single price profile)
+            # Fallback if List Price is not a list for a profile
             try:
                 list_price_effective = float(list_price_raw)
             except (TypeError, ValueError):
                 list_price_effective = 0.0
 
         # 2. Apply the finish-based multiplier for profiles
-        finish_multiplier = 1.0
-        if finish and finish.lower() == 'black':
-            finish_multiplier = 1.1
-        elif finish and finish.lower() == 'paint':
-            finish_multiplier = 1.2
-        list_price_effective *= finish_multiplier
+        # Only apply this if we haven't already selected a specific price from the list above
+        # Logic check: if list_price_raw was a list, we already picked the correct price.
+        # If it was a single value, we might need to adjust.
+        # Typically, if "List Price" is a single value, it's the base price (Clear).
+        
+        if not (isinstance(list_price_raw, list) and len(list_price_raw) == 3):
+             finish_multiplier = 1.0
+             finish_norm = finish.lower() if finish else 'clear'
+             if finish_norm == 'black':
+                 finish_multiplier = 1.1
+             elif finish_norm == 'paint':
+                 finish_multiplier = 1.2
+             list_price_effective *= finish_multiplier
 
         # 3. Divide by length to get per-foot price for profiles
+        # CRITICAL FIX: Ensure length_ft is calculated correctly.
+        # BE9-2513 has Length: "24' - 0"" which parse_length_to_feet handles.
         length_ft = parse_length_to_feet(length_str)
-        if length_ft > EPSILON: # Use EPSILON for floating point comparison against zero
+        if length_ft > EPSILON: 
             list_price_effective /= length_ft
         else:
-            print(f"Warning: Profile '{part_number}' has zero or invalid length. Unit price might be incorrect.")
+            print(f"Warning: Profile '{part_number}' has zero or invalid length '{length_str}'. Unit price might be incorrect.")
 
     else: # Not a profile (accessory or other non-profile item)
         # For non-profiles, the List Price is usually a single value
@@ -150,6 +162,11 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
 
     # *** MAJOR FIX: Use get_unit_price_by_part to get the correct unit price ***
     unit_price, unit_type = get_unit_price_by_part(part_number, finish, extra_materials_file)
+    
+    # DEBUG LOGGING
+    if unit_price is None or unit_price == 0:
+        with open("pricing_debug_log.txt", "a") as log:
+            log.write(f"Zero/None Price for {part_number}: UnitPrice={unit_price}, Type={unit_type}, Finish={finish}\n")
     
     if unit_price is None:
         # If get_unit_price_by_part failed, propagate None
