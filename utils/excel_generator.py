@@ -232,7 +232,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             is_profile = part in PART_NUMBER_MAP.get('profiles', {})
             is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
             is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
-            is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor'
+            is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor' or "joints fabrication" in desc.lower() or "fabrication labor" in desc.lower()
             is_door = output.get('type', '').lower() in ['door', 'doors']
 
             if is_profile:
@@ -596,9 +596,13 @@ def generate_excel_report(
 
         # Build door items from UI doors, but avoid double-adding if base outputs already include doors
         base_outputs = list(calculated_outputs or [])
-        # Only treat existing purchase-door lines (type == 'door') as a signal to skip; ignore 'doors' area rows
-        has_purchase_doors = any(((item.get('type', '') or '').lower() == 'door') for item in base_outputs)
-        door_items = calculate_door_info(doors, finish_input) if (doors and not has_purchase_doors) else []
+        
+        # Remove any existing door entries from base_outputs to prevent duplication/stale data
+        base_outputs = [item for item in base_outputs if not (item.get('type', '').lower() in ['door', 'doors'] and item.get('manual', False))]
+        
+        # Recalculate door items fresh from current inputs
+        door_items = calculate_door_info(doors, finish_input) if doors else []
+        
         # Avoid mutating the incoming list reference
         elevation_outputs = base_outputs + door_items
 

@@ -601,6 +601,7 @@ def main(page: ft.Page):
             state["selected_door_index"] = None
             
             # Auto-update elevation if loaded
+            # Note: We trigger this AFTER the door list is updated in state["current_doors"]
             if is_existing_elevation:
                 try:
                     save_elevation_action(None)
