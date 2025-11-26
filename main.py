@@ -252,15 +252,15 @@ def main(page: ft.Page):
         for logo_filename in logo_filenames:
             logo_path = os.path.join("assets", logo_filename)
             abs_logo_path = os.path.abspath(logo_path)
-        
+            
             # Check if logo file exists and try to load it
             if os.path.exists(abs_logo_path):
                 try:
                     # Try with just filename (if assets_dir is set)
                     logo_image = ft.Image(
                         src=logo_filename,
-                        width=150,
-                        height=150,
+                        width=200,
+                        height=200,
                         fit=ft.ImageFit.CONTAIN,
                     )
                     break  # Successfully loaded, exit loop
@@ -269,8 +269,8 @@ def main(page: ft.Page):
                         # Try with absolute path
                         logo_image = ft.Image(
                             src=abs_logo_path,
-                            width=150,
-                            height=150,
+                            width=200,
+                            height=200,
                             fit=ft.ImageFit.CONTAIN,
                         )
                         break  # Successfully loaded, exit loop
@@ -283,16 +283,16 @@ def main(page: ft.Page):
         placeholder = ft.Container(
             content=ft.Column([
                 ft.Container(
-                    content=ft.Text("U", size=100, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
-                    width=120,
-                    height=120,
+                    content=ft.Text("U", size=140, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
+                    width=160,
+                    height=160,
                     alignment=ft.alignment.center,
                     border_radius=10,
                 ),
-                ft.Text("United Glass", size=18, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial")
+                ft.Text("United Glass", size=22, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial")
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8, tight=True),
-            width=150,
-            height=160,
+            width=200,
+            height=200,
             alignment=ft.alignment.center,
             padding=10
         )
@@ -308,15 +308,20 @@ def main(page: ft.Page):
             [
                 ft.Container(
                     content=ft.Column([
-                        # Logo section - always show something
-                        ft.Container(
-                            content=logo_display,
-                            alignment=ft.alignment.center,
-                            margin=ft.margin.only(bottom=20),
-                        ),
-                        ft.Text("ESTIMATION TOOL", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
-                        ft.Text("Select or create a project to begin", size=16, color=COLOR_TEXT_DIM),
-                        ft.Divider(color="transparent", height=20),
+                        # Header with logo on left and text on right
+                        ft.Row([
+                            # Logo on the left
+                            ft.Container(
+                                content=logo_display,
+                                alignment=ft.alignment.center,
+                            ),
+                            # Text content on the right
+                            ft.Column([
+                                ft.Text("ESTIMATION TOOL", size=40, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
+                                ft.Text("Select or create a project to begin", size=18, color=COLOR_TEXT_DIM),
+                            ], spacing=8, alignment=ft.MainAxisAlignment.CENTER, expand=True),
+                        ], spacing=25, alignment=ft.MainAxisAlignment.CENTER),
+                        ft.Divider(color="transparent", height=10),
                         ft.Row([
                             new_proj_name,
                             ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=COLOR_ACCENT, icon_size=40, on_click=add_project_click, tooltip="Create Project")
