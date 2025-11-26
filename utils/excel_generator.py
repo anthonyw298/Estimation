@@ -1,13 +1,15 @@
 import os
 import json
+import math
 from openpyxl import Workbook
 from openpyxl.styles import Font, numbers, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from collections import Counter
 import datetime
 
-from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part
+from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part, parse_length_to_feet
 from data.part_number import PART_NUMBER_MAP
+from data.parts_data import parts_data
 from utils.formulas import calculate_door_info
 
 # --- Helper Functions ---
@@ -266,6 +268,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             categories[category].append({
                 'key': key,
                 'quantity': qty_for_aggregation,
+                'quantity_list': qty if isinstance(qty, list) else [qty],  # Preserve individual quantities
                 'description': desc,
                 'display': display,
                 'part_number': part,
@@ -292,14 +295,32 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     cost_new = float(item.get('price', 0.0)) * float(item['quantity'])
                     total_qty = float(existing['quantity']) + float(item['quantity'])
                     existing['quantity'] = total_qty
+                    # Combine quantity lists
+                    existing_qty_list = existing.get('quantity_list', [])
+                    item_qty_list = item.get('quantity_list', [])
+                    if not existing_qty_list:
+                        existing_qty_list = [existing['quantity']]
+                    if not item_qty_list:
+                        item_qty_list = [item['quantity']]
+                    existing['quantity_list'] = existing_qty_list + item_qty_list
                     if total_qty > 0:
                         existing['price'] = (cost_existing + cost_new) / total_qty
                 else:
                     # For standard parts, just sum quantity; price is re-calculated in Step 3
                     existing['quantity'] = float(existing['quantity']) + float(item['quantity'])
+                    # Combine quantity lists
+                    existing_qty_list = existing.get('quantity_list', [])
+                    item_qty_list = item.get('quantity_list', [])
+                    if not existing_qty_list:
+                        existing_qty_list = [existing['quantity']]
+                    if not item_qty_list:
+                        item_qty_list = [item['quantity']]
+                    existing['quantity_list'] = existing_qty_list + item_qty_list
             else:
                 # Ensure quantity is float
                 item['quantity'] = float(item['quantity'])
+                if 'quantity_list' not in item:
+                    item['quantity_list'] = [item['quantity']]
                 aggregated_map[k] = item
         categories[category] = list(aggregated_map.values())
 
@@ -398,29 +419,128 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     else 0.0
                 )
                 total_reusable_cost += reusable_cost
+            # Calculate Quantity Req (FT) and Qty Stick (Req)
+            quantity_req_ft = "N/A"
+            qty_stick_req = "N/A"
+            quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
+            
+            if is_profile and part and part != "N/A":
+                # For profiles, quantity is in feet - add units
+                quantity_req_ft = f"{quantity_aggregated:.2f} ft"
+                # Calculate number of sticks needed and format with stick length
+                part_data = parts_data.get(part, {})
+                length_str = part_data.get('Length', '')
+                min_purchase_length = parse_length_to_feet(length_str) or 1.0
+                if min_purchase_length > 0:
+                    num_sticks = math.ceil(quantity_aggregated / min_purchase_length)
+                    qty_stick_req = f"{num_sticks} ({min_purchase_length:.0f}ft per)"
+                else:
+                    qty_stick_req = "N/A"
+                
+                # Format quantity_display to show breakdown like "16ft x2, 8ft x1"
+                quantity_list = item.get('quantity_list', [quantity_aggregated])
+                # Count occurrences of each length
+                length_counter = Counter([round(q, 2) for q in quantity_list])
+                if len(length_counter) > 1:
+                    # Multiple different lengths - show breakdown
+                    length_parts = []
+                    for length_val, count in sorted(length_counter.items(), key=lambda x: x[0], reverse=True):
+                        if count > 1:
+                            length_parts.append(f"{length_val:.0f}ft x{count}")
+                        else:
+                            length_parts.append(f"{length_val:.0f}ft x1")
+                    quantity_display_formatted = ", ".join(length_parts)
+                else:
+                    # All same length - show total with count if multiple pieces
+                    length_val = list(length_counter.keys())[0]
+                    count = length_counter[length_val]
+                    if count > 1:
+                        quantity_display_formatted = f"{length_val:.0f}ft x{count}"
+                    else:
+                        quantity_display_formatted = f"{length_val:.0f}ft"
+                    
+            elif is_accessory and part and part != "N/A":
+                # For accessories, get bulk order info
+                part_data = parts_data.get(part, {})
+                units_str = part_data.get('Units', '1 pcs.')
+                unit_count_per_bundle = 1
+                if 'pc' in units_str.lower():
+                    try:
+                        unit_count_per_bundle = int(units_str.lower().split('pc')[0].strip()) or 1
+                    except ValueError:
+                        unit_count_per_bundle = 1
+                
+                quantity_req_ft = f"{unit_count_per_bundle} pcs"
+                num_orders = math.ceil(quantity_aggregated / unit_count_per_bundle) if unit_count_per_bundle > 0 else 0
+                qty_stick_req = f"{num_orders} order{'s' if num_orders != 1 else ''}"
+            else:
+                # For other items (glass, labor, doors), show N/A in first column, unit price in second
+                quantity_req_ft = "N/A"
+                
+                # For the second column, show unit price
+                if quantity_aggregated > 0:
+                    unit_price = original_total_cost_for_item / quantity_aggregated
+                    qty_stick_req = f"${unit_price:.2f}"
+                else:
+                    qty_stick_req = "$0.00"
+            
             final_summary_data.append({
                 'category': category,
                 'display': display,
-                'quantity_display': f"{quantity_aggregated:.2f} {display_unit}",
+                'quantity_display': quantity_display_formatted,
+                'quantity_req_ft': quantity_req_ft,
+                'qty_stick_req': qty_stick_req,
                 'original_total_cost': original_total_cost_for_item,
                 'total_cost': total_cost_for_item,
                 'reusable_qty_display': reusable_qty_display_string,
                 'reusable_pct': reusable_pct if (is_profile or is_accessory) else "N/A",
                 'reusable_cost': reusable_cost if (is_profile or is_accessory) else 0.0,
-                'part': part
+                'part': part,
+                'calculated_unit_type': calculated_unit_type
             })
 
     # Step 4: Write to worksheet with grouped sections
     start_row = 1
     current_row = start_row
-    headers = [
-        "Project Total Materials", "Quantity", "List Price", "Discounted List Price",
-        "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
-    ]
+    
+    # Define headers based on category
+    def get_headers_for_category(category, items_list=None):
+        if category == 'PROFILES':
+            return [
+                "Project Total Materials", "Total Ft", "Sticks Req", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
+        elif category == 'ACCESSORIES':
+            return [
+                "Project Total Materials", "Quantity Per Order", "Orders Req", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
+        elif category == 'GLASS':
+            return [
+                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
+        elif category == 'LABOR':
+            return [
+                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
+        elif category == 'DOORS':
+            return [
+                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
+        else:
+            # Default headers
+            return [
+                "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Quantity", "List Price", "Discounted List Price",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
 
     for category, items in categories.items():
         if not items:
             continue
+        headers = get_headers_for_category(category, items)
         header_cell = ws.cell(row=current_row, column=1, value=category)
         header_cell.font = Font(bold=True, size=12)
         # header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
@@ -443,12 +563,14 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 section_residual_total += item['reusable_cost']
                 
                 ws.cell(row=current_row, column=1, value=item['display'])
-                ws.cell(row=current_row, column=2, value=item['quantity_display'])
-                ws.cell(row=current_row, column=3, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=4, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=5, value=item['reusable_qty_display'])
-                ws.cell(row=current_row, column=6, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
-                ws.cell(row=current_row, column=7, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=2, value=item['quantity_req_ft'])
+                ws.cell(row=current_row, column=3, value=item['qty_stick_req'])
+                ws.cell(row=current_row, column=4, value=item['quantity_display'])
+                ws.cell(row=current_row, column=5, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=6, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=7, value=item['reusable_qty_display'])
+                ws.cell(row=current_row, column=8, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
+                ws.cell(row=current_row, column=9, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 current_row += 1
         
         grand_original_total += section_original_total
@@ -456,16 +578,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         grand_residual_total += section_residual_total
 
         # Add Section Totals for Summary
-        ws.cell(row=current_row, column=2, value=f"Total {category}").font = Font(bold=True)
-        ws.cell(row=current_row, column=3, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=3).font = Font(bold=True)
-        ws.cell(row=current_row, column=4, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=4).font = Font(bold=True)
-        ws.cell(row=current_row, column=7, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=7).font = Font(bold=True)
+        ws.cell(row=current_row, column=4, value=f"Total {category}").font = Font(bold=True)
+        ws.cell(row=current_row, column=5, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=5).font = Font(bold=True)
+        ws.cell(row=current_row, column=6, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=6).font = Font(bold=True)
+        ws.cell(row=current_row, column=9, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=9).font = Font(bold=True)
         
         # Add top border for totals row
-        for col in range(1, 8):
+        for col in range(1, 10):
             ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
         current_row += 2
@@ -474,43 +596,43 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     gt_row = current_row + 2
     
     # Original Total
-    ws.cell(row=gt_row, column=3, value="Overall Total Price (List)").font = Font(bold=True)
-    ws.cell(row=gt_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row, column=3).border = Border(left=Side(style='thin'), top=Side(style='thin'))
+    ws.cell(row=gt_row, column=5, value="Overall Total Price (List)").font = Font(bold=True)
+    ws.cell(row=gt_row, column=5).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row, column=5).border = Border(left=Side(style='thin'), top=Side(style='thin'))
     
-    ws.cell(row=gt_row, column=4, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row, column=4).font = Font(bold=True)
-    ws.cell(row=gt_row, column=4).border = Border(right=Side(style='thin'), top=Side(style='thin'))
+    ws.cell(row=gt_row, column=6, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row, column=6).font = Font(bold=True)
+    ws.cell(row=gt_row, column=6).border = Border(right=Side(style='thin'), top=Side(style='thin'))
 
     # Discounted Total
-    ws.cell(row=gt_row+1, column=3, value="Overall Discounted Total").font = Font(bold=True)
-    ws.cell(row=gt_row+1, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+1, column=3).border = Border(left=Side(style='thin'))
+    ws.cell(row=gt_row+1, column=5, value="Overall Discounted Total").font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=5).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+1, column=5).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=gt_row+1, column=4, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row+1, column=4).font = Font(bold=True)
-    ws.cell(row=gt_row+1, column=4).border = Border(right=Side(style='thin'))
+    ws.cell(row=gt_row+1, column=6, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+1, column=6).font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=6).border = Border(right=Side(style='thin'))
 
     # Residual Cost
     reuse_total = total_reusable_cost
-    ws.cell(row=gt_row+2, column=3, value="Overall Residual Cost").font = Font(bold=True)
-    ws.cell(row=gt_row+2, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+2, column=3).border = Border(left=Side(style='thin'))
+    ws.cell(row=gt_row+2, column=5, value="Overall Residual Cost").font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=5).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+2, column=5).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=gt_row+2, column=4, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row+2, column=4).font = Font(bold=True)
-    ws.cell(row=gt_row+2, column=4).border = Border(right=Side(style='thin'))
+    ws.cell(row=gt_row+2, column=6, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+2, column=6).font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=6).border = Border(right=Side(style='thin'))
 
     # Waste %
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
-    ws.cell(row=gt_row+3, column=3, value="Overall Waste %").font = Font(bold=True)
-    ws.cell(row=gt_row+3, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+3, column=3).border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
+    ws.cell(row=gt_row+3, column=5, value="Overall Waste %").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=5).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+3, column=5).border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
 
-    ws.cell(row=gt_row+3, column=4, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
-    ws.cell(row=gt_row+3, column=4).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
+    ws.cell(row=gt_row+3, column=6, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=6).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
 
-    _autofit_columns(ws, 1, 7, start_row, gt_row + 4)
+    _autofit_columns(ws, 1, 9, start_row, gt_row + 4)
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
