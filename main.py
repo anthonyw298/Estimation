@@ -13,17 +13,18 @@ from utils.formulas import calculate_rectangle_area, calculate_perimeter, calcul
 PROJECTS_DIR = ".files"
 MASTER_PROJECT_LIST_FILE = os.path.join(PROJECTS_DIR, "projects_list.json")
 
-# Netflix-inspired palette
-COLOR_BG = "#141414"       # Deep dark background
-COLOR_SURFACE = "#1f1f1f"  # Card background
-COLOR_ACCENT = "#E50914"   # Netflix Red
-COLOR_TEXT = "#FFFFFF"
-COLOR_TEXT_DIM = "#B3B3B3"
-COLOR_INPUT_BG = "#333333"
+# United Glass color palette (matching logo)
+COLOR_BG = "#000000"       # Black background (matching logo)
+COLOR_SURFACE = "#1A1A1A"  # Dark grey card background
+COLOR_ACCENT = "#0073E6"   # Vibrant blue (matching logo U)
+COLOR_TEXT = "#FFFFFF"     # White text for readability on black
+COLOR_TEXT_DIM = "#B3B3B3" # Light grey for secondary text
+COLOR_INPUT_BG = "#2A2A2A" # Dark grey input background
+COLOR_ACCENT_LIGHT = "#D3D3D3"  # Light grey (matching logo side surfaces)
 
 def main(page: ft.Page):
     page.title = "United Glass Estimation"
-    page.theme_mode = ft.ThemeMode.DARK
+    page.theme_mode = ft.ThemeMode.DARK  # Dark mode to match black background
     page.padding = 0
     page.bgcolor = COLOR_BG
     
@@ -131,9 +132,9 @@ def main(page: ft.Page):
             value=value,
             expand=expand,
             bgcolor=COLOR_INPUT_BG,
-            border_color="transparent",
+            border_color=COLOR_ACCENT_LIGHT,
             text_size=14,
-            color="white",
+            color=COLOR_TEXT,
             label_style=ft.TextStyle(color=COLOR_TEXT_DIM),
             focused_border_color=COLOR_ACCENT,
             border_radius=5,
@@ -149,9 +150,9 @@ def main(page: ft.Page):
             value=options[0] if options else None,
             expand=expand,
             bgcolor=COLOR_INPUT_BG,
-            border_color="transparent",
+            border_color=COLOR_ACCENT_LIGHT,
             text_size=14,
-            color="white",
+            color=COLOR_TEXT,
             label_style=ft.TextStyle(color=COLOR_TEXT_DIM),
             focused_border_color=COLOR_ACCENT,
             border_radius=5,
@@ -161,7 +162,7 @@ def main(page: ft.Page):
         return field
 
     def show_snack(msg, color="white"):
-        page.snack_bar = ft.SnackBar(content=ft.Text(msg, color="white"), bgcolor=COLOR_SURFACE)
+        page.snack_bar = ft.SnackBar(content=ft.Text(msg, color=COLOR_TEXT), bgcolor=COLOR_SURFACE)
         page.snack_bar.open = True
         page.update()
 
@@ -232,7 +233,7 @@ def main(page: ft.Page):
                                         on_click=lambda e, name=p: delete_project_click(e, name))
                         ]),
                         ft.Icon(ft.Icons.FOLDER_OPEN, size=40, color=COLOR_ACCENT),
-                        ft.Text(p, size=16, weight=ft.FontWeight.BOLD, overflow=ft.TextOverflow.ELLIPSIS)
+                        ft.Text(p, size=16, weight=ft.FontWeight.BOLD, color=COLOR_TEXT, overflow=ft.TextOverflow.ELLIPSIS)
                     ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     width=160, height=160,
                     bgcolor=COLOR_SURFACE,
@@ -243,12 +244,77 @@ def main(page: ft.Page):
                 )
             )
 
+        # Try to load the United Glass logo
+        # Try multiple possible filenames
+        logo_filenames = ["R.png", "united_glass_logo.png"]
+        logo_image = None
+        
+        for logo_filename in logo_filenames:
+            logo_path = os.path.join("assets", logo_filename)
+            abs_logo_path = os.path.abspath(logo_path)
+        
+            # Check if logo file exists and try to load it
+            if os.path.exists(abs_logo_path):
+                try:
+                    # Try with just filename (if assets_dir is set)
+                    logo_image = ft.Image(
+                        src=logo_filename,
+                        width=150,
+                        height=150,
+                        fit=ft.ImageFit.CONTAIN,
+                    )
+                    break  # Successfully loaded, exit loop
+                except:
+                    try:
+                        # Try with absolute path
+                        logo_image = ft.Image(
+                            src=abs_logo_path,
+                            width=150,
+                            height=150,
+                            fit=ft.ImageFit.CONTAIN,
+                        )
+                        break  # Successfully loaded, exit loop
+                    except Exception as e:
+                        print(f"Error loading {logo_filename}: {e}")
+                        continue  # Try next filename
+        
+        # Always create a visible placeholder (will be used if image not found or as fallback)
+        # Make it very visible with bright blue color
+        placeholder = ft.Container(
+            content=ft.Column([
+                ft.Container(
+                    content=ft.Text("U", size=100, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
+                    width=120,
+                    height=120,
+                    alignment=ft.alignment.center,
+                    border_radius=10,
+                ),
+                ft.Text("United Glass", size=18, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial")
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8, tight=True),
+            width=150,
+            height=160,
+            alignment=ft.alignment.center,
+            padding=10
+        )
+        
+        # Use logo image if available, otherwise use placeholder
+        # Always default to placeholder to ensure something is visible
+        logo_display = placeholder
+        if logo_image is not None:
+            logo_display = logo_image
+        
         return ft.View(
             "/",
             [
                 ft.Container(
                     content=ft.Column([
-                        ft.Text("UNITED GLASS ESTIMATOR", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
+                        # Logo section - always show something
+                        ft.Container(
+                            content=logo_display,
+                            alignment=ft.alignment.center,
+                            margin=ft.margin.only(bottom=20),
+                        ),
+                        ft.Text("ESTIMATION TOOL", size=30, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
                         ft.Text("Select or create a project to begin", size=16, color=COLOR_TEXT_DIM),
                         ft.Divider(color="transparent", height=20),
                         ft.Row([
@@ -257,7 +323,7 @@ def main(page: ft.Page):
                         ]),
                         ft.Divider(color="transparent", height=20),
                         ft.Row(project_tiles, wrap=True, spacing=20, run_spacing=20)
-                    ]),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     padding=40,
                     alignment=ft.alignment.top_center
                 )
@@ -365,7 +431,7 @@ def main(page: ft.Page):
                              show_snack("All fields filled.", "green")
 
                 inputs["custom_w_col"].controls.append(
-                    ft.ElevatedButton("Auto-Fill Remaining Widths", on_click=auto_fill_w, bgcolor=COLOR_SURFACE, color="white")
+                    ft.ElevatedButton("Auto-Fill Remaining Widths", on_click=auto_fill_w, bgcolor=COLOR_ACCENT, color="white")
                 )
 
             inputs["dynamic_w_fields"] = new_w_fields
@@ -440,7 +506,7 @@ def main(page: ft.Page):
                              show_snack("All fields filled.", "green")
 
                 inputs["custom_h_col"].controls.append(
-                     ft.ElevatedButton("Auto-Fill Remaining Heights", on_click=auto_fill_h, bgcolor=COLOR_SURFACE, color="white")
+                     ft.ElevatedButton("Auto-Fill Remaining Heights", on_click=auto_fill_h, bgcolor=COLOR_ACCENT, color="white")
                 )
 
             inputs["dynamic_h_fields"] = new_h_fields
@@ -524,7 +590,7 @@ def main(page: ft.Page):
                     ft.Container(
                         content=ft.Row([
                             ft.Column([
-                                ft.Text(f"Door {i+1}", weight="bold", color="white"),
+                                ft.Text(f"Door {i+1}", weight="bold", color=COLOR_TEXT),
                                 ft.Text(f"{door['size']} | {door['stile']} Stile | Qty: {door['count']}", size=12, color=COLOR_TEXT_DIM),
                                 ft.Text(f"HW: {hw_txt}", size=10, color=COLOR_TEXT_DIM, italic=True) if hw_txt else ft.Container()
                             ], expand=True),
@@ -847,10 +913,10 @@ def main(page: ft.Page):
         
         # Header
         header = ft.Row([
-            ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: page.go("/"), icon_color="white"),
-            ft.Text(state["current_project"].upper(), size=20, weight="bold", color="white"),
+            ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: page.go("/"), icon_color=COLOR_TEXT),
+            ft.Text(state["current_project"].upper(), size=20, weight="bold", color=COLOR_TEXT),
             ft.Container(expand=True),
-            ft.ElevatedButton("GENERATE REPORT", bgcolor="white", color="black", on_click=gen_full_report)
+            ft.ElevatedButton("GENERATE REPORT", bgcolor=COLOR_ACCENT, color="white", on_click=gen_full_report)
         ], height=60, alignment=ft.MainAxisAlignment.START)
 
         # Left Col: Elevation Form
@@ -912,8 +978,8 @@ def main(page: ft.Page):
             ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
             ft.Column([cb for cb in hardware_cbs.values()], spacing=0),
             ft.Row([
-                ft.ElevatedButton("ADD", bgcolor=COLOR_SURFACE, color="white", on_click=lambda e: modify_door("add"), expand=True),
-                ft.ElevatedButton("UPDATE", bgcolor=COLOR_SURFACE, color="white", on_click=lambda e: modify_door("update"), expand=True),
+                ft.ElevatedButton("ADD", bgcolor=COLOR_ACCENT, color="white", on_click=lambda e: modify_door("add"), expand=True),
+                ft.ElevatedButton("UPDATE", bgcolor=COLOR_ACCENT, color="white", on_click=lambda e: modify_door("update"), expand=True),
             ]),
             ft.Divider(color=COLOR_SURFACE),
             door_list_col
@@ -1052,4 +1118,4 @@ def main(page: ft.Page):
     page.go(page.route)
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, assets_dir="assets")
