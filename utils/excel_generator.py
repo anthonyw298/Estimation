@@ -55,7 +55,164 @@ def _clean_trailing_blank_rows(ws, start_row):
             ws.delete_rows(current_row, 1)
             rows_deleted += 1
         else: current_row += 1
+
+def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
+    """
+    Creates a visual blueprint diagram of the bay distribution.
+    Returns a PIL Image object that can be inserted into Excel.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+    except ImportError:
+        print("PIL/Pillow not available, skipping diagram generation")
+        return None
     
+    # Diagram dimensions - smaller to fit in columns A-C without overlapping
+    diagram_width = 400
+    diagram_height = 300
+    margin = 30
+    
+    # Calculate bay dimensions
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths = custom_bay_widths
+    else:
+        bay_widths = [opening_width / bays_wide] * bays_wide if bays_wide > 0 else []
+    
+    if custom_bay_heights and len(custom_bay_heights) == bays_tall:
+        bay_heights = custom_bay_heights
+    else:
+        bay_heights = [opening_height / bays_tall] * bays_tall if bays_tall > 0 else []
+    
+    if not bay_widths or not bay_heights:
+        return None
+    
+    # Create image
+    img = Image.new('RGB', (diagram_width, diagram_height), color='white')
+    draw = ImageDraw.Draw(img)
+    
+    # Calculate scaling to fit in diagram
+    max_display_width = diagram_width - 2 * margin
+    max_display_height = diagram_height - 2 * margin - 60  # Space for labels
+    
+    # Scale to fit
+    total_width = sum(bay_widths)
+    total_height = sum(bay_heights)
+    scale_x = max_display_width / total_width if total_width > 0 else 1
+    scale_y = max_display_height / total_height if total_height > 0 else 1
+    scale = min(scale_x, scale_y)  # Maintain aspect ratio
+    
+    # Calculate starting position (centered)
+    scaled_total_width = total_width * scale
+    scaled_total_height = total_height * scale
+    start_x = margin + (max_display_width - scaled_total_width) / 2
+    start_y = margin + 30  # Space for title
+    
+    # Draw title - smaller fonts to prevent overlap
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 12)
+        font_small = ImageFont.truetype("arial.ttf", 8)
+    except:
+        try:
+            font_large = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 12)
+            font_small = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 8)
+        except:
+            font_large = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+    
+    draw.text((diagram_width // 2, 10), "Bay Distribution Layout", fill='black', anchor='mm', font=font_large)
+    
+    # Draw grid lines and bays
+    current_x = start_x
+    current_y = start_y
+    
+    # Draw vertical lines (bay width separators)
+    for i, width in enumerate(bay_widths):
+        if i > 0:
+            draw.line([(current_x, start_y), (current_x, start_y + scaled_total_height)], fill='gray', width=2)
+        current_x += width * scale
+    
+    # Draw horizontal lines (bay height separators)
+    current_x = start_x
+    for i, height in enumerate(bay_heights):
+        if i > 0:
+            draw.line([(start_x, current_y), (start_x + scaled_total_width, current_y)], fill='gray', width=2)
+        current_y += height * scale
+    
+    # Draw outer border
+    draw.rectangle([start_x, start_y, start_x + scaled_total_width, start_y + scaled_total_height], 
+                   outline='black', width=3)
+    
+    # Draw bay labels
+    current_x = start_x
+    current_y = start_y
+    bay_num = 1
+    
+    for row in range(bays_tall):
+        current_x = start_x
+        for col in range(bays_wide):
+            # Calculate center of bay
+            bay_center_x = current_x + (bay_widths[col] * scale) / 2
+            bay_center_y = current_y + (bay_heights[row] * scale) / 2
+            
+            # Draw bay number - smaller spacing to prevent overlap
+            draw.text((bay_center_x, bay_center_y - 6), f"B{bay_num}", fill='black', anchor='mm', font=font_small)
+            
+            # Draw dimensions - smaller spacing
+            dim_text = f"{bay_widths[col]:.1f}\" x {bay_heights[row]:.1f}\""
+            draw.text((bay_center_x, bay_center_y + 6), dim_text, fill='black', anchor='mm', font=font_small)
+            
+            current_x += bay_widths[col] * scale
+            bay_num += 1
+        current_y += bay_heights[row] * scale
+    
+    # Draw overall dimensions
+    dim_text = f"Total: {opening_width:.1f}\" W x {opening_height:.1f}\" H"
+    draw.text((diagram_width // 2, diagram_height - 20), dim_text, fill='black', anchor='mm', font=font_small)
+    
+    return img
+
+def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
+    """Adds a bay distribution diagram to the Excel worksheet."""
+    if bays_wide == 0 or bays_tall == 0:
+        return start_row
+    
+    try:
+        from openpyxl.drawing.image import Image as OpenpyxlImage
+        import io
+        
+        # Create the diagram
+        diagram_img = _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths, custom_bay_heights)
+        
+        if diagram_img:
+            # Save to bytes
+            img_bytes = io.BytesIO()
+            diagram_img.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+            
+            # Add to Excel - position in column A, spanning A-C but not overlapping column D
+            img = OpenpyxlImage(img_bytes)
+            # Resize image: fit within columns A-C (max width ~360 pixels to stay within 3 columns)
+            # Original width was 180 pixels, so we'll use a width that fits in A-C
+            original_width = img.width
+            original_height = img.height
+            # Maximum width to fit in columns A-C (approximately 360 pixels for 3 columns at width 20 each)
+            max_width = 360
+            img.width = min(450, max_width)  # Use larger size but cap at max_width to stay in A-C
+            img.height = int(original_height * (img.width / original_width))  # Maintain aspect ratio
+            img.anchor = f'A{start_row}'  # Place starting in column A
+            ws.add_image(img)
+            
+            # Return the row after the image (estimate image height)
+            # Image height in rows (approximately 1 row per 15 pixels at default row height)
+            estimated_rows = max(15, int(img.height / 15))
+            return start_row + estimated_rows + 2
+    except Exception as e:
+        print(f"Error creating bay diagram: {e}")
+        # If diagram creation fails, just add a text note
+        ws.cell(row=start_row, column=3, value="Bay diagram could not be generated")
+    
+    return start_row + 2
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier):
     """Writes a section of calculated outputs to the worksheet."""
@@ -825,6 +982,34 @@ def generate_excel_report(
                 value_cell.border = thin_border
                 if header in ["Total Count", "Bays Wide", "Bays Tall"]:
                     value_cell.alignment = Alignment(horizontal='left')
+            
+            # Add bay distribution diagram if custom bays are used
+            if elev_data.get("bays_wide") and elev_data.get("bays_tall"):
+                diagram_row = current_excel_row + len(input_data) + 3  # Moved up (reduced from 6 to 3)
+                custom_widths = elev_data.get('custom_bay_widths', [])
+                custom_heights = elev_data.get('custom_bay_heights', [])
+                
+                # Add diagram label - with 1 more row separation before the picture
+                label_cell = ws.cell(row=diagram_row - 2, column=COL_A, value="Bay Distribution Diagram")
+                label_cell.font = Font(bold=True, size=12)
+                # Picture will be at diagram_row, so there's now 2 rows between label and picture
+                
+                # Set column widths to accommodate diagram (A-C) without overlapping column D
+                ws.column_dimensions['A'].width = 20
+                ws.column_dimensions['B'].width = 20
+                ws.column_dimensions['C'].width = 20
+                
+                # Add the diagram
+                _add_bay_diagram_to_excel(
+                    ws, 
+                    diagram_row,
+                    elev_data.get("bays_wide", 0),
+                    elev_data.get("bays_tall", 0),
+                    elev_data.get('opening_width_inches', 0),
+                    elev_data.get('opening_height_inches', 0),
+                    custom_widths if custom_widths else None,
+                    custom_heights if custom_heights else None
+                )
             
             output_section_current_row = 1
             profiles_for_section, accessories_for_section, other_items_for_section = [], [], []

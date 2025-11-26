@@ -2,6 +2,8 @@ customtkinter
 tk
 openpyxl
 pandas
+Pillow
+flet
 
 
 # To compile to EXE:
