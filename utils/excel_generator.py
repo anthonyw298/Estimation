@@ -265,7 +265,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         if is_bay_width_item and isinstance(qty_raw, list) and len(qty_raw) > 1:
             # Process the entire list as one request for waste optimization
             total_price, calculated_unit_type, material_impact_details = \
-                get_price_by_part(pn, qty_raw, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
+                get_price_by_part(pn, qty_raw, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, description=item.get('description', ''))
             
             item_total_cost_for_display = total_price or 0.0
             original_item_total_cost = total_price or 0.0

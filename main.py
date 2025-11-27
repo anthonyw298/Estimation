@@ -803,7 +803,8 @@ def main(page: ft.Page):
                     data["custom_bay_heights"] = h_vals
                     
                     data["calculated_outputs"] = calculate_yes45tu_quantities(
-                        bw, bh, total, w, h, state["current_doors"]
+                        bw, bh, total, w, h, state["current_doors"], 
+                        custom_bay_widths=w_vals if w_vals else None
                     )
                 else:
                     data["calculated_outputs"] = []

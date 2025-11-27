@@ -56,26 +56,36 @@ def calculate_setting_block_int_horizontal(bays_wide: int, total_count: int) -> 
 
 def calculate_jamb_ft_v(opening_height: float, total_count: int) -> Union[float, list[float]]:
     """
-    Calculates vertical jamb feet. Returns a list if total_count > 1, else a float.
-    Associated with profile: BE9-2513
+    Calculates vertical jamb feet. Returns a list of full height (split into 2 pieces - left and right).
+    Associated with profile: BE9-2513 (jamb uses full height, 2 pieces)
     """
-    single_instance_qty = (2 * opening_height / 12)
+    # Full height: each jamb piece is opening_height (left and right sides)
+    single_piece_qty = opening_height / 12  # Convert inches to feet
+    # Always return as list with 2 pieces per instance (left and right)
     if total_count > 1:
-        return [single_instance_qty] * total_count
-    return single_instance_qty
+        return [single_piece_qty, single_piece_qty] * total_count
+    return [single_piece_qty, single_piece_qty]
 
-def calculate_sill_ft_h(opening_width: float, total_count: int, bays_wide: int = None) -> Union[float, list[float]]:
+def calculate_sill_ft_h(opening_width: float, total_count: int, bays_wide: int = None, custom_bay_widths: list = None) -> Union[float, list[float]]:
     """
     Calculates horizontal sill feet. Returns a list of bay widths if bays_wide is provided, 
     otherwise returns the whole width. Returns a list if total_count > 1, else a float.
+    Uses custom_bay_widths if provided, otherwise divides equally.
     Associated with profile: BE9-2513 (sill only uses bay widths)
     """
     if bays_wide and bays_wide > 0:
-        # Return list of bay widths (each bay is opening_width / bays_wide)
-        bay_width_ft = (opening_width / bays_wide) / 12
+        # Use custom bay widths if provided, otherwise divide equally
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+            # Convert custom bay widths from inches to feet
+            bay_widths_ft = [w / 12.0 for w in custom_bay_widths]
+        else:
+            # Equal division
+            bay_width_ft = (opening_width / bays_wide) / 12
+            bay_widths_ft = [bay_width_ft] * bays_wide
+        
         if total_count > 1:
-            return [bay_width_ft] * bays_wide * total_count
-        return [bay_width_ft] * bays_wide
+            return bay_widths_ft * total_count
+        return bay_widths_ft
     
     single_instance_qty = (opening_width / 12)
     if total_count > 1:
@@ -84,54 +94,76 @@ def calculate_sill_ft_h(opening_width: float, total_count: int, bays_wide: int =
 
 def calculate_flush_filler_v(bays_wide: int, total_count: int, opening_height: float) -> Union[float, list[float]]:
     """
-    Calculates vertical flush filler feet. Returns a list if total_count > 1, else a float.
-    Associated with profile: E9-2512
+    Calculates vertical flush filler feet. Returns a list of full height for each filler.
+    Associated with profile: E9-2512 (uses full height, one piece per filler)
     """
-    single_instance_qty = ((bays_wide - 1) * opening_height / 12)
+    # Full height: each filler piece is opening_height
+    single_piece_qty = opening_height / 12  # Convert inches to feet
+    # Number of fillers = (bays_wide - 1), one piece each
+    pieces_per_instance = bays_wide - 1
     if total_count > 1:
-        return [single_instance_qty] * total_count
-    return single_instance_qty
+        return [single_piece_qty] * pieces_per_instance * total_count
+    return [single_piece_qty] * pieces_per_instance
 
 def calculate_int_vertical(bays_wide: int, total_count: int, opening_height: float) -> Union[float, list[float]]:
     """
-    Calculates intermediate vertical feet. Returns a list if total_count > 1, else a float.
-    Associated with profile: BE9-2511
+    Calculates intermediate vertical feet. Returns a list of full height for each mullion.
+    Associated with profile: BE9-2511 (uses full height, one piece per mullion)
     """
-    single_instance_qty = ((bays_wide - 1) * opening_height / 12)
+    # Full height: each mullion piece is opening_height
+    single_piece_qty = opening_height / 12  # Convert inches to feet
+    # Number of mullions = (bays_wide - 1), one piece each
+    pieces_per_instance = bays_wide - 1
     if total_count > 1:
-        return [single_instance_qty] * total_count
-    return single_instance_qty
+        return [single_piece_qty] * pieces_per_instance * total_count
+    return [single_piece_qty] * pieces_per_instance
 
-def calculate_og_int_horizontal(opening_width: float, total_count: int, bays_wide: int = None) -> Union[float, list[float]]:
+def calculate_og_int_horizontal(opening_width: float, total_count: int, bays_wide: int = None, custom_bay_widths: list = None) -> Union[float, list[float]]:
     """
     Calculates outside glazing intermediate horizontal feet. Returns a list of bay widths if bays_wide is provided,
-    otherwise returns the whole width. Returns a list if total_count > 1, else a float.
+    otherwise returns the whole width. Uses custom_bay_widths if provided, otherwise divides equally.
+    Returns a list if total_count > 1, else a float.
     Associated with profile: BE9-2515 (uses bay widths)
     """
     if bays_wide and bays_wide > 0:
-        # Return list of bay widths (each bay is opening_width / bays_wide)
-        bay_width_ft = (opening_width / bays_wide) / 12
+        # Use custom bay widths if provided, otherwise divide equally
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+            # Convert custom bay widths from inches to feet
+            bay_widths_ft = [w / 12.0 for w in custom_bay_widths]
+        else:
+            # Equal division
+            bay_width_ft = (opening_width / bays_wide) / 12
+            bay_widths_ft = [bay_width_ft] * bays_wide
+        
         if total_count > 1:
-            return [bay_width_ft] * bays_wide * total_count
-        return [bay_width_ft] * bays_wide
+            return bay_widths_ft * total_count
+        return bay_widths_ft
     
     single_instance_qty = (opening_width / 12)
     if total_count > 1:
         return [single_instance_qty] * total_count
     return single_instance_qty
 
-def calculate_og_head_h(opening_width: float, total_count: int, bays_wide: int = None) -> Union[float, list[float]]:
+def calculate_og_head_h(opening_width: float, total_count: int, bays_wide: int = None, custom_bay_widths: list = None) -> Union[float, list[float]]:
     """
     Calculates outside glazing head horizontal feet. Returns a list of bay widths if bays_wide is provided,
-    otherwise returns the whole width. Returns a list if total_count > 1, else a float.
+    otherwise returns the whole width. Uses custom_bay_widths if provided, otherwise divides equally.
+    Returns a list if total_count > 1, else a float.
     Associated with profile: BE9-2514 (uses bay widths)
     """
     if bays_wide and bays_wide > 0:
-        # Return list of bay widths (each bay is opening_width / bays_wide)
-        bay_width_ft = (opening_width / bays_wide) / 12
+        # Use custom bay widths if provided, otherwise divide equally
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+            # Convert custom bay widths from inches to feet
+            bay_widths_ft = [w / 12.0 for w in custom_bay_widths]
+        else:
+            # Equal division
+            bay_width_ft = (opening_width / bays_wide) / 12
+            bay_widths_ft = [bay_width_ft] * bays_wide
+        
         if total_count > 1:
-            return [bay_width_ft] * bays_wide * total_count
-        return [bay_width_ft] * bays_wide
+            return bay_widths_ft * total_count
+        return bay_widths_ft
     
     single_instance_qty = (opening_width / 12)
     if total_count > 1:
@@ -152,19 +184,31 @@ def calculate_fabrication_joints(bays_wide: int, bays_tall: int, total_count: in
     """Calculate number of fabrication joints."""
     return ((4 * bays_wide) + (bays_wide * (2 * (bays_tall - 1))) ) * total_count
 
-def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int, bays_wide: int = None) -> Union[float, list[float]]:
+def calculate_glass_stop(opening_width: float, bays_tall: int, total_count: int, bays_wide: int = None, custom_bay_widths: list = None) -> Union[float, list[float]]:
     """
-    Calculate glass stop length. Returns a list of bay widths if bays_wide is provided,
-    otherwise returns the whole width. Returns a list if total_count > 1, else a float.
-    Associated with profile: E9-2519 (uses bay widths)
+    Calculate glass stop length. Returns a list of bay widths repeated for each bay (total bays = bays_wide * bays_tall).
+    Uses custom_bay_widths if provided, otherwise divides equally.
+    Returns a list if total_count > 1, else a float.
+    Associated with profile: E9-2519 (uses bay widths, one per bay)
     """
     if bays_wide and bays_wide > 0:
-        # Return list of bay widths (each bay is opening_width / bays_wide)
-        bay_width_ft = (opening_width / bays_wide) / 12
-        bay_qty_per_instance = bay_width_ft * bays_tall
+        # Use custom bay widths if provided, otherwise divide equally
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+            # Convert custom bay widths from inches to feet
+            bay_widths_ft = [w / 12.0 for w in custom_bay_widths]
+        else:
+            # Equal division
+            bay_width_ft = (opening_width / bays_wide) / 12
+            bay_widths_ft = [bay_width_ft] * bays_wide
+        
+        # Total number of bays = bays_wide * bays_tall
+        # Each bay gets one glass stop piece, so repeat bay_widths_ft for each row (bays_tall)
+        total_bays = bays_wide * bays_tall
+        bay_widths_repeated = bay_widths_ft * bays_tall
+        
         if total_count > 1:
-            return [bay_qty_per_instance] * bays_wide * total_count
-        return [bay_qty_per_instance] * bays_wide
+            return bay_widths_repeated * total_count
+        return bay_widths_repeated
     
     single_instance_qty = (opening_width / 12) * bays_tall
     if total_count > 1:
