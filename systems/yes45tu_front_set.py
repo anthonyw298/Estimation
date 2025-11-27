@@ -32,7 +32,8 @@ def calculate_yes45tu_quantities(
     total_count: int,
     opening_width: float,
     opening_height: float,
-    doors=None
+    doors=None,
+    custom_bay_widths=None
 ) -> list:
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
@@ -56,13 +57,13 @@ def calculate_yes45tu_quantities(
         ("E2-0154", calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count)),
         ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),
         ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),
-        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count, bays_wide)),
+        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count, bays_wide, custom_bay_widths)),
         ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
         ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),
-        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count, bays_wide)),
-        ("BE9-2514", calculate_og_head_h(opening_width, total_count, bays_wide)),
+        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count, bays_wide, custom_bay_widths)),
+        ("BE9-2514", calculate_og_head_h(opening_width, total_count, bays_wide, custom_bay_widths)),
         ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
-        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count, bays_wide)),
+        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count, bays_wide, custom_bay_widths)),
         ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count))
     ]
 
@@ -87,14 +88,21 @@ def calculate_yes45tu_quantities(
             # Fetch base description
             base_desc = PART_NUMBER_MAP.get("profiles", {}).get(part_number, "UNKNOWN")
             if be9_2513_counter == 1:
-                desc = f"{base_desc} (Jamb)"
+                desc = f"Vertical {base_desc} (Jamb)"
             else:
-                desc = f"{base_desc} (Sill)"
+                desc = f"Horizontal {base_desc} (Sill)"
             part_type = "profiles"
         else:
             for category, parts_dict in PART_NUMBER_MAP.items():
                 if part_number in parts_dict:
-                    desc = parts_dict[part_number]
+                    base_desc = parts_dict[part_number]
+                    # Add Horizontal/Vertical prefix for specific parts
+                    if part_number in ["BE9-2514", "BE9-2515", "E9-2519"]:
+                        desc = f"Horizontal {base_desc}"
+                    elif part_number in ["E9-2512", "BE9-2511"]:
+                        desc = f"Vertical {base_desc}"
+                    else:
+                        desc = base_desc
                     part_type = category
                     break
 

@@ -7,23 +7,33 @@ from data.part_number import PART_NUMBER_MAP
 
 EPSILON = 1e-9
 
-# Parts that use bay width lists for waste optimization
-BAY_WIDTH_PARTS = {"BE9-2513", "BE9-2514", "BE9-2515", "E9-2519"}
+# Parts that use bay width/height lists for waste optimization
+# Horizontal parts: use custom bay widths
+HORIZONTAL_BAY_PARTS = {"BE9-2514", "BE9-2515", "E9-2519"}
+# Vertical parts: use height/2 split
+VERTICAL_BAY_PARTS = {"E9-2512", "BE9-2511"}
+BAY_WIDTH_PARTS = HORIZONTAL_BAY_PARTS | VERTICAL_BAY_PARTS
 
 def _is_bay_width_part(part_number, requested_qty=None, description=None):
     """
-    Check if a part uses bay width lists for waste optimization.
-    For BE9-2513, only the sill (not jamb) uses bay widths.
-    We can detect this by checking if requested_qty is a list (sill) vs a single value (jamb).
+    Check if a part uses bay width/height lists for waste optimization.
+    For BE9-2513, both sill (horizontal) and jamb (vertical) use lists.
+    Vertical parts (2513 jamb, 2512, 2511) use height/2 split.
+    We can detect this by checking if requested_qty is a list or by description.
     """
     if part_number == "BE9-2513":
-        # Only sill uses bay widths, jamb does not
-        # Sill will have a list, jamb will have a single value
+        # Both sill and jamb use lists now (sill uses bay widths, jamb uses height/2)
         if requested_qty is not None:
             return isinstance(requested_qty, list)
         # Fallback to description check if requested_qty not available
-        return description and "sill" in description.lower()
-    return part_number in BAY_WIDTH_PARTS
+        return description and ("sill" in description.lower() or "jamb" in description.lower() or "vertical" in description.lower())
+    
+    # Check if it's a vertical or horizontal bay part
+    if part_number in VERTICAL_BAY_PARTS:
+        # Vertical parts always use lists (height/2 split)
+        return requested_qty is None or isinstance(requested_qty, list)
+    
+    return part_number in HORIZONTAL_BAY_PARTS
 
 def parse_length_to_feet(length_str):
     """Converts various length formats to total feet."""
@@ -155,18 +165,19 @@ def get_unit_price_by_part(part_number, finish=None, extra_materials_file="extra
     return list_price_effective, unit_type
 
 
-def get_price_by_part(part_number, requested_qty, finish=None, current_extra_materials=None, summary=False, group=False, extra_materials_file="extra_materials.json"):
+def get_price_by_part(part_number, requested_qty, finish=None, current_extra_materials=None, summary=False, group=False, extra_materials_file="extra_materials.json", description=None):
     """
     Calculate price and material impact, considering finish for profiles.
     
     Args:
         part_number (str): The part number.
-        requested_qty (float/int): The quantity requested.
+        requested_qty (float/int/list): The quantity requested. Can be a list for bay width parts.
         finish (str, optional): The finish type ('clear', 'black', 'paint'). Only relevant for profiles.
         current_extra_materials (dict, optional): In-memory extra materials state.
         summary (bool): If True, only return price and unit type, no material impact details.
         group (bool): If True, forces profile-like behavior for pricing.
         extra_materials_file (str): Path to the extra materials JSON file.
+        description (str, optional): Description of the part, used to distinguish jamb vs sill for BE9-2513.
     
     Returns:
         tuple: (total_price, unit_type, material_impact_details) or (total_price, unit_type, None) if summary.
@@ -213,7 +224,8 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
         'used_from_leftover_qty_or_length': 0.0,
         'cost_incurred': 0.0,
         'type_processed_as': None,
-        'finish': finish # Store the finish in material impact details
+        'finish': finish, # Store the finish in material impact details
+        'description': description  # Store description for reference
     }
 
     if is_profile_for_inventory: # This logic handles profiles and length-based items (like E2-0052 now that unit_type is 'ft')
@@ -222,7 +234,9 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
         leftover_pieces_sim = sorted(list(part_extra_sim.get('length_pieces', [])), reverse=True)  # Sort descending for better matching
         
         # Check if this is a bay width part (for BE9-2513, check if requested_qty is a list to distinguish sill from jamb)
-        is_bay_width_part = _is_bay_width_part(part_number, requested_qty, material_impact_details.get('description'))
+        # Use provided description or fall back to material_impact_details
+        part_description = description or material_impact_details.get('description')
+        is_bay_width_part = _is_bay_width_part(part_number, requested_qty, part_description)
         
         # Handle list of bay widths for special parts
         if isinstance(requested_qty, list) and is_bay_width_part and not summary:
@@ -234,28 +248,46 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
             matched_bays = []
             
             # Try to match leftover pieces to bay widths
+            # Strategy: Process bay widths in descending order to avoid using large pieces for small requirements
+            # For each bay_width, find the smallest leftover piece that is >= bay_width (closest fit)
+            # This minimizes waste by using the closest fit that doesn't exceed by much
             leftover_pieces_consumed = []  # Track which leftover pieces were used
-            for bay_width in bay_widths:
-                matched = False
+            # Sort bay widths in descending order to match largest pieces to largest requirements first
+            # This prevents using a large leftover piece for a small bay when it could be used for a larger bay
+            sorted_bay_widths = sorted(bay_widths, reverse=True)
+            
+            for bay_width in sorted_bay_widths:
+                best_match_index = None
+                best_match_length = None
+                
+                # Find the smallest leftover piece that is >= bay_width (closest fit to minimize waste)
+                # This ensures we use the piece that "doesn't exceed it" by much
                 for i, leftover in enumerate(remaining_leftovers):
                     if leftover >= bay_width - EPSILON:
-                        # Use this leftover piece for this bay
-                        used_from_leftover += bay_width
-                        remaining_after_use = leftover - bay_width
-                        # Track this consumption
-                        leftover_pieces_consumed.append({
-                            'original_length': leftover,
-                            'used_length': bay_width
-                        })
-                        remaining_leftovers.pop(i)
-                        if remaining_after_use > EPSILON:
-                            # Insert remaining piece back in sorted order
-                            remaining_leftovers.append(remaining_after_use)
-                            remaining_leftovers.sort(reverse=True)
-                        matched = True
-                        matched_bays.append(bay_width)
-                        break
-                if not matched:
+                        # This piece is large enough
+                        if best_match_index is None or leftover < best_match_length:
+                            # This is the smallest suitable piece found so far (best fit - closest without exceeding much)
+                            best_match_index = i
+                            best_match_length = leftover
+                
+                if best_match_index is not None:
+                    # Use the closest fitting piece
+                    leftover = remaining_leftovers[best_match_index]
+                    used_from_leftover += bay_width
+                    remaining_after_use = leftover - bay_width
+                    # Track this consumption
+                    leftover_pieces_consumed.append({
+                        'original_length': leftover,
+                        'used_length': bay_width
+                    })
+                    remaining_leftovers.pop(best_match_index)
+                    if remaining_after_use > EPSILON:
+                        # Insert remaining piece back in sorted order
+                        remaining_leftovers.append(remaining_after_use)
+                        remaining_leftovers.sort(reverse=True)
+                    matched_bays.append(bay_width)
+                else:
+                    # No suitable leftover piece found for this bay
                     matched_bays.append(bay_width)
             
             remaining_needed = total_needed - used_from_leftover
