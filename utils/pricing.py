@@ -7,6 +7,24 @@ from data.part_number import PART_NUMBER_MAP
 
 EPSILON = 1e-9
 
+# Parts that use bay width lists for waste optimization
+BAY_WIDTH_PARTS = {"BE9-2513", "BE9-2514", "BE9-2515", "E9-2519"}
+
+def _is_bay_width_part(part_number, requested_qty=None, description=None):
+    """
+    Check if a part uses bay width lists for waste optimization.
+    For BE9-2513, only the sill (not jamb) uses bay widths.
+    We can detect this by checking if requested_qty is a list (sill) vs a single value (jamb).
+    """
+    if part_number == "BE9-2513":
+        # Only sill uses bay widths, jamb does not
+        # Sill will have a list, jamb will have a single value
+        if requested_qty is not None:
+            return isinstance(requested_qty, list)
+        # Fallback to description check if requested_qty not available
+        return description and "sill" in description.lower()
+    return part_number in BAY_WIDTH_PARTS
+
 def parse_length_to_feet(length_str):
     """Converts various length formats to total feet."""
     if not isinstance(length_str, str) or not length_str.strip(): return 0.0
@@ -201,34 +219,107 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
     if is_profile_for_inventory: # This logic handles profiles and length-based items (like E2-0052 now that unit_type is 'ft')
         unit_type = "ft" # Confirm unit type for reporting
         min_purchase_length = parse_length_to_feet(length_str) or 1.0
-        leftover_pieces_sim = sorted(list(part_extra_sim.get('length_pieces', [])))
-        suitable_index = None
+        leftover_pieces_sim = sorted(list(part_extra_sim.get('length_pieces', [])), reverse=True)  # Sort descending for better matching
         
-        if not summary:
-            for i, piece_len in enumerate(leftover_pieces_sim):
-                if piece_len >= requested_qty - EPSILON:
-                    suitable_index = i
-                    break
-
-        if suitable_index is not None:
-            # Material is taken from existing leftovers
-            total_price = 0.0 # No new cost incurred
-            material_impact_details['used_from_leftover_qty_or_length'] = requested_qty
-            # The piece used from leftover will be adjusted/removed in apply_material_impact
+        # Check if this is a bay width part (for BE9-2513, check if requested_qty is a list to distinguish sill from jamb)
+        is_bay_width_part = _is_bay_width_part(part_number, requested_qty, material_impact_details.get('description'))
+        
+        # Handle list of bay widths for special parts
+        if isinstance(requested_qty, list) and is_bay_width_part and not summary:
+            # For bay width parts, optimize across the entire list
+            bay_widths = [float(q) for q in requested_qty]
+            total_needed = sum(bay_widths)
+            used_from_leftover = 0.0
+            remaining_leftovers = leftover_pieces_sim.copy()
+            matched_bays = []
+            
+            # Try to match leftover pieces to bay widths
+            leftover_pieces_consumed = []  # Track which leftover pieces were used
+            for bay_width in bay_widths:
+                matched = False
+                for i, leftover in enumerate(remaining_leftovers):
+                    if leftover >= bay_width - EPSILON:
+                        # Use this leftover piece for this bay
+                        used_from_leftover += bay_width
+                        remaining_after_use = leftover - bay_width
+                        # Track this consumption
+                        leftover_pieces_consumed.append({
+                            'original_length': leftover,
+                            'used_length': bay_width
+                        })
+                        remaining_leftovers.pop(i)
+                        if remaining_after_use > EPSILON:
+                            # Insert remaining piece back in sorted order
+                            remaining_leftovers.append(remaining_after_use)
+                            remaining_leftovers.sort(reverse=True)
+                        matched = True
+                        matched_bays.append(bay_width)
+                        break
+                if not matched:
+                    matched_bays.append(bay_width)
+            
+            remaining_needed = total_needed - used_from_leftover
+            
+            if remaining_needed > EPSILON:
+                # Purchase new material for remaining needs
+                num_bundles_needed = math.ceil(remaining_needed / min_purchase_length)
+                actual_purchased_length = num_bundles_needed * min_purchase_length
+                total_price = unit_price * actual_purchased_length
+                
+                # Calculate leftover after using for remaining bays
+                leftover_after_use = actual_purchased_length - remaining_needed
+                
+                # If leftover is >= any bay width, it can be reused
+                if leftover_after_use > EPSILON:
+                    material_impact_details['leftover_generated_qty_or_length'] = leftover_after_use
+                
+                material_impact_details['purchased_qty_or_length'] = actual_purchased_length
+                material_impact_details['cost_incurred'] = total_price
+            else:
+                # All needs met from leftovers
+                total_price = 0.0
+                material_impact_details['purchased_qty_or_length'] = 0.0
+                material_impact_details['cost_incurred'] = 0.0
+            
+            material_impact_details['used_from_leftover_qty_or_length'] = used_from_leftover
+            material_impact_details['bay_widths_processed'] = matched_bays  # Store for debugging
+            material_impact_details['is_bay_width_list'] = True  # Flag to indicate special handling needed
+            # Store information about which leftover pieces were used (for proper removal in apply_material_impact)
+            material_impact_details['leftover_pieces_consumed'] = leftover_pieces_consumed
+            
         else:
-            # No suitable leftover found, purchase new material
-            num_bundles_needed = math.ceil(requested_qty / min_purchase_length)
+            # Standard handling for single quantity or non-bay-width parts
+            # Convert list to sum if it's a list but not a bay width part
+            if isinstance(requested_qty, list):
+                requested_qty = sum(requested_qty)
             
-            actual_purchased_length = num_bundles_needed * min_purchase_length
-            # *** Use the 'unit_price' obtained from get_unit_price_by_part ***
-            total_price = unit_price * actual_purchased_length # Calculate total price using the per-foot unit_price
+            suitable_index = None
             
-            leftover_piece = max(0.0, actual_purchased_length - requested_qty)
-            
-            material_impact_details['purchased_qty_or_length'] = actual_purchased_length
-            if leftover_piece > EPSILON: 
-                material_impact_details['leftover_generated_qty_or_length'] = leftover_piece
-            material_impact_details['cost_incurred'] = total_price
+            if not summary:
+                for i, piece_len in enumerate(leftover_pieces_sim):
+                    if piece_len >= requested_qty - EPSILON:
+                        suitable_index = i
+                        break
+
+            if suitable_index is not None:
+                # Material is taken from existing leftovers
+                total_price = 0.0 # No new cost incurred
+                material_impact_details['used_from_leftover_qty_or_length'] = requested_qty
+                # The piece used from leftover will be adjusted/removed in apply_material_impact
+            else:
+                # No suitable leftover found, purchase new material
+                num_bundles_needed = math.ceil(requested_qty / min_purchase_length)
+                
+                actual_purchased_length = num_bundles_needed * min_purchase_length
+                # *** Use the 'unit_price' obtained from get_unit_price_by_part ***
+                total_price = unit_price * actual_purchased_length # Calculate total price using the per-foot unit_price
+                
+                leftover_piece = max(0.0, actual_purchased_length - requested_qty)
+                
+                material_impact_details['purchased_qty_or_length'] = actual_purchased_length
+                if leftover_piece > EPSILON: 
+                    material_impact_details['leftover_generated_qty_or_length'] = leftover_piece
+                material_impact_details['cost_incurred'] = total_price
         
         material_impact_details['type_processed_as'] = 'profile' # Even if it's E2-0052, it's processed like a profile for inventory
 
@@ -286,19 +377,62 @@ def apply_material_impact_to_extra_materials(material_impact_details, extra_mate
     part_extra = extra_materials.get(extra_materials_key, {'quantity': 0, 'length_pieces': []})
 
     if type_processed_as == 'profile':
-        used_from_leftover_qty_or_length = material_impact_details.get('used_from_leftover_qty_or_length', 0.0)
-        if used_from_leftover_qty_or_length > EPSILON:
-            temp_leftovers = sorted(list(part_extra.get('length_pieces', [])))
-            consumed = False
-            for i, piece_len in enumerate(temp_leftovers):
-                if piece_len >= used_from_leftover_qty_or_length - EPSILON:
-                    remaining_after_use = piece_len - used_from_leftover_qty_or_length
-                    temp_leftovers.pop(i)
-                    if remaining_after_use > EPSILON: temp_leftovers.append(remaining_after_use)
-                    consumed = True
-                    break
-            if not consumed: print(f"⚠️ Warning: Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+        # Handle bay width lists specially
+        is_bay_width_list = material_impact_details.get('is_bay_width_list', False)
+        leftover_pieces_consumed = material_impact_details.get('leftover_pieces_consumed', [])
+        
+        if is_bay_width_list and leftover_pieces_consumed:
+            # Process each consumed leftover piece
+            temp_leftovers = sorted(list(part_extra.get('length_pieces', [])), reverse=True)
+            for consumed_info in leftover_pieces_consumed:
+                original_length = consumed_info.get('original_length')
+                used_length = consumed_info.get('used_length')
+                
+                # Find and remove the matching leftover piece
+                found = False
+                for i, piece_len in enumerate(temp_leftovers):
+                    # Match by original length (with tolerance)
+                    if abs(piece_len - original_length) < EPSILON:
+                        remaining_after_use = piece_len - used_length
+                        temp_leftovers.pop(i)
+                        if remaining_after_use > EPSILON:
+                            temp_leftovers.append(remaining_after_use)
+                            temp_leftovers.sort(reverse=True)
+                        found = True
+                        break
+                
+                if not found:
+                    # Fallback: find any piece >= used_length
+                    for i, piece_len in enumerate(temp_leftovers):
+                        if piece_len >= used_length - EPSILON:
+                            remaining_after_use = piece_len - used_length
+                            temp_leftovers.pop(i)
+                            if remaining_after_use > EPSILON:
+                                temp_leftovers.append(remaining_after_use)
+                                temp_leftovers.sort(reverse=True)
+                            found = True
+                            break
+                    
+                    if not found:
+                        print(f"⚠️ Warning: Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
+            
             part_extra['length_pieces'] = temp_leftovers
+            part_extra['quantity'] = 0.0
+        else:
+            # Standard handling for single quantity
+            used_from_leftover_qty_or_length = material_impact_details.get('used_from_leftover_qty_or_length', 0.0)
+            if used_from_leftover_qty_or_length > EPSILON:
+                temp_leftovers = sorted(list(part_extra.get('length_pieces', [])), reverse=True)
+                consumed = False
+                for i, piece_len in enumerate(temp_leftovers):
+                    if piece_len >= used_from_leftover_qty_or_length - EPSILON:
+                        remaining_after_use = piece_len - used_from_leftover_qty_or_length
+                        temp_leftovers.pop(i)
+                        if remaining_after_use > EPSILON: temp_leftovers.append(remaining_after_use)
+                        consumed = True
+                        break
+                if not consumed: print(f"⚠️ Warning: Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+                part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0 # Profiles only use length_pieces, quantity is effectively 0 for whole pieces
 
         leftover_generated_qty_or_length = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
@@ -334,19 +468,62 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
     part_extra = materials_dict.get(extra_materials_key, {'quantity': 0, 'length_pieces': []})
 
     if type_processed_as == 'profile':
-        used_from_leftover_qty_or_length = material_impact_details.get('used_from_leftover_qty_or_length', 0.0)
-        if used_from_leftover_qty_or_length > EPSILON:
-            temp_leftovers = sorted(list(part_extra.get('length_pieces', [])))
-            consumed = False
-            for i, piece_len in enumerate(temp_leftovers):
-                if piece_len >= used_from_leftover_qty_or_length - EPSILON:
-                    remaining_after_use = piece_len - used_from_leftover_qty_or_length
-                    temp_leftovers.pop(i)
-                    if remaining_after_use > EPSILON: temp_leftovers.append(remaining_after_use)
-                    consumed = True
-                    break
-            if not consumed: print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+        # Handle bay width lists specially
+        is_bay_width_list = material_impact_details.get('is_bay_width_list', False)
+        leftover_pieces_consumed = material_impact_details.get('leftover_pieces_consumed', [])
+        
+        if is_bay_width_list and leftover_pieces_consumed:
+            # Process each consumed leftover piece
+            temp_leftovers = sorted(list(part_extra.get('length_pieces', [])), reverse=True)
+            for consumed_info in leftover_pieces_consumed:
+                original_length = consumed_info.get('original_length')
+                used_length = consumed_info.get('used_length')
+                
+                # Find and remove the matching leftover piece
+                found = False
+                for i, piece_len in enumerate(temp_leftovers):
+                    # Match by original length (with tolerance)
+                    if abs(piece_len - original_length) < EPSILON:
+                        remaining_after_use = piece_len - used_length
+                        temp_leftovers.pop(i)
+                        if remaining_after_use > EPSILON:
+                            temp_leftovers.append(remaining_after_use)
+                            temp_leftovers.sort(reverse=True)
+                        found = True
+                        break
+                
+                if not found:
+                    # Fallback: find any piece >= used_length
+                    for i, piece_len in enumerate(temp_leftovers):
+                        if piece_len >= used_length - EPSILON:
+                            remaining_after_use = piece_len - used_length
+                            temp_leftovers.pop(i)
+                            if remaining_after_use > EPSILON:
+                                temp_leftovers.append(remaining_after_use)
+                                temp_leftovers.sort(reverse=True)
+                            found = True
+                            break
+                    
+                    if not found:
+                        print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
+            
             part_extra['length_pieces'] = temp_leftovers
+            part_extra['quantity'] = 0.0
+        else:
+            # Standard handling for single quantity
+            used_from_leftover_qty_or_length = material_impact_details.get('used_from_leftover_qty_or_length', 0.0)
+            if used_from_leftover_qty_or_length > EPSILON:
+                temp_leftovers = sorted(list(part_extra.get('length_pieces', [])), reverse=True)
+                consumed = False
+                for i, piece_len in enumerate(temp_leftovers):
+                    if piece_len >= used_from_leftover_qty_or_length - EPSILON:
+                        remaining_after_use = piece_len - used_from_leftover_qty_or_length
+                        temp_leftovers.pop(i)
+                        if remaining_after_use > EPSILON: temp_leftovers.append(remaining_after_use)
+                        consumed = True
+                        break
+                if not consumed: print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+                part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0 
 
         leftover_generated_qty_or_length = material_impact_details.get('leftover_generated_qty_or_length', 0.0)

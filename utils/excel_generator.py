@@ -7,7 +7,7 @@ from openpyxl.utils import get_column_letter
 from collections import Counter
 import datetime
 
-from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part, parse_length_to_feet
+from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part, parse_length_to_feet, BAY_WIDTH_PARTS, _is_bay_width_part
 from data.part_number import PART_NUMBER_MAP
 from data.parts_data import parts_data
 from utils.formulas import calculate_door_info
@@ -258,38 +258,58 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         item_total_cost_for_display = 0.0
         original_item_total_cost = 0.0
 
-        for single_qty_for_calc in individual_quantities:
-            total_item_price_single_cut, calculated_unit_type, material_impact_details = 0.0, unit_type, None
-
-            if manual:
-                if pn and pn != "N/A":
-                    price_calculated, unit_calculated, material_impact_details = \
-                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)
-                    total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
-                    calculated_unit_type = unit_type if is_profile or is_accessory else (unit_calculated or item.get('unit', 'pcs'))
-                else:
-                    total_item_price_single_cut = item.get('price', 0.0) * single_qty_for_calc
-                    calculated_unit_type = item.get('unit', 'pcs')
-                    material_impact_details = {
-                        'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
-                        'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
-                        'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn',
-                        'finish': None
-                    }
-            else:
-                total_price, unit_from_pricing, material_impact_details = \
-                    get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
-                total_item_price_single_cut = total_price or 0.0
-                calculated_unit_type = unit_type if is_profile or is_accessory else (unit_from_pricing or item.get('unit', 'pcs'))
-
-            item_total_cost_for_display += total_item_price_single_cut
-            original_item_total_cost += total_item_price_single_cut
-
+        # Check if this is a bay width part that should process the list as a whole
+        is_bay_width_item = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
+        
+        # For bay width parts with a list, process the entire list at once for optimization
+        if is_bay_width_item and isinstance(qty_raw, list) and len(qty_raw) > 1:
+            # Process the entire list as one request for waste optimization
+            total_price, calculated_unit_type, material_impact_details = \
+                get_price_by_part(pn, qty_raw, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
+            
+            item_total_cost_for_display = total_price or 0.0
+            original_item_total_cost = total_price or 0.0
+            calculated_unit_type = unit_type if is_profile or is_accessory else (calculated_unit_type or item.get('unit', 'pcs'))
+            
             if material_impact_details:
                 leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
                 material_impact_details['leftover_generated_qty_or_length_display'] = f"{leftover_qty:.2f} {display_unit}"
                 section_material_impacts.append(material_impact_details)
                 apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
+        else:
+            # Standard processing: iterate through each quantity
+            for single_qty_for_calc in individual_quantities:
+                total_item_price_single_cut, calculated_unit_type, material_impact_details = 0.0, unit_type, None
+
+                if manual:
+                    if pn and pn != "N/A":
+                        price_calculated, unit_calculated, material_impact_details = \
+                            get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)
+                        total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
+                        calculated_unit_type = unit_type if is_profile or is_accessory else (unit_calculated or item.get('unit', 'pcs'))
+                    else:
+                        total_item_price_single_cut = item.get('price', 0.0) * single_qty_for_calc
+                        calculated_unit_type = item.get('unit', 'pcs')
+                        material_impact_details = {
+                            'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
+                            'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
+                            'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn',
+                            'finish': None
+                        }
+                else:
+                    total_price, unit_from_pricing, material_impact_details = \
+                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
+                    total_item_price_single_cut = total_price or 0.0
+                    calculated_unit_type = unit_type if is_profile or is_accessory else (unit_from_pricing or item.get('unit', 'pcs'))
+
+                item_total_cost_for_display += total_item_price_single_cut
+                original_item_total_cost += total_item_price_single_cut
+
+                if material_impact_details:
+                    leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
+                    material_impact_details['leftover_generated_qty_or_length_display'] = f"{leftover_qty:.2f} {display_unit}"
+                    section_material_impacts.append(material_impact_details)
+                    apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
         if is_profile or is_accessory:
             item_total_cost_for_display *= multiplier
