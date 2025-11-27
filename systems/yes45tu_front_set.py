@@ -56,13 +56,13 @@ def calculate_yes45tu_quantities(
         ("E2-0154", calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count)),
         ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),
         ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),
-        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count)),
+        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count, bays_wide)),
         ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
         ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),
-        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count)),
-        ("BE9-2514", calculate_og_head_h(opening_width, total_count)),
+        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count, bays_wide)),
+        ("BE9-2514", calculate_og_head_h(opening_width, total_count, bays_wide)),
         ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
-        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count)),
+        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count, bays_wide)),
         ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count))
     ]
 
