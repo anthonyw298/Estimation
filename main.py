@@ -1,6 +1,7 @@
 import flet as ft
 import json
 import os
+import sys
 import datetime
 from openpyxl import Workbook
 
@@ -12,6 +13,34 @@ from utils.formulas import calculate_rectangle_area, calculate_perimeter, calcul
 # --- Constants & Config ---
 PROJECTS_DIR = ".files"
 MASTER_PROJECT_LIST_FILE = os.path.join(PROJECTS_DIR, "projects_list.json")
+
+# --- PyInstaller Resource Path Helper ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# Get assets directory path (works for both dev and PyInstaller)
+def get_assets_dir():
+    """Get the assets directory path"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+        assets_path = os.path.join(base_path, "assets")
+        if os.path.exists(assets_path):
+            return os.path.abspath(assets_path)  # Return absolute path
+    except Exception:
+        pass
+    # Fallback to absolute path for development
+    assets_path = os.path.join(os.path.abspath("."), "assets")
+    if os.path.exists(assets_path):
+        return os.path.abspath(assets_path)
+    # Last resort: return relative path
+    return os.path.abspath("assets") if os.path.exists("assets") else "assets"
 
 # United Glass color palette (matching logo)
 COLOR_BG = "#000000"       # Black background (matching logo)
@@ -250,13 +279,25 @@ def main(page: ft.Page):
         logo_image = None
         
         for logo_filename in logo_filenames:
-            logo_path = os.path.join("assets", logo_filename)
-            abs_logo_path = os.path.abspath(logo_path)
+            # Try resource_path first (for PyInstaller bundle)
+            try:
+                logo_path = resource_path(os.path.join("assets", logo_filename))
+                if os.path.exists(logo_path):
+                    logo_image = ft.Image(
+                        src=logo_path,
+                        width=200,
+                        height=200,
+                        fit=ft.ImageFit.CONTAIN,
+                    )
+                    break  # Successfully loaded, exit loop
+            except Exception:
+                pass
             
-            # Check if logo file exists and try to load it
-            if os.path.exists(abs_logo_path):
-                try:
-                    # Try with just filename (if assets_dir is set)
+            # Try relative path (for development)
+            try:
+                logo_path = os.path.join("assets", logo_filename)
+                if os.path.exists(logo_path):
+                    # Try with just filename (since assets_dir is set in Flet)
                     logo_image = ft.Image(
                         src=logo_filename,
                         width=200,
@@ -264,19 +305,9 @@ def main(page: ft.Page):
                         fit=ft.ImageFit.CONTAIN,
                     )
                     break  # Successfully loaded, exit loop
-                except:
-                    try:
-                        # Try with absolute path
-                        logo_image = ft.Image(
-                            src=abs_logo_path,
-                            width=200,
-                            height=200,
-                            fit=ft.ImageFit.CONTAIN,
-                        )
-                        break  # Successfully loaded, exit loop
-                    except Exception as e:
-                        print(f"Error loading {logo_filename}: {e}")
-                        continue  # Try next filename
+            except Exception as e:
+                print(f"Error loading {logo_filename}: {e}")
+                continue  # Try next filename
         
         # Always create a visible placeholder (will be used if image not found or as fallback)
         # Make it very visible with bright blue color
@@ -1124,4 +1155,6 @@ def main(page: ft.Page):
     page.go(page.route)
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+    # Get the correct assets directory path (works for both dev and PyInstaller)
+    assets_dir_path = get_assets_dir()
+    ft.app(target=main, assets_dir=assets_dir_path)
