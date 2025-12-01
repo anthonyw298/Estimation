@@ -3,12 +3,11 @@ import json
 import os
 import sys
 import datetime
-from openpyxl import Workbook
 
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
-from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_total_door_area, calculate_glass_to_add_back, calculate_door_info
+from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_door_info
 
 # --- Constants & Config ---
 PROJECTS_DIR = ".files"

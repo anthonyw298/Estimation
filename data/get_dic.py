@@ -1,6 +1,4 @@
 import csv
-
-import csv
 import json
 
 def build_parts_dictionary(csv_filename):
