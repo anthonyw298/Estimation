@@ -2,7 +2,7 @@ import os
 import json
 import math
 from openpyxl import Workbook
-from openpyxl.styles import Font, numbers, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, numbers, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from collections import Counter
 import datetime
@@ -17,16 +17,6 @@ from utils.formulas import calculate_door_info
 def _get_multiplier(running_grand_total):
     """Returns multiplier based on running grand total."""
     return 0.584 if running_grand_total < 50000 else 0.522
-
-def _find_row_by_value(ws, column, value, start_row=1, end_row=None, reverse=False):
-    """Finds the first row containing a specific value in a given column."""
-    end_row = end_row if end_row is not None else ws.max_row
-    row_range = range(start_row, end_row + 1)
-    if reverse: row_range = range(end_row, start_row - 1, -1)
-    for r in row_range:
-        cell_value = ws.cell(row=r, column=column).value
-        if cell_value and str(cell_value).strip() == str(value).strip(): return r
-    return None
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
     """Autofits columns in the worksheet."""

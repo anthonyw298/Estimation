@@ -9,14 +9,6 @@ def calculate_perimeter(length: float, width: float) -> float:
     """Calculates the perimeter of a rectangle."""
     return 2 * (length + width)
 
-def convert_inches_to_feet(inches: float) -> float:
-    """Converts inches to feet."""
-    return inches / 12.0
-
-def convert_feet_to_inches(feet: float) -> float:
-    """Converts feet to inches."""
-    return feet * 12.0
-
 def calculate_total_gasket_ft(bays_wide: int, bays_tall: int, opening_width: float, opening_height: float, total_count: int) -> float:
     total_inches = (bays_wide * 4 * opening_height) + (bays_tall * 4 * opening_width)
     return (total_inches * total_count) / 12
