@@ -1,5 +1,3 @@
-customtkinter
-tk
 openpyxl
 pandas
 Pillow
