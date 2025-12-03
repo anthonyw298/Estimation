@@ -688,33 +688,33 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     def get_headers_for_category(category, items_list=None):
         if category == 'PROFILES':
             return [
-                "Project Total Materials", "Total Ft", "Sticks Req", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "Total Ft", "Sticks Req", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'ACCESSORIES':
             return [
-                "Project Total Materials", "Quantity Per Order", "Orders Req", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "Quantity Per Order", "Orders Req", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'GLASS':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'LABOR':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'DOORS':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         else:
             # Default headers
             return [
-                "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Quantity", "List Price", "Discounted List Price",
+                "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
 
