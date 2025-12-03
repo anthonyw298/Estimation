@@ -1039,6 +1039,11 @@ def generate_excel_report(
                 label_cell.font = Font(bold=True, size=12)
                 # Picture will be at diagram_row, so there's now 2 rows between label and picture
                 
+                # Add note in column B (next to bay diagram)
+                note_cell = ws.cell(row=diagram_row - 2, column=COL_B, value="*Note - C/L Dimensions")
+                note_cell.font = Font(size=12)
+                note_cell.alignment = Alignment(horizontal='left', vertical='top')
+                
                 # Set column widths to accommodate diagram (A-C) without overlapping column D
                 ws.column_dimensions['A'].width = 20
                 ws.column_dimensions['B'].width = 20
