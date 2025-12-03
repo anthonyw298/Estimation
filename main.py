@@ -554,7 +554,7 @@ def main(page: ft.Page):
                 # If "New Elevation" selected or cleared, reset to Create mode
                 clear_workspace()
                 inputs["save_btn"].text = "CREATE ELEVATION"
-                inputs["saved_elev"].value = None # Reset dropdown selection visual if desired or keep "New Elevation"
+                inputs["saved_elev"].value = "New Elevation"  # Keep "New Elevation" for consistency
                 page.update()
                 return
             
@@ -714,11 +714,19 @@ def main(page: ft.Page):
         def save_elevation_action(e):
             is_update = inputs["save_btn"].text == "UPDATE ELEVATION"
             try:
-                elev = inputs["type"].value.strip()
+                elev = inputs["type"].value.strip() if inputs["type"].value else ""
                 if not elev: raise ValueError("Elevation Name Required")
                 
+                if not inputs["count"].value:
+                    raise ValueError("Quantity is required")
                 total = int(inputs["count"].value)
+                
+                if not inputs["width"].value:
+                    raise ValueError("Opening Width is required")
                 w = float(inputs["width"].value)
+                
+                if not inputs["height"].value:
+                    raise ValueError("Opening Height is required")
                 h = float(inputs["height"].value)
                 
                 # Simple calculations for preview/saving
@@ -738,6 +746,10 @@ def main(page: ft.Page):
                 }
 
                 if data["system"] == "YES 45TU FRONT SET(OG)":
+                    if not inputs["bays_wide"].value:
+                        raise ValueError("Bays Wide is required for YES 45TU FRONT SET(OG)")
+                    if not inputs["bays_tall"].value:
+                        raise ValueError("Bays Tall is required for YES 45TU FRONT SET(OG)")
                     bw = int(inputs["bays_wide"].value)
                     bh = int(inputs["bays_tall"].value)
                     
@@ -848,35 +860,64 @@ def main(page: ft.Page):
                 
                 # Save to file
                 paths = get_project_paths(state["current_project"])
-                with open(paths["elevations"], 'w') as f:
-                    json.dump(state["saved_elevations"], f, indent=4)
+                try:
+                    with open(paths["elevations"], 'w') as f:
+                        json.dump(state["saved_elevations"], f, indent=4)
+                    print(f"✅ Saved elevations to: {paths['elevations']}")
+                except Exception as save_err:
+                    error_msg = f"Failed to save elevations: {str(save_err)}"
+                    print(f"❌ {error_msg}")
+                    show_snack(error_msg, "red")
+                    raise
+                
+                # Reload elevations from file to ensure state is in sync
+                load_elevations(state["current_project"])
                 
                 # Trigger Excel Gen (silent or with notif)
-                generate_excel_report(
-                    excel_path=paths["excel"], 
-                    elevations_json_path=paths["elevations"], 
-                    extra_materials_json_path=paths["materials"],
-                    system_input=data["system"], 
-                    finish_input=data["finish"], 
-                    elevation_type=elev, 
-                    total_count=total,
-                    bays_wide=data.get("bays_wide", 0), 
-                    bays_tall=data.get("bays_tall", 0),
-                    opening_width=w, 
-                    opening_height=h, 
-                    sqft_per_type=sqft, 
-                    total_sqft=data["total_sqft"], 
-                    perimeter_ft=perim, 
-                    total_perimeter_ft=data["total_perimeter_ft"],
-                    calculated_outputs=data["calculated_outputs"], 
-                    doors=state["current_doors"],
-                    custom_bay_widths=data.get("custom_bay_widths", []), 
-                    custom_bay_heights=data.get("custom_bay_heights", [])
-                )
+                try:
+                    print(f"🔄 Generating report for elevation: {elev}")
+                    print(f"   Excel path: {paths['excel']}")
+                    print(f"   Elevations path: {paths['elevations']}")
+                    generate_excel_report(
+                        excel_path=paths["excel"], 
+                        elevations_json_path=paths["elevations"], 
+                        extra_materials_json_path=paths["materials"],
+                        system_input=data["system"], 
+                        finish_input=data["finish"], 
+                        elevation_type=elev, 
+                        total_count=total,
+                        bays_wide=data.get("bays_wide", 0), 
+                        bays_tall=data.get("bays_tall", 0),
+                        opening_width=w, 
+                        opening_height=h, 
+                        sqft_per_type=sqft, 
+                        total_sqft=data["total_sqft"], 
+                        perimeter_ft=perim, 
+                        total_perimeter_ft=data["total_perimeter_ft"],
+                        calculated_outputs=data["calculated_outputs"], 
+                        doors=state["current_doors"],
+                        custom_bay_widths=data.get("custom_bay_widths", []), 
+                        custom_bay_heights=data.get("custom_bay_heights", [])
+                    )
+                    # Check if file was actually created
+                    if os.path.exists(paths["excel"]):
+                        print(f"✅ Report generated successfully: {paths['excel']}")
+                        show_snack(f"Report saved to: {paths['excel']}", "green")
+                    else:
+                        error_msg = f"Report file not found at: {paths['excel']}"
+                        print(f"❌ {error_msg}")
+                        show_snack(error_msg, "red")
+                except Exception as report_err:
+                    error_msg = f"Report generation failed: {str(report_err)}"
+                    print(f"❌ {error_msg}")
+                    show_snack(error_msg, "red")
+                    import traceback
+                    traceback.print_exc()
                 
-                # Update dropdown
+                # Update dropdown with fresh data
                 new_opts = sorted(state["saved_elevations"].keys())
-                inputs["saved_elev"].options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
+                dropdown_options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
+                inputs["saved_elev"].options = dropdown_options
                 
                 if is_update:
                     inputs["saved_elev"].value = elev
@@ -884,9 +925,11 @@ def main(page: ft.Page):
                 else:
                     # Clear Inputs for new creation
                     clear_workspace()
-                    inputs["saved_elev"].value = None # Reset dropdown to allow loading others
+                    inputs["saved_elev"].value = "New Elevation"  # Set to "New Elevation" instead of None
                     show_snack("Elevation Created Successfully", "green")
                 
+                # Force update the dropdown control
+                inputs["saved_elev"].update()
                 page.update()
 
             except Exception as ex:
@@ -894,12 +937,15 @@ def main(page: ft.Page):
 
         def delete_elevation_action(e):
             elev = inputs["saved_elev"].value
-            if elev in state["saved_elevations"]:
+            if elev and elev != "New Elevation" and elev in state["saved_elevations"]:
                 del state["saved_elevations"][elev]
                 # Save removal
                 paths = get_project_paths(state["current_project"])
                 with open(paths["elevations"], 'w') as f:
                     json.dump(state["saved_elevations"], f, indent=4)
+                
+                # Reload elevations from file to ensure state is in sync
+                load_elevations(state["current_project"])
                 
                 # Remove door file
                 dp = get_door_path(state["current_project"], elev)
@@ -920,15 +966,20 @@ def main(page: ft.Page):
                 except Exception as ex:
                     print(f"Error regenerating report after delete: {ex}")
 
-                # Update UI
+                # Update UI with fresh data
                 new_opts = sorted(state["saved_elevations"].keys())
-                inputs["saved_elev"].options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
-                inputs["saved_elev"].value = None
+                dropdown_options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
+                inputs["saved_elev"].options = dropdown_options
+                inputs["saved_elev"].value = "New Elevation"
                 # Force switch to CREATE mode after deletion by clearing inputs
                 clear_workspace()
                 # Since clear_workspace resets the button text, we just need to confirm
                 show_snack("Elevation Deleted", "red")
+                # Force update the dropdown control
+                inputs["saved_elev"].update()
                 page.update()
+            else:
+                show_snack("Please select an elevation to delete", "red")
 
         def gen_full_report(e):
             try:
@@ -1099,43 +1150,6 @@ def main(page: ft.Page):
             bgcolor=COLOR_BG,
             padding=0
         )
-
-    def route_change(e):
-        page.views.clear()
-        page.views.append(build_projects_view())
-        if page.route == "/workspace" and state["current_project"]:
-            ws_view = build_workspace_view()
-            page.views.append(ws_view)
-            # Now that controls are in the view list (technically), try updating visibility?
-            # Actually, safer to trigger the event manually or call the logic without page.update() inside build
-            
-            # Let's just trigger the update logic safely
-            # We need to access the inputs from the build_workspace_view closure.
-            # But inputs is in the outer scope 'build_workspace_view'. 
-            # We can't easily access it from here unless we return it or it's global. 
-            # 'inputs' is defined in 'main' scope, so it IS accessible.
-            
-            # Call update_bay_visibility but catch errors or modify it to handle 'page not ready'
-            pass 
-            
-        page.update()
-        
-        # Post-update check for workspace
-        if page.route == "/workspace" and state["current_project"]:
-             # Now controls are mounted
-             # Trigger visibility update logic
-             is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
-             inputs["bays_wide"].parent.visible = is_yes45
-             inputs["bays_tall"].parent.visible = is_yes45
-             inputs["custom_w_container"].visible = is_yes45
-             inputs["custom_h_container"].visible = is_yes45
-             # We need to trigger dynamic input generation if needed
-             # We can't call update_dynamic_bay_inputs directly easily because it's nested.
-             # But wait, inputs are global-ish in this function scope.
-             # The issue is 'update_dynamic_bay_inputs' is defined INSIDE build_workspace_view.
-             
-             # FIX: Move the initial call inside build_workspace_view but wrap page.update in a check.
-             pass
 
     def route_change(e):
         page.views.clear()

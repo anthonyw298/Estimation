@@ -1,3 +1,0 @@
-from utils.formulas import calculate_glass_to_add_back
-
-print('aye',calculate_glass_to_add_back([{'size': "3' X 7'", 'count': 1, 'stile': 'Narrow', 'hardware': {'Continuous Hinges': False, 'Concealed Closer': False, 'Exit Devices': False, 'Electric Strike': False, 'Extended Ladder Pull (B2B)': False, 'Extended Ladder Pull (Single)': False, 'Latch Lock w/ Lever Handle': False, 'Lever Handle': False}}]))
