@@ -206,7 +206,8 @@ def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier):
     """Writes a section of calculated outputs to the worksheet."""
-    if not items: return start_output_row, []
+    if not items: 
+        return start_output_row, [], {'original': 0.0, 'discounted': 0.0}
 
     current_row = start_output_row
     title_cell = ws.cell(row=current_row, column=colE, value=title)
@@ -329,7 +330,12 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     for col in range(colE, colE + 5):
         ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
-    return current_row + 2, section_material_impacts
+    # Return section totals for summary
+    section_totals = {
+        'original': section_original_total,
+        'discounted': section_discounted_total
+    }
+    return current_row + 1, section_material_impacts, section_totals
 
 
 def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
@@ -1083,18 +1089,32 @@ def generate_excel_report(
             system_total_for_this_block = [0.0]
             original_system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
+            
+            # Track section totals for cost breakdown
+            profile_original_total = 0.0
+            profile_discounted_total = 0.0
+            accessory_original_total = 0.0
+            accessory_discounted_total = 0.0
+            glass_original_total = 0.0
+            glass_discounted_total = 0.0
+            fabrication_original_total = 0.0
+            fabrication_discounted_total = 0.0
 
-            next_row_after_profiles, impacts_p = _write_output_section(
+            next_row_after_profiles, impacts_p, profile_totals = _write_output_section(
                 ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish,
                 system_total_for_this_block, original_system_total_for_this_block, output_section_current_row,
                 overall_current_extra_materials_state, private_extra_materials_path, multiplier
             )
+            profile_original_total = profile_totals['original']
+            profile_discounted_total = profile_totals['discounted']
 
-            next_row_after_accessories, impacts_a = _write_output_section(
+            next_row_after_accessories, impacts_a, accessory_totals = _write_output_section(
                 ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish,
                 system_total_for_this_block, original_system_total_for_this_block, next_row_after_profiles,
                 overall_current_extra_materials_state, private_extra_materials_path, multiplier
             )
+            accessory_original_total = accessory_totals['original']
+            accessory_discounted_total = accessory_totals['discounted']
 
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
@@ -1107,42 +1127,102 @@ def generate_excel_report(
                 grouped_other_misc.setdefault(item_type, []).append(item)
 
             for grp_title, grp_items in grouped_other_misc.items():
-                next_row_after_group, impacts_g = _write_output_section(
+                next_row_after_group, impacts_g, group_totals = _write_output_section(
                     ws, grp_title, grp_items, COL_E, None,
                     system_total_for_this_block, original_system_total_for_this_block, current_section_row,
                     overall_current_extra_materials_state, private_extra_materials_path, multiplier
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+                
+                # Categorize other items into Glass or Fabrication
+                if grp_title == "GLASS" or any(item.get('part_number') == "GLASS_AREA" or item.get('type', '').lower() == 'glass' for item in grp_items):
+                    glass_original_total += group_totals['original']
+                    glass_discounted_total += group_totals['discounted']
+                else:
+                    # Treat other items as fabrication costs
+                    fabrication_original_total += group_totals['original']
+                    fabrication_discounted_total += group_totals['discounted']
+                
                 current_section_row = next_row_after_group
+                print(f"Section '{grp_title}' ended at row {current_section_row}")
 
             current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
 
-            system_total_row = ws.max_row + 4
+            # Create cost breakdown summary table
+            # Use the explicitly tracked row position after the last section
+            # Add spacing: explicitly create blank rows
+            spacing_rows = 1  # Number of blank rows before cost summary (row 39 -> row 43 for headers)
             
-            lbl_col = PRICE_COL - 1
-            val_col = PRICE_COL
-
-            # Row 1: Original Total
-            l_orig = ws.cell(row=system_total_row, column=lbl_col, value="Original Elevation Total")
-            l_orig.font = Font(bold=True)
-            l_orig.alignment = Alignment(horizontal='right')
-            l_orig.border = Border(left=Side(style='thin'), top=Side(style='thin'))
+            # Explicitly create blank rows by writing empty cells to ensure rows exist
+            for blank_row in range(1, spacing_rows + 1):
+                # Write empty cell to ensure row exists in Excel
+                ws.cell(row=current_section_row + blank_row, column=COL_A, value="")
             
-            v_orig = ws.cell(row=system_total_row, column=val_col, value=original_system_total_for_this_block[0])
-            v_orig.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            v_orig.font = Font(bold=True)
-            v_orig.border = Border(right=Side(style='thin'), top=Side(style='thin'))
-
-            # Row 2: Discounted Total
-            l_disc = ws.cell(row=system_total_row + 1, column=lbl_col, value="Discounted Elevation Total")
-            l_disc.font = Font(bold=True)
-            l_disc.alignment = Alignment(horizontal='right')
-            l_disc.border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
+            # Headers start after all spacing rows, with one additional blank row
+            cost_summary_row = current_section_row + spacing_rows + 1
             
-            v_disc = ws.cell(row=system_total_row + 1, column=val_col, value=system_total_for_this_block[0])
-            v_disc.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            v_disc.font = Font(bold=True)
-            v_disc.border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
+            header_col = PRICE_COL - 2
+            cost_per_elev_col = PRICE_COL - 1
+            total_elev_cost_col = PRICE_COL
+            
+            # Debug: print row numbers to verify
+            print(f"Cost summary for '{elev_name}': Last section row={current_section_row}, Spacing={spacing_rows} rows, Cost summary starts at row={cost_summary_row}")
+            
+            # Headers on second row
+            ws.cell(row=cost_summary_row, column=header_col, value="COST/ELEVATION").font = Font(bold=True)
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value="COST/ELEVATION").font = Font(bold=True)
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value="TOTAL ELEVATION COST").font = Font(bold=True)
+            
+            # Add borders to headers
+            for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
+                ws.cell(row=cost_summary_row, column=col).border = Border(bottom=Side(style='thin'))
+            
+            cost_summary_row += 1
+            
+            # Profile Costs
+            ws.cell(row=cost_summary_row, column=header_col, value="PROFILE COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=profile_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            total_count = elev_data.get("total_count", 1)
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=profile_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
+            # Accessory Costs
+            ws.cell(row=cost_summary_row, column=header_col, value="ACCESSORY COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=accessory_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
+            # Glass Costs
+            ws.cell(row=cost_summary_row, column=header_col, value="GLASS COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=glass_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=glass_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
+            # Fabrication Costs
+            ws.cell(row=cost_summary_row, column=header_col, value="FABRICATION COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=fabrication_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=fabrication_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
+            # Separator line
+            for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
+                ws.cell(row=cost_summary_row, column=col).border = Border(top=Side(style='thin'))
+            cost_summary_row += 1
+            
+            # Total Costs
+            total_cost_per_elev = profile_discounted_total + accessory_discounted_total + glass_discounted_total + fabrication_discounted_total
+            total_elevation_cost = total_cost_per_elev * total_count
+            
+            ws.cell(row=cost_summary_row, column=header_col, value=f"{elev_name} TOTAL COSTS").font = Font(bold=True)
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=total_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col).font = Font(bold=True)
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=total_elevation_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col).font = Font(bold=True)
+            cost_summary_row += 1
+            
+            # Note
+            note_cell = ws.cell(row=cost_summary_row, column=header_col, value="*Note - Elevation costs based on discounted material costs")
+            note_cell.font = Font(italic=True, size=10)
             
             print(f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
 
