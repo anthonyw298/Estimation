@@ -16,7 +16,7 @@ from utils.formulas import calculate_door_info
 
 def _get_multiplier(running_grand_total):
     """Returns multiplier based on running grand total."""
-    return 0.584 if running_grand_total < 50000 else 0.522
+    return 0.614 if running_grand_total < 50000 else 0.572
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
     """Autofits columns in the worksheet."""
@@ -213,7 +213,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     title_cell.font = Font(bold=True, size=12)
     # title_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
 
-    for i, h in enumerate(["Description", "Part Number", "Quantity", "Original Price", "Discounted Price"]):
+    for i, h in enumerate(["Description", "Part Number", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost"]):
         header_cell = ws.cell(row=current_row + 1, column=colE + i, value=h)
         header_cell.font = Font(bold=True)
         header_cell.border = Border(bottom=Side(style='thin'))
@@ -606,25 +606,39 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 
                 # Format quantity_display to show breakdown like "16ft x2, 8ft x1"
                 quantity_list = item.get('quantity_list', [quantity_aggregated])
+                # Filter out invalid values (None, empty, non-numeric)
+                valid_quantities = [q for q in quantity_list if q is not None and (isinstance(q, (int, float)) and q > 0)]
+                
+                # If no valid quantities, use aggregated quantity
+                if not valid_quantities:
+                    valid_quantities = [quantity_aggregated] if quantity_aggregated > 0 else []
+                
                 # Count occurrences of each length
-                length_counter = Counter([round(q, 2) for q in quantity_list])
-                if len(length_counter) > 1:
-                    # Multiple different lengths - show breakdown
-                    length_parts = []
-                    for length_val, count in sorted(length_counter.items(), key=lambda x: x[0], reverse=True):
+                if valid_quantities:
+                    length_counter = Counter([round(q, 2) for q in valid_quantities])
+                    if len(length_counter) > 1:
+                        # Multiple different lengths - show breakdown
+                        length_parts = []
+                        for length_val, count in sorted(length_counter.items(), key=lambda x: x[0], reverse=True):
+                            if count > 1:
+                                length_parts.append(f"{length_val:.0f}ft x{count}")
+                            else:
+                                length_parts.append(f"{length_val:.0f}ft x1")
+                        quantity_display_formatted = ", ".join(length_parts)
+                    elif len(length_counter) == 1:
+                        # All same length - show total with count if multiple pieces
+                        length_val = list(length_counter.keys())[0]
+                        count = length_counter[length_val]
                         if count > 1:
-                            length_parts.append(f"{length_val:.0f}ft x{count}")
+                            quantity_display_formatted = f"{length_val:.0f}ft x{count}"
                         else:
-                            length_parts.append(f"{length_val:.0f}ft x1")
-                    quantity_display_formatted = ", ".join(length_parts)
-                else:
-                    # All same length - show total with count if multiple pieces
-                    length_val = list(length_counter.keys())[0]
-                    count = length_counter[length_val]
-                    if count > 1:
-                        quantity_display_formatted = f"{length_val:.0f}ft x{count}"
+                            quantity_display_formatted = f"{length_val:.0f}ft"
                     else:
-                        quantity_display_formatted = f"{length_val:.0f}ft"
+                        # Empty counter - fallback to default format
+                        quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
+                else:
+                    # No valid quantities - fallback to default format
+                    quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
                     
             elif is_accessory and part and part != "N/A":
                 # For accessories, get bulk order info
@@ -837,15 +851,36 @@ def generate_excel_report(
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 9
 
     project_root = os.getcwd()
-    private_projects_dir = os.path.join(project_root, '.files')
-    public_reports_dir = os.path.join(project_root, 'reports')
+    private_projects_dir = os.path.abspath(os.path.join(project_root, '.files'))
+    public_reports_dir = os.path.abspath(os.path.join(project_root, 'reports'))
 
     os.makedirs(private_projects_dir, exist_ok=True)
     os.makedirs(public_reports_dir, exist_ok=True)
     
-    private_elevations_path = os.path.join(private_projects_dir, os.path.basename(elevations_json_path))
-    private_extra_materials_path = os.path.join(private_projects_dir, os.path.basename(extra_materials_json_path))
-    private_excel_path = os.path.join(private_projects_dir, os.path.basename(excel_path))
+    # Normalize paths - use provided path if it exists and is in .files, otherwise construct it
+    elevations_path_abs = os.path.abspath(elevations_json_path)
+    if os.path.dirname(elevations_path_abs) == private_projects_dir and os.path.exists(elevations_path_abs):
+        private_elevations_path = elevations_path_abs
+    else:
+        private_elevations_path = os.path.join(private_projects_dir, os.path.basename(elevations_json_path))
+    
+    materials_path_abs = os.path.abspath(extra_materials_json_path)
+    if os.path.dirname(materials_path_abs) == private_projects_dir and os.path.exists(materials_path_abs):
+        private_extra_materials_path = materials_path_abs
+    else:
+        private_extra_materials_path = os.path.join(private_projects_dir, os.path.basename(extra_materials_json_path))
+    
+    excel_path_abs = os.path.abspath(excel_path)
+    if os.path.dirname(excel_path_abs) == private_projects_dir:
+        private_excel_path = excel_path_abs
+    else:
+        private_excel_path = os.path.join(private_projects_dir, os.path.basename(excel_path))
+    
+    # Debug logging
+    print(f"📁 Using paths:")
+    print(f"   Elevations: {private_elevations_path}")
+    print(f"   Materials: {private_extra_materials_path}")
+    print(f"   Excel: {private_excel_path}")
     
     output_excel_path = public_reports_dir if mode == "export_all" else private_excel_path
     
