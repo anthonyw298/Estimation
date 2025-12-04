@@ -326,7 +326,18 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         current_row += 1
 
     # Add Section Totals
-    ws.cell(row=current_row, column=colE + 2, value=f"Total {title}").font = Font(bold=True)
+    # Convert title to proper label (e.g., "PROFILES" -> "Profile Cost")
+    title_mapping = {
+        "PROFILES": "Profile",
+        "ACCESSORIES": "Accessory",
+        "GASKETS": "Gasket",
+        "DOORS": "Door",
+        "GLASS": "Glass",
+        "LABOR": "Labor"
+    }
+    title_label = title_mapping.get(title.upper(), title.title())
+    total_label = f"Total {title_label} Cost"
+    ws.cell(row=current_row, column=colE + 2, value=total_label).font = Font(bold=True)
     ws.cell(row=current_row, column=colE + 3, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=current_row, column=colE + 3).font = Font(bold=True)
     ws.cell(row=current_row, column=colE + 4, value=section_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -397,6 +408,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     categories = {
         'PROFILES': [],
         'ACCESSORIES': [],
+        'GASKETS': [],
         'DOORS': [],
         'GLASS': [],
         'LABOR': []
@@ -412,13 +424,15 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
             is_profile = part in PART_NUMBER_MAP.get('profiles', {})
             is_gasket = "gasket" in desc.lower() or part in ["E2-0052", "E2-0053", "E2-0065"]  # Identify gaskets
-            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory' or is_gasket
+            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
             is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
             is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor' or "joints fabrication" in desc.lower() or "fabrication labor" in desc.lower()
             is_door = output.get('type', '').lower() in ['door', 'doors']
 
             if is_profile:
                 category = 'PROFILES'
+            elif is_gasket:
+                category = 'GASKETS'
             elif is_accessory:
                 category = 'ACCESSORIES'
             elif is_door:
@@ -557,7 +571,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 original_total_cost_for_item = total_price if total_price is not None else 0.0
                 calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
 
-            if is_profile or is_accessory:
+            if is_profile or is_gasket or is_accessory:
                 total_cost_for_item = original_total_cost_for_item * multiplier
             else:
                 total_cost_for_item = original_total_cost_for_item
@@ -733,6 +747,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 "Project Total Materials", "Total Pieces", "Quantity Per Order", "Orders Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
+        elif category == 'GASKETS':
+            return [
+                "Project Total Materials", "Total Feet", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+            ]
         elif category == 'GLASS':
             return [
                 "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
@@ -796,7 +815,18 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         grand_residual_total += section_residual_total
 
         # Add Section Totals for Summary
-        ws.cell(row=current_row, column=4, value=f"Total {category}").font = Font(bold=True)
+        # Convert category to proper label (e.g., "PROFILES" -> "Profile Cost")
+        category_mapping = {
+            "PROFILES": "Profile",
+            "ACCESSORIES": "Accessory",
+            "GASKETS": "Gasket",
+            "DOORS": "Door",
+            "GLASS": "Glass",
+            "LABOR": "Labor"
+        }
+        category_label = category_mapping.get(category.upper(), category.title())
+        total_label = f"Total {category_label} Cost"
+        ws.cell(row=current_row, column=4, value=total_label).font = Font(bold=True)
         ws.cell(row=current_row, column=5, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=5).font = Font(bold=True)
         ws.cell(row=current_row, column=6, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -1099,7 +1129,7 @@ def generate_excel_report(
                 )
             
             output_section_current_row = 1
-            profiles_for_section, accessories_for_section, other_items_for_section = [], [], []
+            profiles_for_section, accessories_for_section, gaskets_for_section, other_items_for_section = [], [], [], []
 
             current_elevation_finish = elev_data.get("finish")
 
@@ -1113,7 +1143,9 @@ def generate_excel_report(
                         other_items_for_section.append(item)
                     elif pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(item)
-                    elif is_gasket or pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
+                    elif is_gasket:
+                        gaskets_for_section.append(item)
+                    elif pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
                         accessories_for_section.append(item)
                     else:
                         other_items_for_section.append(item)
@@ -1129,6 +1161,8 @@ def generate_excel_report(
             profile_discounted_total = 0.0
             accessory_original_total = 0.0
             accessory_discounted_total = 0.0
+            gasket_original_total = 0.0
+            gasket_discounted_total = 0.0
             glass_original_total = 0.0
             glass_discounted_total = 0.0
             fabrication_original_total = 0.0
@@ -1150,10 +1184,19 @@ def generate_excel_report(
             accessory_original_total = accessory_totals['original']
             accessory_discounted_total = accessory_totals['discounted']
 
+            next_row_after_gaskets, impacts_g, gasket_totals = _write_output_section(
+                ws, "GASKETS", gaskets_for_section, COL_E, current_elevation_finish,
+                system_total_for_this_block, original_system_total_for_this_block, next_row_after_accessories,
+                overall_current_extra_materials_state, private_extra_materials_path, multiplier
+            )
+            gasket_original_total = gasket_totals['original']
+            gasket_discounted_total = gasket_totals['discounted']
+
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
 
-            current_section_row = next_row_after_accessories
+            current_section_row = next_row_after_gaskets
             grouped_other_misc = {}
 
             for item in other_items_for_section:
@@ -1226,6 +1269,12 @@ def generate_excel_report(
             ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
+            # Gasket Costs
+            ws.cell(row=cost_summary_row, column=header_col, value="GASKET COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=gasket_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=gasket_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
             # Glass Costs
             ws.cell(row=cost_summary_row, column=header_col, value="GLASS COSTS")
             ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=glass_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -1244,7 +1293,7 @@ def generate_excel_report(
             cost_summary_row += 1
             
             # Total Costs
-            total_cost_per_elev = profile_discounted_total + accessory_discounted_total + glass_discounted_total + fabrication_discounted_total
+            total_cost_per_elev = profile_discounted_total + accessory_discounted_total + gasket_discounted_total + glass_discounted_total + fabrication_discounted_total
             total_elevation_cost = total_cost_per_elev * total_count
             
             ws.cell(row=cost_summary_row, column=header_col, value=f"{elev_name} TOTAL COSTS").font = Font(bold=True)
