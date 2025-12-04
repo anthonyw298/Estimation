@@ -619,21 +619,22 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                     else 0.0
                 )
                 total_reusable_cost += reusable_cost
-            # Calculate Quantity Req (FT) and Qty Stick (Req)
+            # Calculate Quantity Req (FT) and Qty Stick/Roll (Req)
             quantity_req_ft = "N/A"
             qty_stick_req = "N/A"
             quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
             
             if (is_profile or is_gasket) and part and part != "N/A":
-                # For profiles, quantity is in feet - add units
+                # For profiles and gaskets, quantity is in feet - add units
                 quantity_req_ft = f"{quantity_aggregated:.2f} ft"
-                # Calculate number of sticks needed and format with stick length
+                # Calculate number of sticks/rolls needed and format with length
                 part_data = parts_data.get(part, {})
                 length_str = part_data.get('Length', '')
                 min_purchase_length = parse_length_to_feet(length_str) or 1.0
                 if min_purchase_length > 0:
-                    num_sticks = math.ceil(quantity_aggregated / min_purchase_length)
-                    qty_stick_req = f"{num_sticks} ({min_purchase_length:.0f}ft per)"
+                    num_units = math.ceil(quantity_aggregated / min_purchase_length)
+                    unit_label = "rolls" if is_gasket else "sticks"
+                    qty_stick_req = f"{num_units} ({min_purchase_length:.0f}ft per)"
                 else:
                     qty_stick_req = "N/A"
                 
@@ -749,7 +750,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             ]
         elif category == 'GASKETS':
             return [
-                "Project Total Materials", "Total Feet", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Project Total Materials", "Total Feet", "Rolls Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'GLASS':
