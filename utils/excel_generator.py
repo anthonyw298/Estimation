@@ -483,6 +483,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             k = item['key']
             if k in aggregated_map:
                 existing = aggregated_map[k]
+                # Preserve description if missing
+                if not existing.get('description') and item.get('description'):
+                    existing['description'] = item['description']
                 # If price is manually set (manual, glass, labor, door), maintain correct total cost by updating unit price
                 if existing['manual'] or existing['is_glass'] or existing['is_joints_fab_labor'] or existing['is_door']:
                     # Recalculate weighted average price
@@ -516,6 +519,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 item['quantity'] = float(item['quantity'])
                 if 'quantity_list' not in item:
                     item['quantity_list'] = [item['quantity']]
+                # Ensure description exists
+                if 'description' not in item or not item.get('description'):
+                    item['description'] = item.get('display', '')
                 aggregated_map[k] = item
         categories[category] = list(aggregated_map.values())
 
@@ -534,6 +540,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             manual = item['manual']
             part = item['part_number']
             display = item['display']
+            description = item.get('description', '') or display
             is_profile = part in PART_NUMBER_MAP.get('profiles', {})
             is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
             is_gasket = item.get('is_gasket', False) or "gasket" in item.get('description', '').lower() or part in ["E2-0052", "E2-0053", "E2-0065"]
@@ -719,6 +726,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             
             final_summary_data.append({
                 'category': category,
+                'description': description,
                 'display': display,
                 'quantity_display': quantity_display_formatted,
                 'quantity_req_ft': quantity_req_ft,
@@ -740,38 +748,38 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     def get_headers_for_category(category, items_list=None):
         if category == 'PROFILES':
             return [
-                "Project Total Materials", "Total Feet", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "Total Feet", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'ACCESSORIES':
             return [
-                "Project Total Materials", "Total Pieces", "Quantity Per Order", "Orders Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "Total Pieces", "Quantity Per Order", "Orders Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'GASKETS':
             return [
-                "Project Total Materials", "Total Feet", "Rolls Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "Total Feet", "Rolls Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'GLASS':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'LABOR':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'DOORS':
             return [
-                "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         else:
             # Default headers
             return [
-                "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Description", "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
 
@@ -800,15 +808,21 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 section_total_cost += item['total_cost']
                 section_residual_total += item['reusable_cost']
                 
-                ws.cell(row=current_row, column=1, value=item['display'])
-                ws.cell(row=current_row, column=2, value=item['quantity_req_ft'])
-                ws.cell(row=current_row, column=3, value=item['qty_stick_req'])
-                ws.cell(row=current_row, column=4, value=item['quantity_display'])
-                ws.cell(row=current_row, column=5, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=6, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=7, value=item['reusable_qty_display'])
-                ws.cell(row=current_row, column=8, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
-                ws.cell(row=current_row, column=9, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                # Get description - it should be in final_summary_data
+                description_value = item.get('description', '')
+                if not description_value or description_value == '':
+                    # Fallback to display if description is missing
+                    description_value = item.get('display', '')
+                ws.cell(row=current_row, column=1, value=description_value)
+                ws.cell(row=current_row, column=2, value=item['display'])
+                ws.cell(row=current_row, column=3, value=item['quantity_req_ft'])
+                ws.cell(row=current_row, column=4, value=item['qty_stick_req'])
+                ws.cell(row=current_row, column=5, value=item['quantity_display'])
+                ws.cell(row=current_row, column=6, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=7, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=8, value=item['reusable_qty_display'])
+                ws.cell(row=current_row, column=9, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
+                ws.cell(row=current_row, column=10, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 current_row += 1
         
         grand_original_total += section_original_total
@@ -827,16 +841,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         }
         category_label = category_mapping.get(category.upper(), category.title())
         total_label = f"Total {category_label} Cost"
-        ws.cell(row=current_row, column=4, value=total_label).font = Font(bold=True)
-        ws.cell(row=current_row, column=5, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=5).font = Font(bold=True)
-        ws.cell(row=current_row, column=6, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=5, value=total_label).font = Font(bold=True)
+        ws.cell(row=current_row, column=6, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=6).font = Font(bold=True)
-        ws.cell(row=current_row, column=9, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=9).font = Font(bold=True)
+        ws.cell(row=current_row, column=7, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=7).font = Font(bold=True)
+        ws.cell(row=current_row, column=10, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=10).font = Font(bold=True)
         
         # Add top border for totals row
-        for col in range(1, 10):
+        for col in range(1, 11):
             ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
         current_row += 2
@@ -845,43 +859,43 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     gt_row = current_row + 2
     
     # Original Total
-    ws.cell(row=gt_row, column=5, value="Overall Total Price (List)").font = Font(bold=True)
-    ws.cell(row=gt_row, column=5).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row, column=5).border = Border(left=Side(style='thin'), top=Side(style='thin'))
+    ws.cell(row=gt_row, column=6, value="Overall Total Price (List)").font = Font(bold=True)
+    ws.cell(row=gt_row, column=6).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row, column=6).border = Border(left=Side(style='thin'), top=Side(style='thin'))
     
-    ws.cell(row=gt_row, column=6, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row, column=6).font = Font(bold=True)
-    ws.cell(row=gt_row, column=6).border = Border(right=Side(style='thin'), top=Side(style='thin'))
+    ws.cell(row=gt_row, column=7, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row, column=7).font = Font(bold=True)
+    ws.cell(row=gt_row, column=7).border = Border(right=Side(style='thin'), top=Side(style='thin'))
 
     # Discounted Total
-    ws.cell(row=gt_row+1, column=5, value="Overall Discounted Total").font = Font(bold=True)
-    ws.cell(row=gt_row+1, column=5).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+1, column=5).border = Border(left=Side(style='thin'))
+    ws.cell(row=gt_row+1, column=6, value="Overall Discounted Total").font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=6).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+1, column=6).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=gt_row+1, column=6, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row+1, column=6).font = Font(bold=True)
-    ws.cell(row=gt_row+1, column=6).border = Border(right=Side(style='thin'))
+    ws.cell(row=gt_row+1, column=7, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+1, column=7).font = Font(bold=True)
+    ws.cell(row=gt_row+1, column=7).border = Border(right=Side(style='thin'))
 
     # Residual Cost
     reuse_total = total_reusable_cost
-    ws.cell(row=gt_row+2, column=5, value="Overall Residual Cost").font = Font(bold=True)
-    ws.cell(row=gt_row+2, column=5).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+2, column=5).border = Border(left=Side(style='thin'))
+    ws.cell(row=gt_row+2, column=6, value="Overall Residual Cost").font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=6).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+2, column=6).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=gt_row+2, column=6, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=gt_row+2, column=6).font = Font(bold=True)
-    ws.cell(row=gt_row+2, column=6).border = Border(right=Side(style='thin'))
+    ws.cell(row=gt_row+2, column=7, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+2, column=7).font = Font(bold=True)
+    ws.cell(row=gt_row+2, column=7).border = Border(right=Side(style='thin'))
 
     # Waste %
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
-    ws.cell(row=gt_row+3, column=5, value="Overall Waste %").font = Font(bold=True)
-    ws.cell(row=gt_row+3, column=5).alignment = Alignment(horizontal='right')
-    ws.cell(row=gt_row+3, column=5).border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
+    ws.cell(row=gt_row+3, column=6, value="Overall Waste %").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=6).alignment = Alignment(horizontal='right')
+    ws.cell(row=gt_row+3, column=6).border = Border(left=Side(style='thin'), bottom=Side(style='thin'))
 
-    ws.cell(row=gt_row+3, column=6, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
-    ws.cell(row=gt_row+3, column=6).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
+    ws.cell(row=gt_row+3, column=7, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
+    ws.cell(row=gt_row+3, column=7).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
 
-    _autofit_columns(ws, 1, 9, start_row, gt_row + 4)
+    _autofit_columns(ws, 1, 10, start_row, gt_row + 4)
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
