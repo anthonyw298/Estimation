@@ -228,14 +228,16 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     for item in items:
         qty_raw = item.get('quantity', 0)
         pn, manual = item.get('part_number'), item.get('manual', False)
+        desc = item.get('description', '').strip()
         is_profile = pn in PART_NUMBER_MAP.get('profiles', {})
+        is_gasket = "gasket" in desc.lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]
         is_accessory = pn in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
         is_glass = pn == "GLASS_AREA" or item.get('type', '').lower() == 'glass'
 
         individual_quantities = qty_raw if isinstance(qty_raw, list) else [qty_raw]
         qty_sum = sum(individual_quantities)
 
-        unit_type = 'ft' if is_profile else 'pcs' if is_accessory else item.get('unit', 'pcs' if not is_glass else 'sqft')
+        unit_type = 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else item.get('unit', 'pcs' if not is_glass else 'sqft')
         display_unit = unit_type
 
         if isinstance(qty_raw, list):
@@ -255,12 +257,14 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         # For bay width parts with a list, process the entire list at once for optimization
         if is_bay_width_item and isinstance(qty_raw, list) and len(qty_raw) > 1:
             # Process the entire list as one request for waste optimization
+            # Gaskets are treated as profiles (sold by length, with leftover tracking)
+            use_group = is_gasket
             total_price, calculated_unit_type, material_impact_details = \
-                get_price_by_part(pn, qty_raw, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, description=item.get('description', ''))
+                get_price_by_part(pn, qty_raw, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=use_group, description=item.get('description', ''))
             
             item_total_cost_for_display = total_price or 0.0
             original_item_total_cost = total_price or 0.0
-            calculated_unit_type = unit_type if is_profile or is_accessory else (calculated_unit_type or item.get('unit', 'pcs'))
+            calculated_unit_type = unit_type if (is_profile or is_gasket or is_accessory) else (calculated_unit_type or item.get('unit', 'pcs'))
             
             if material_impact_details:
                 leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
@@ -288,10 +292,12 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                             'finish': None
                         }
                 else:
+                    # Gaskets are treated as profiles (sold by length, with leftover tracking)
+                    use_group = is_gasket
                     total_price, unit_from_pricing, material_impact_details = \
-                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False)
+                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=use_group)
                     total_item_price_single_cut = total_price or 0.0
-                    calculated_unit_type = unit_type if is_profile or is_accessory else (unit_from_pricing or item.get('unit', 'pcs'))
+                    calculated_unit_type = unit_type if (is_profile or is_gasket or is_accessory) else (unit_from_pricing or item.get('unit', 'pcs'))
 
                 item_total_cost_for_display += total_item_price_single_cut
                 original_item_total_cost += total_item_price_single_cut
@@ -302,7 +308,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                     section_material_impacts.append(material_impact_details)
                     apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
 
-        if is_profile or is_accessory:
+        if is_profile or is_gasket or is_accessory:
             item_total_cost_for_display *= multiplier
             if qty_sum > 0:
                 item['price'] = item_total_cost_for_display / qty_sum
@@ -405,7 +411,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             qty = output.get('quantity', 0)
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
             is_profile = part in PART_NUMBER_MAP.get('profiles', {})
-            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
+            is_gasket = "gasket" in desc.lower() or part in ["E2-0052", "E2-0053", "E2-0065"]  # Identify gaskets
+            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory' or is_gasket
             is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
             is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor' or "joints fabrication" in desc.lower() or "fabrication labor" in desc.lower()
             is_door = output.get('type', '').lower() in ['door', 'doors']
@@ -425,13 +432,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
 
             if manual or is_glass or is_joints_fab_labor or is_door:
                 if part and part != "N/A":
-                    key = f"MANUAL_{part}-{elevation_finish}" if (is_profile or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"MANUAL_{part}"
-                    display = f"{desc} ({part} - {elevation_finish})" if (is_profile or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"{desc} ({part})"
+                    key = f"MANUAL_{part}-{elevation_finish}" if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"MANUAL_{part}"
+                    display = f"{desc} ({part} - {elevation_finish})" if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"{desc} ({part})"
                 else:
                     key = f"MANUAL_NO_PN_{desc}"
                     display = desc
             else:
-                if (is_profile or is_joints_fab_labor or is_door or is_glass) and elevation_finish:
+                if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish:
                     key = f"{part}-{elevation_finish}"
                     display = f"{part} ({elevation_finish})"
                 else:
@@ -446,11 +453,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 'display': display,
                 'part_number': part,
                 'manual': manual,
-                'unit': 'ft' if is_profile else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
-                'finish': elevation_finish if (is_profile or is_joints_fab_labor or is_door or is_glass) else '',
+                'unit': 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
+                'finish': elevation_finish if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) else '',
                 'is_glass': is_glass,
                 'is_joints_fab_labor': is_joints_fab_labor,
                 'is_door': is_door,
+                'is_gasket': is_gasket,
                 'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
             })
 
@@ -514,12 +522,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             display = item['display']
             is_profile = part in PART_NUMBER_MAP.get('profiles', {})
             is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
+            is_gasket = item.get('is_gasket', False) or "gasket" in item.get('description', '').lower() or part in ["E2-0052", "E2-0053", "E2-0065"]
             is_glass = item['is_glass']
             is_joints_fab_labor = item['is_joints_fab_labor']
             is_door = item['is_door']
             item_finish = item['finish']
 
-            display_unit = 'ft' if is_profile else 'pcs' if is_accessory else item['unit']
+            display_unit = 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else item['unit']
             original_total_cost_for_item = 0.0
             total_cost_for_item = 0.0
             calculated_unit_type = display_unit
@@ -534,12 +543,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 original_total_cost_for_item = price * qty_float
                 calculated_unit_type = item['unit'] or ('sqft' if is_glass else 'pcs')
             else:
+                # Gaskets are treated as profiles (sold by length, with leftover tracking)
+                use_group = is_gasket
+                
                 total_price, unit_type_from_pricing, _ = get_price_by_part(
                     part,
                     quantity_aggregated,
                     finish=item_finish,
                     extra_materials_file=extra_materials_json_path,
-                    summary=True
+                    summary=True,
+                    group=use_group
                 )
                 original_total_cost_for_item = total_price if total_price is not None else 0.0
                 calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
@@ -551,9 +564,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
 
             total_discounted_price += total_cost_for_item
 
-            if part and part != "N/A" and (is_profile or is_accessory):
+            if part and part != "N/A" and (is_profile or is_gasket or is_accessory):
                 extra_materials_key_for_reuse = part
-                if is_profile and item_finish:
+                if (is_profile or is_gasket) and item_finish:
                     extra_materials_key_for_reuse = f"{part}-{item_finish}"
 
                 part_data = extra_materials.get(extra_materials_key_for_reuse, {})
@@ -597,7 +610,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
             qty_stick_req = "N/A"
             quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
             
-            if is_profile and part and part != "N/A":
+            if (is_profile or is_gasket) and part and part != "N/A":
                 # For profiles, quantity is in feet - add units
                 quantity_req_ft = f"{quantity_aggregated:.2f} ft"
                 # Calculate number of sticks needed and format with stick length
@@ -650,16 +663,34 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 # For accessories, get bulk order info
                 part_data = parts_data.get(part, {})
                 units_str = part_data.get('Units', '1 pcs.')
-                unit_count_per_bundle = 1
-                if 'pc' in units_str.lower():
-                    try:
-                        unit_count_per_bundle = int(units_str.lower().split('pc')[0].strip()) or 1
-                    except ValueError:
-                        unit_count_per_bundle = 1
+                length_str = part_data.get('Length', '')
                 
-                quantity_req_ft = f"{unit_count_per_bundle} pcs"
+                # Check if sold by length (feet) or by pieces
+                length_ft = parse_length_to_feet(length_str) if length_str else 0.0
+                
+                if length_ft > 1.0:
+                    # Sold by length (e.g., glazing gasket: 500 ft per order)
+                    unit_count_per_bundle = length_ft
+                    unit_label = "ft per"
+                else:
+                    # Sold by pieces
+                    unit_count_per_bundle = 1
+                    if 'pc' in units_str.lower():
+                        try:
+                            unit_count_per_bundle = int(units_str.lower().split('pc')[0].strip()) or 1
+                        except ValueError:
+                            unit_count_per_bundle = 1
+                    unit_label = "pcs per"
+                
+                # Column 2: Quantity (total pieces/feet required)
+                quantity_req_ft = f"{quantity_aggregated:.2f} {display_unit}"
+                
+                # Column 3: Quantity Per Order (e.g., "500 ft per" or "20 pcs per")
+                qty_stick_req = f"{unit_count_per_bundle:.0f} {unit_label}"
+                
+                # Column 4: Orders Required (number of orders needed)
                 num_orders = math.ceil(quantity_aggregated / unit_count_per_bundle) if unit_count_per_bundle > 0 else 0
-                qty_stick_req = f"{num_orders} order{'s' if num_orders != 1 else ''}"
+                quantity_display_formatted = f"{num_orders} order{'s' if num_orders != 1 else ''}"
             else:
                 # For other items (glass, labor, doors), show N/A in first column, unit price in second
                 quantity_req_ft = "N/A"
@@ -680,8 +711,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 'original_total_cost': original_total_cost_for_item,
                 'total_cost': total_cost_for_item,
                 'reusable_qty_display': reusable_qty_display_string,
-                'reusable_pct': reusable_pct if (is_profile or is_accessory) else "N/A",
-                'reusable_cost': reusable_cost if (is_profile or is_accessory) else 0.0,
+                'reusable_pct': reusable_pct if (is_profile or is_gasket or is_accessory) else "N/A",
+                'reusable_cost': reusable_cost if (is_profile or is_gasket or is_accessory) else 0.0,
                 'part': part,
                 'calculated_unit_type': calculated_unit_type
             })
@@ -694,12 +725,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     def get_headers_for_category(category, items_list=None):
         if category == 'PROFILES':
             return [
-                "Project Total Materials", "Total Ft", "Sticks Req", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Project Total Materials", "Total Feet", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'ACCESSORIES':
             return [
-                "Project Total Materials", "Quantity Per Order", "Orders Req", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
+                "Project Total Materials", "Total Pieces", "Quantity Per Order", "Orders Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
         elif category == 'GLASS':
@@ -1074,12 +1105,15 @@ def generate_excel_report(
 
             for item in elev_data.get('calculated_outputs', []):
                 pn, manual = item.get('part_number'), item.get('manual', False)
+                desc = item.get('description', '').strip()
+                is_gasket = "gasket" in desc.lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]
+                
                 if pn and pn != "N/A":
                     if manual:
                         other_items_for_section.append(item)
                     elif pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(item)
-                    elif pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
+                    elif is_gasket or pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
                         accessories_for_section.append(item)
                     else:
                         other_items_for_section.append(item)
