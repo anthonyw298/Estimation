@@ -6,11 +6,13 @@
 
 body {
   font-family: Arial, sans-serif;
-  background-color: #000000;
+  background: linear-gradient(135deg, #000000 0%, #0a0a0a 100%);
   color: #FFFFFF;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -18,3 +20,32 @@ body {
   min-height: 100vh;
 }
 
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1A1A1A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0073E6;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #005bb5;
+}
+
+/* Selection color */
+::selection {
+  background: #0073E6;
+  color: white;
+}
