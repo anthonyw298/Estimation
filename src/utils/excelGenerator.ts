@@ -81,8 +81,9 @@ async function writeOutputSection(
     const pn = item.part_number || '';
     const manual = item.manual || false;
     const desc = (item.description || '').trim();
-    const isProfile = pn in (PART_NUMBER_MAP.profiles || {});
+    // Treat gaskets as profiles - they should be included in profile checks
     const isGasket = desc.toLowerCase().includes('gasket') || ['E2-0052', 'E2-0053', 'E2-0065'].includes(pn);
+    const isProfile = (pn in (PART_NUMBER_MAP.profiles || {})) || isGasket; // Include gaskets as profiles
     const isAccessory = pn in (PART_NUMBER_MAP.accessories || {}) || item.type?.toLowerCase() === 'accessory';
     const isGlass = pn === 'GLASS_AREA' || item.type?.toLowerCase() === 'glass';
 
@@ -176,35 +177,9 @@ async function writeOutputSection(
           calculatedUnitType = isProfile || isGasket || isAccessory ? unitType : (unitFromPricing || item.unit || 'pcs');
           if (materialImpact) {
             sectionMaterialImpacts.push(materialImpact);
-            // Apply material impact in memory
-            if (materialImpact.type_processed_as === 'profile') {
-              const key = elevationFinish ? `${pn}-${elevationFinish.toLowerCase()}` : pn;
-              if (!currentExtraMaterials[key]) {
-                currentExtraMaterials[key] = { quantity: 0, length_pieces: [] };
-              }
-              const leftover = materialImpact.leftover_generated_qty_or_length || 0;
-              if (leftover > 0.0001) {
-                currentExtraMaterials[key].length_pieces.push(leftover);
-                currentExtraMaterials[key].length_pieces.sort((a, b) => b - a);
-              }
-              // Remove used leftover pieces
-              const usedFromLeftover = materialImpact.used_from_leftover_qty_or_length || 0;
-              if (usedFromLeftover > 0.0001) {
-                const leftovers = currentExtraMaterials[key].length_pieces;
-                for (let i = leftovers.length - 1; i >= 0; i--) {
-                  if (leftovers[i] >= usedFromLeftover - 0.0001) {
-                    const remaining = leftovers[i] - usedFromLeftover;
-                    leftovers.splice(i, 1);
-                    if (remaining > 0.0001) {
-                      leftovers.push(remaining);
-                      leftovers.sort((a, b) => b - a);
-                    }
-                    break;
-                  }
-                }
-                currentExtraMaterials[key].length_pieces = leftovers;
-              }
-            }
+            // Apply material impact in memory using the proper function
+            // This handles both profiles and accessories correctly
+            applyMaterialImpactToExtraMaterialsInMemory(currentExtraMaterials, materialImpact);
           }
         }
 
@@ -471,7 +446,9 @@ export async function generateExcelReport(
       const pn = item.part_number || '';
       const manual = item.manual || false;
       const desc = (item.description || '').trim();
+      // Treat gaskets as profiles - they should be included in profile checks
       const isGasket = desc.toLowerCase().includes('gasket') || ['E2-0052', 'E2-0053', 'E2-0065'].includes(pn);
+      const isProfile = (pn in (PART_NUMBER_MAP.profiles || {})) || isGasket; // Include gaskets as profiles
 
       if (pn && pn !== 'N/A') {
         if (manual) {
@@ -772,8 +749,9 @@ async function createSummarySheet(
       const qty = output.quantity || 0;
       const qtyForAggregation = Array.isArray(qty) ? qty.reduce((sum, q) => sum + (typeof q === 'number' ? q : parseFloat(q.toString()) || 0), 0) : qty;
       
-      const isProfile = part in (PART_NUMBER_MAP.profiles || {});
+      // Treat gaskets as profiles - they should be included in profile checks
       const isGasket = desc.toLowerCase().includes('gasket') || ['E2-0052', 'E2-0053', 'E2-0065'].includes(part);
+      const isProfile = (part in (PART_NUMBER_MAP.profiles || {})) || isGasket; // Include gaskets as profiles
       const isAccessory = part in (PART_NUMBER_MAP.accessories || {}) || output.type?.toLowerCase() === 'accessory';
       const isGlass = part === 'GLASS_AREA' || output.type?.toLowerCase() === 'glass';
       const isJointsFabLabor = part === 'JOINTS_FAB_LABOR' || output.type?.toLowerCase() === 'joints_fab_labor' || desc.toLowerCase().includes('joints fabrication') || desc.toLowerCase().includes('fabrication labor');
@@ -878,9 +856,10 @@ async function createSummarySheet(
       const part = item.part_number;
       const display = item.display;
       const description = item.description || display;
-      const isProfile = part in (PART_NUMBER_MAP.profiles || {});
-      const isAccessory = part in (PART_NUMBER_MAP.accessories || {}) || item.type?.toLowerCase() === 'accessory';
+      // Treat gaskets as profiles - they should be included in profile checks
       const isGasket = item.is_gasket || description.toLowerCase().includes('gasket') || ['E2-0052', 'E2-0053', 'E2-0065'].includes(part);
+      const isProfile = (part in (PART_NUMBER_MAP.profiles || {})) || isGasket; // Include gaskets as profiles
+      const isAccessory = part in (PART_NUMBER_MAP.accessories || {}) || item.type?.toLowerCase() === 'accessory';
       const isGlass = item.is_glass;
       const isJointsFabLabor = item.is_joints_fab_labor;
       const isDoor = item.is_door;
@@ -893,7 +872,8 @@ async function createSummarySheet(
       let reusableQtySum = 0.0;
       let reusablePct = 0.0;
       let reusableCost = 0.0;
-      let reusableQtyDisplayString = 'N/A';
+      // Initialize default display based on type - profiles/gaskets show "0.00 ft", accessories show "0.00 pcs"
+      let reusableQtyDisplayString = (isProfile || isGasket) ? '0.00 ft' : (isAccessory ? '0.00 pcs' : 'N/A');
 
       if (manual || isGlass || isJointsFabLabor || isDoor) {
         const price = item.price || 0.0;
@@ -924,15 +904,26 @@ async function createSummarySheet(
 
       if (part && part !== 'N/A' && (isProfile || isGasket || isAccessory)) {
         let extraMaterialsKeyForReuse = part;
-        if ((isProfile || isGasket) && itemFinish) {
-          extraMaterialsKeyForReuse = `${part}-${itemFinish}`;
+        if ((isProfile || isGasket) && itemFinish && itemFinish.trim() !== '') {
+          // Use lowercase to match the key format used in applyMaterialImpactToExtraMaterialsInMemory
+          extraMaterialsKeyForReuse = `${part}-${itemFinish.toLowerCase()}`;
         }
 
         const partData = extraMaterials[extraMaterialsKeyForReuse] || { quantity: 0, length_pieces: [] };
         
-        // Match Python logic: if length_pieces exists and has items, use it (profiles/gaskets)
-        // Otherwise, use quantity (accessories, or profiles/gaskets without length_pieces)
-        if (partData.length_pieces && partData.length_pieces.length > 0) {
+        // Debug logging for gaskets
+        if (isGasket) {
+          console.log(`[Gasket Residual Check] Part: ${part}, Key: ${extraMaterialsKeyForReuse}, Finish: ${itemFinish}, Data:`, partData);
+        }
+        
+        // For accessories, always use quantity field (they don't use length_pieces)
+        // For profiles/gaskets, use length_pieces if available, otherwise use quantity
+        if (isAccessory) {
+          // Accessories use quantity field only
+          reusableQtySum = partData.quantity || 0.0;
+          reusableQtyDisplayString = `${reusableQtySum.toFixed(2)} ${displayUnit}`;
+        } else if (partData.length_pieces && partData.length_pieces.length > 0) {
+          // Profiles/gaskets use length_pieces
           const lengths = partData.length_pieces.filter((l: any) => typeof l === 'number' || !isNaN(parseFloat(l.toString())))
             .map((l: any) => typeof l === 'number' ? l : parseFloat(l.toString()));
           reusableQtySum = lengths.reduce((sum, l) => sum + l, 0);
@@ -947,11 +938,14 @@ async function createSummarySheet(
               .sort(([a], [b]) => parseFloat(a) - parseFloat(b)) // Sort ascending to match Python
               .map(([length, count]) => count > 1 ? `${length} ${displayUnit} x${count}` : `${length} ${displayUnit}`);
             reusableQtyDisplayString = reuseLengthsFormatted.join(', ');
+          } else {
+            // length_pieces exists but is empty after filtering - show 0.00 ft
+            reusableQtySum = 0.0;
+            reusableQtyDisplayString = `0.00 ${displayUnit}`;
           }
         } else {
-          // Use quantity for accessories (or profiles/gaskets without length_pieces)
+          // Fallback for profiles/gaskets without length_pieces - always show "0.00 ft" instead of "N/A"
           reusableQtySum = partData.quantity || 0.0;
-          // Always display the quantity with 2 decimal places, matching Python version
           reusableQtyDisplayString = `${reusableQtySum.toFixed(2)} ${displayUnit}`;
         }
 

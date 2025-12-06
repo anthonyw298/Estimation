@@ -181,8 +181,10 @@ export function getPriceByPart(
   }
 
   const extraMaterialsKey = partNumber;
-  const isProfileForInventory = partNumber in (PART_NUMBER_MAP.profiles || {}) || group;
-  const finalKey = isProfileForInventory && finish ? `${partNumber}-${finish.toLowerCase()}` : partNumber;
+  // Gaskets are always treated as profiles for inventory purposes
+  const isGasketForInventory = ['E2-0052', 'E2-0053', 'E2-0065'].includes(partNumber);
+  const isProfileForInventory = partNumber in (PART_NUMBER_MAP.profiles || {}) || group || isGasketForInventory;
+  const finalKey = isProfileForInventory && finish && finish.trim() !== '' ? `${partNumber}-${finish.toLowerCase()}` : partNumber;
 
   let partExtra: { quantity: number; length_pieces: number[] } = { quantity: 0, length_pieces: [] };
   if (!summary && projectName) {
@@ -346,9 +348,12 @@ export function applyMaterialImpactToExtraMaterialsInMemory(
   const finish = materialImpact.finish;
   if (!partNumber) return;
 
-  // Construct the key for extra materials based on part number and finish (for profiles)
+  // Construct the key for extra materials based on part number and finish (for profiles and gaskets)
+  // Gaskets are treated as profiles for inventory purposes, so they also use finish in the key
+  const isGasketForInventory = ['E2-0052', 'E2-0053', 'E2-0065'].includes(partNumber);
+  const isProfileType = typeProcessedAs === 'profile' || isGasketForInventory;
   let extraMaterialsKey = partNumber;
-  if (typeProcessedAs === 'profile' && finish) {
+  if (isProfileType && finish && finish.trim() !== '') {
     extraMaterialsKey = `${partNumber}-${finish.toLowerCase()}`;
   }
 
@@ -357,7 +362,8 @@ export function applyMaterialImpactToExtraMaterialsInMemory(
   }
   const partExtra = materialsDict[extraMaterialsKey];
 
-  if (typeProcessedAs === 'profile') {
+  // Use the isProfileType already declared above
+  if (isProfileType) {
     // Handle bay width lists specially
     const isBayWidthList = (materialImpact as any).is_bay_width_list || false;
     const leftoverPiecesConsumed = (materialImpact as any).leftover_pieces_consumed || [];
@@ -434,6 +440,10 @@ export function applyMaterialImpactToExtraMaterialsInMemory(
     if (leftoverGenerated > EPSILON) {
       partExtra.length_pieces.push(leftoverGenerated);
       partExtra.length_pieces.sort((a, b) => b - a);
+      // Debug logging for gaskets
+      if (['E2-0052', 'E2-0053', 'E2-0065'].includes(partNumber)) {
+        console.log(`[Gasket Residual] Part: ${partNumber}, Key: ${extraMaterialsKey}, Leftover: ${leftoverGenerated}, All pieces:`, partExtra.length_pieces);
+      }
     }
   } else if (typeProcessedAs === 'accessory') {
     const currentQty = partExtra.quantity || 0;
