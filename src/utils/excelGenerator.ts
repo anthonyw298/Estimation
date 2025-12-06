@@ -2,7 +2,7 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { ElevationData } from './storage';
-import { getPriceByPart, getMultiplier, MaterialImpact, ExtraMaterials, loadExtraMaterials, saveExtraMaterials, getUnitPriceByPart, parseLengthToFeet, isBayWidthPart } from './pricing';
+import { getPriceByPart, getMultiplier, MaterialImpact, ExtraMaterials, loadExtraMaterials, saveExtraMaterials, getUnitPriceByPart, parseLengthToFeet, isBayWidthPart, applyMaterialImpactToExtraMaterialsInMemory } from './pricing';
 import { PART_NUMBER_MAP } from '../data/partNumber';
 import { partsData } from '../data/partsData';
 
@@ -129,36 +129,8 @@ async function writeOutputSection(
       
       if (materialImpact) {
         sectionMaterialImpacts.push(materialImpact);
-        // Apply material impact in memory for profiles
-        if (materialImpact.type_processed_as === 'profile') {
-          const key = elevationFinish ? `${pn}-${elevationFinish.toLowerCase()}` : pn;
-          if (!currentExtraMaterials[key]) {
-            currentExtraMaterials[key] = { quantity: 0, length_pieces: [] };
-          }
-          // Handle leftover pieces consumption for bay width parts
-          const leftover = materialImpact.leftover_generated_qty_or_length || 0;
-          if (leftover > 0.0001) {
-            currentExtraMaterials[key].length_pieces.push(leftover);
-            currentExtraMaterials[key].length_pieces.sort((a, b) => b - a);
-          }
-          // Remove used leftover pieces
-          const usedFromLeftover = materialImpact.used_from_leftover_qty_or_length || 0;
-          if (usedFromLeftover > 0.0001) {
-            const leftovers = currentExtraMaterials[key].length_pieces;
-            for (let i = leftovers.length - 1; i >= 0; i--) {
-              if (leftovers[i] >= usedFromLeftover - 0.0001) {
-                const remaining = leftovers[i] - usedFromLeftover;
-                leftovers.splice(i, 1);
-                if (remaining > 0.0001) {
-                  leftovers.push(remaining);
-                  leftovers.sort((a, b) => b - a);
-                }
-                break;
-              }
-            }
-            currentExtraMaterials[key].length_pieces = leftovers;
-          }
-        }
+        // Apply material impact in memory using the proper function
+        applyMaterialImpactToExtraMaterialsInMemory(currentExtraMaterials, materialImpact);
       }
     } else {
       // Standard processing: iterate through each quantity
@@ -182,35 +154,8 @@ async function writeOutputSection(
             calculatedUnitType = isProfile || isAccessory ? unitType : (unitCalculated || item.unit || 'pcs');
             if (materialImpact) {
               sectionMaterialImpacts.push(materialImpact);
-              // Apply material impact in memory
-              if (materialImpact.type_processed_as === 'profile') {
-                const key = elevationFinish ? `${pn}-${elevationFinish.toLowerCase()}` : pn;
-                if (!currentExtraMaterials[key]) {
-                  currentExtraMaterials[key] = { quantity: 0, length_pieces: [] };
-                }
-                const leftover = materialImpact.leftover_generated_qty_or_length || 0;
-                if (leftover > 0.0001) {
-                  currentExtraMaterials[key].length_pieces.push(leftover);
-                  currentExtraMaterials[key].length_pieces.sort((a, b) => b - a);
-                }
-                // Remove used leftover pieces
-                const usedFromLeftover = materialImpact.used_from_leftover_qty_or_length || 0;
-                if (usedFromLeftover > 0.0001) {
-                  const leftovers = currentExtraMaterials[key].length_pieces;
-                  for (let i = leftovers.length - 1; i >= 0; i--) {
-                    if (leftovers[i] >= usedFromLeftover - 0.0001) {
-                      const remaining = leftovers[i] - usedFromLeftover;
-                      leftovers.splice(i, 1);
-                      if (remaining > 0.0001) {
-                        leftovers.push(remaining);
-                        leftovers.sort((a, b) => b - a);
-                      }
-                      break;
-                    }
-                  }
-                  currentExtraMaterials[key].length_pieces = leftovers;
-                }
-              }
+              // Apply material impact in memory using the proper function
+              applyMaterialImpactToExtraMaterialsInMemory(currentExtraMaterials, materialImpact);
             }
           } else {
             totalItemPriceSingleCut = (item.price || 0.0) * singleQty;
@@ -270,7 +215,17 @@ async function writeOutputSection(
 
     if (isProfile || isGasket || isAccessory) {
       itemTotalCostForDisplay *= multiplier;
-      if (qtySum > 0) {
+      // Set item.price to the per-unit price from database, not total cost / requested quantity
+      // This ensures correct unit price display for items sold in bundles
+      if (pn && pn !== 'N/A') {
+        const [unitPriceFromDb] = getUnitPriceByPart(pn, elevationFinish, projectName);
+        if (unitPriceFromDb !== null && unitPriceFromDb > 0) {
+          item.price = unitPriceFromDb;
+        } else if (qtySum > 0) {
+          // Fallback: calculate from total cost if database price not available
+          item.price = itemTotalCostForDisplay / qtySum;
+        }
+      } else if (qtySum > 0) {
         item.price = itemTotalCostForDisplay / qtySum;
       }
     }
@@ -343,22 +298,22 @@ export async function generateExcelReport(
   for (const elev of Object.values(elevations)) {
     const elevationFinish = (elev.finish || '').toLowerCase();
     for (const output of elev.calculated_outputs || []) {
-      let qty: number | number[] = output.quantity || 0;
+      const qtyRaw: number | number[] = output.quantity || 0;
       // Sum up list quantities for multiplier calculation (matching Python line 386)
-      if (Array.isArray(qty)) {
-        qty = qty.reduce((sum: number, q: any) => sum + (typeof q === 'number' ? q : parseFloat(q.toString()) || 0), 0);
-      }
+      const qtySumForMultiplier = Array.isArray(qtyRaw) 
+        ? qtyRaw.reduce((sum: number, q: any) => sum + (typeof q === 'number' ? q : parseFloat(q.toString()) || 0), 0)
+        : qtyRaw;
       const manual = output.manual || false;
       const part = (output.part_number || '').trim();
       const itemType = (output.type || '').toLowerCase();
       
       let price = 0.0;
       if (manual || part === 'GLASS_AREA' || ['glass', 'joints_fab_labor', 'door', 'doors'].includes(itemType)) {
-        price = (output.price || 0.0) * (typeof qty === 'number' ? qty : qty.reduce((s, q) => s + q, 0));
+        price = (output.price || 0.0) * qtySumForMultiplier;
       } else if (part && part !== 'N/A') {
         const [calculatedPrice] = getPriceByPart(
           part,
-          qty,
+          qtyRaw,
           elevationFinish,
           undefined,
           true, // summary = true
@@ -434,13 +389,76 @@ export async function generateExcelReport(
       headerCell.border = thinBorder;
 
       const valueCell = worksheet.getCell(currentExcelRow + i, COL_B);
-      valueCell.value = value as string | number;
+      valueCell.value = typeof value === 'number' ? value : String(value);
       valueCell.border = thinBorder;
-      if (['Total Count', 'Bays Wide', 'Bays Tall'].includes(header)) {
+      if (['Total Count', 'Bays Wide', 'Bays Tall'].includes(String(header))) {
         valueCell.alignment = { horizontal: 'left' };
       }
     }
 
+    // Add bay distribution diagram if bays are defined
+    if (elevData.bays_wide && elevData.bays_tall) {
+      const diagramStartRow = currentExcelRow + inputData.length + 3;
+      
+      // Add diagram label
+      const labelCell = worksheet.getCell(diagramStartRow - 2, COL_A);
+      labelCell.value = 'Bay Distribution Diagram';
+      labelCell.font = { bold: true, size: 12 };
+      
+      // Add note
+      const noteCell = worksheet.getCell(diagramStartRow - 2, COL_B);
+      noteCell.value = '*Note - C/L Dimensions';
+      noteCell.font = { size: 12 };
+      noteCell.alignment = { horizontal: 'left', vertical: 'top' };
+      
+      // Calculate bay dimensions
+      const customWidths = elevData.custom_bay_widths || [];
+      const customHeights = elevData.custom_bay_heights || [];
+      
+      const bayWidths = customWidths.length === elevData.bays_wide
+        ? customWidths
+        : Array(elevData.bays_wide).fill(elevData.opening_width_inches / elevData.bays_wide);
+      
+      const bayHeights = customHeights.length === elevData.bays_tall
+        ? customHeights
+        : Array(elevData.bays_tall).fill(elevData.opening_height_inches / elevData.bays_tall);
+      
+      // Create text-based diagram showing bay layout
+      let diagramRow = diagramStartRow;
+      for (let row = 0; row < elevData.bays_tall; row++) {
+        const rowCells: string[] = [];
+        for (let col = 0; col < elevData.bays_wide; col++) {
+          const bayNum = row * elevData.bays_wide + col + 1;
+          const width = bayWidths[col];
+          const height = bayHeights[row];
+          const sqft = (width * height) / 144;
+          rowCells.push(`${width.toFixed(0)}" x ${height.toFixed(0)}" (${sqft.toFixed(2)} sqft)`);
+        }
+        const diagramCell = worksheet.getCell(diagramRow, COL_A);
+        diagramCell.value = `Row ${row + 1}: ${rowCells.join(' | ')}`;
+        diagramCell.font = { size: 9 };
+        diagramRow++;
+      }
+      
+      // Add total square footage
+      const totalSqft = bayWidths.reduce((sum, w) => sum + w, 0) * bayHeights.reduce((sum, h) => sum + h, 0) / 144 * elevData.total_count;
+      const totalCell = worksheet.getCell(diagramRow, COL_A);
+      totalCell.value = `Total Sq Ft: ${totalSqft.toFixed(2)}`;
+      totalCell.font = { bold: true };
+      
+      // Set column widths to accommodate diagram
+      worksheet.getColumn(COL_A).width = 20;
+      worksheet.getColumn(COL_B).width = 20;
+      worksheet.getColumn(COL_A + 2).width = 20;
+      
+      currentExcelRow = diagramRow + 3;
+    } else {
+      currentExcelRow = currentExcelRow + inputData.length;
+    }
+
+    // Set output section starting row (after input data and diagram)
+    const outputSectionStartRow = currentExcelRow;
+    
     // Categorize outputs
     const profilesForSection: any[] = [];
     const accessoriesForSection: any[] = [];
@@ -476,7 +494,7 @@ export async function generateExcelReport(
     const originalSystemTotalForThisBlock = { value: 0.0 };
     // Use the shared extraMaterials object (already loaded above)
 
-    let outputSectionCurrentRow = 1;
+    let outputSectionCurrentRow = outputSectionStartRow;
 
     // Write PROFILES section
     const [nextRowAfterProfiles, , profileTotals] = await writeOutputSection(
@@ -883,13 +901,14 @@ async function createSummarySheet(
         originalTotalCostForItem = price * qtyFloat;
         calculatedUnitType = item.unit || (isGlass ? 'sqft' : 'pcs');
       } else {
+        // Gaskets are treated as profiles (sold by length, with leftover tracking)
         const useGroup = isGasket;
         const [totalPrice, unitTypeFromPricing] = getPriceByPart(
           part,
           quantityAggregated,
           itemFinish,
-          extraMaterials,
-          true,
+          extraMaterials, // Pass extraMaterials even though summary=true (not used for leftover calculations)
+          true, // summary = true (doesn't use leftovers, just calculates price)
           useGroup,
           projectName
         );
@@ -910,24 +929,29 @@ async function createSummarySheet(
         }
 
         const partData = extraMaterials[extraMaterialsKeyForReuse] || { quantity: 0, length_pieces: [] };
+        
+        // Match Python logic: if length_pieces exists and has items, use it (profiles/gaskets)
+        // Otherwise, use quantity (accessories, or profiles/gaskets without length_pieces)
         if (partData.length_pieces && partData.length_pieces.length > 0) {
           const lengths = partData.length_pieces.filter((l: any) => typeof l === 'number' || !isNaN(parseFloat(l.toString())))
             .map((l: any) => typeof l === 'number' ? l : parseFloat(l.toString()));
           reusableQtySum = lengths.reduce((sum, l) => sum + l, 0);
           if (lengths.length > 0) {
-            // Count occurrences
+            // Count occurrences - sort ascending to match Python
             const counter: Record<string, number> = {};
             lengths.forEach(l => {
               const key = l.toFixed(2);
               counter[key] = (counter[key] || 0) + 1;
             });
             const reuseLengthsFormatted = Object.entries(counter)
-              .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
+              .sort(([a], [b]) => parseFloat(a) - parseFloat(b)) // Sort ascending to match Python
               .map(([length, count]) => count > 1 ? `${length} ${displayUnit} x${count}` : `${length} ${displayUnit}`);
             reusableQtyDisplayString = reuseLengthsFormatted.join(', ');
           }
         } else {
+          // Use quantity for accessories (or profiles/gaskets without length_pieces)
           reusableQtySum = partData.quantity || 0.0;
+          // Always display the quantity with 2 decimal places, matching Python version
           reusableQtyDisplayString = `${reusableQtySum.toFixed(2)} ${displayUnit}`;
         }
 
@@ -1002,7 +1026,12 @@ async function createSummarySheet(
         const numOrders = Math.ceil(quantityAggregated / unitCountPerBundle);
         quantityDisplayFormatted = `${numOrders} order${numOrders !== 1 ? 's' : ''}`;
       } else {
-        if (quantityAggregated > 0) {
+        // For items not sold in bundles, get the unit price from the database
+        const [unitPriceFromDb] = getUnitPriceByPart(part, itemFinish, projectName);
+        if (unitPriceFromDb !== null && unitPriceFromDb > 0) {
+          qtyStickReq = `$${unitPriceFromDb.toFixed(2)}`;
+        } else if (quantityAggregated > 0) {
+          // Fallback: calculate from total cost if database price not available
           const unitPrice = originalTotalCostForItem / quantityAggregated;
           qtyStickReq = `$${unitPrice.toFixed(2)}`;
         } else {
@@ -1090,9 +1119,9 @@ async function createSummarySheet(
         summarySheet.getCell(currentRow, 6).numFmt = '$#,##0.00';
         summarySheet.getCell(currentRow, 7).value = item.total_cost;
         summarySheet.getCell(currentRow, 7).numFmt = '$#,##0.00';
-        summarySheet.getCell(currentRow, 8).value = item.reusable_qty_display;
-        summarySheet.getCell(currentRow, 9).value = typeof item.reusable_pct === 'number' ? `${item.reusable_pct.toFixed(2)}%` : item.reusable_pct;
-        summarySheet.getCell(currentRow, 10).value = item.reusable_cost;
+        summarySheet.getCell(currentRow, 8).value = item.reusable_qty_display || 'N/A';
+        summarySheet.getCell(currentRow, 9).value = typeof item.reusable_pct === 'number' ? `${item.reusable_pct.toFixed(2)}%` : (item.reusable_pct || 'N/A');
+        summarySheet.getCell(currentRow, 10).value = item.reusable_cost || 0.0;
         summarySheet.getCell(currentRow, 10).numFmt = '$#,##0.00';
         currentRow += 1;
       }

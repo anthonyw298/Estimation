@@ -27,14 +27,27 @@ export function parseLengthToFeet(lengthStr: string | null | undefined): number 
   let feet = 0.0;
   let inches = 0.0;
 
+  // Search for feet (e.g., "10ft", "10'")
   const feetMatch = normalized.match(/(\d+\.?\d*)\s*(ft|')/i);
   if (feetMatch) feet = parseFloat(feetMatch[1]);
 
-  const inchesMatch = normalized.match(/(\d+\.?\d*)\s*(in|")/i);
-  if (inchesMatch) inches = parseFloat(inchesMatch[1]);
+  // Search for inches - handle both decimal and fractional formats
+  // First try to match fractional inches like "4-5/8"", "4 5/8"", etc.
+  const fractionalInchMatch = normalized.match(/(\d+)\s*[- ]\s*(\d+)\s*\/\s*(\d+)\s*[""]/i);
+  if (fractionalInchMatch) {
+    const wholeInches = parseFloat(fractionalInchMatch[1]);
+    const numerator = parseFloat(fractionalInchMatch[2]);
+    const denominator = parseFloat(fractionalInchMatch[3]);
+    inches = wholeInches + (numerator / denominator);
+  } else {
+    // Try to match decimal inches (e.g., "6in", "6\"", "6.5\"")
+    const inchesMatch = normalized.match(/(\d+\.?\d*)\s*(in|")/i);
+    if (inchesMatch) inches = parseFloat(inchesMatch[1]);
+  }
 
   if (feet || inches) return feet + (inches / 12);
 
+  // Fallback: if no units, assume the number itself is in feet
   const numMatch = normalized.match(/(\d+\.?\d*)/);
   if (numMatch) return parseFloat(numMatch[1]);
 
@@ -94,9 +107,13 @@ export function getUnitPriceByPart(
   let unitType = 'pcs';
 
   const isProfile = partNumber in (PART_NUMBER_MAP.profiles || {});
+  // Gaskets should be treated as profiles for pricing (sold by length, with leftover tracking)
+  const isGasket = ['E2-0052', 'E2-0053', 'E2-0065'].includes(partNumber);
+  const treatAsProfile = isProfile || isGasket;
 
-  if (isProfile) {
+  if (treatAsProfile) {
     unitType = 'ft';
+    // Gaskets are treated as profiles: sold by length, divide by length to get per-foot price
     if (Array.isArray(listPriceRaw) && listPriceRaw.length === 3) {
       const finishNorm = finish?.toLowerCase() || 'clear';
       if (finishNorm === 'clear') listPriceEffective = parseFloat(listPriceRaw[0]) || 0;
@@ -117,15 +134,14 @@ export function getUnitPriceByPart(
       listPriceEffective /= lengthFt;
     }
   } else {
+    // For accessories and non-profiles, the length field is just a physical dimension, not a pricing unit
+    // We should NOT divide by length for accessories - they are sold by pieces, not by length
     listPriceEffective = parseFloat(listPriceRaw) || 0;
     if (unitCount > 1) {
       listPriceEffective /= unitCount;
     }
-    const lengthFt = parseLengthToFeet(lengthStr);
-    if (lengthFt > 1) {
-      listPriceEffective /= lengthFt;
-      unitType = 'ft';
-    }
+    // Note: We intentionally do NOT divide by length for accessories
+    // The length field in the database is just a physical dimension, not used for pricing
   }
 
   return [listPriceEffective, unitType];
@@ -196,22 +212,47 @@ export function getPriceByPart(
     const leftoverPieces = [...(partExtra.length_pieces || [])].sort((a, b) => b - a);
 
     if (Array.isArray(requestedQty) && isBayWidthPart(partNumber, requestedQty, description) && !summary) {
-      // Bay width optimization logic (simplified)
+      // Bay width optimization logic - matches Python version
       const bayWidths = requestedQty.map(q => parseFloat(q.toString()));
       const totalNeeded = bayWidths.reduce((sum, w) => sum + w, 0);
       let usedFromLeftover = 0.0;
-
-      // Simple matching logic
-      for (const bayWidth of bayWidths) {
-        const suitableIndex = leftoverPieces.findIndex(p => p >= bayWidth - EPSILON);
-        if (suitableIndex >= 0) {
+      const remainingLeftovers = [...leftoverPieces].sort((a, b) => b - a);
+      const leftoverPiecesConsumed: Array<{ original_length: number; used_length: number }> = [];
+      
+      // Sort bay widths in descending order to match largest pieces to largest requirements first
+      const sortedBayWidths = [...bayWidths].sort((a, b) => b - a);
+      
+      for (const bayWidth of sortedBayWidths) {
+        let bestMatchIndex: number | null = null;
+        let bestMatchLength: number | null = null;
+        
+        // Find the smallest leftover piece that is >= bay_width (closest fit to minimize waste)
+        for (let i = 0; i < remainingLeftovers.length; i++) {
+          const leftover = remainingLeftovers[i];
+          if (leftover >= bayWidth - EPSILON) {
+            if (bestMatchIndex === null || leftover < bestMatchLength!) {
+              bestMatchIndex = i;
+              bestMatchLength = leftover;
+            }
+          }
+        }
+        
+        if (bestMatchIndex !== null) {
+          // Use the closest fitting piece
+          const leftover = remainingLeftovers[bestMatchIndex];
           usedFromLeftover += bayWidth;
-          const leftover = leftoverPieces[suitableIndex];
-          leftoverPieces.splice(suitableIndex, 1);
-          const remaining = leftover - bayWidth;
-          if (remaining > EPSILON) {
-            leftoverPieces.push(remaining);
-            leftoverPieces.sort((a, b) => b - a);
+          const remainingAfterUse = leftover - bayWidth;
+          
+          // Track this consumption
+          leftoverPiecesConsumed.push({
+            original_length: leftover,
+            used_length: bayWidth
+          });
+          
+          remainingLeftovers.splice(bestMatchIndex, 1);
+          if (remainingAfterUse > EPSILON) {
+            remainingLeftovers.push(remainingAfterUse);
+            remainingLeftovers.sort((a, b) => b - a);
           }
         }
       }
@@ -231,6 +272,11 @@ export function getPriceByPart(
         materialImpact.cost_incurred = 0.0;
       }
       materialImpact.used_from_leftover_qty_or_length = usedFromLeftover;
+      
+      // Add bay width list tracking fields
+      (materialImpact as any).is_bay_width_list = true;
+      (materialImpact as any).leftover_pieces_consumed = leftoverPiecesConsumed;
+      (materialImpact as any).bay_widths_processed = bayWidths;
     } else {
       const qty = Array.isArray(requestedQty) ? requestedQty.reduce((sum, q) => sum + parseFloat(q.toString()), 0) : requestedQty;
       const suitableIndex = leftoverPieces.findIndex(p => p >= qty - EPSILON);
@@ -261,17 +307,25 @@ export function getPriceByPart(
     const qty = Array.isArray(requestedQty) ? requestedQty.reduce((sum, q) => sum + parseFloat(q.toString()), 0) : requestedQty;
     const usedFromExisting = summary ? 0 : Math.min(qty, leftoverQty);
     const remainingNeeded = qty - usedFromExisting;
+    
+    // Initialize variables to match Python version
+    let actualPurchased = 0;
+    let excessQty = 0;
+    totalPrice = 0.0;
 
     if (remainingNeeded > 0) {
       const numBundles = Math.ceil(remainingNeeded / unitCountPerBundle);
-      const actualPurchased = numBundles * unitCountPerBundle;
+      actualPurchased = numBundles * unitCountPerBundle;
+      // unitPrice is already per-piece (after dividing by unitCount in getUnitPriceByPart)
+      // So multiply by actualPurchased (number of pieces) to get total price
       totalPrice = unitPrice * actualPurchased;
-      const excessQty = actualPurchased - remainingNeeded;
-      materialImpact.purchased_qty_or_length = actualPurchased;
-      materialImpact.leftover_generated_qty_or_length = excessQty;
-      materialImpact.cost_incurred = totalPrice;
+      excessQty = actualPurchased - remainingNeeded;
     }
+    
     materialImpact.used_from_leftover_qty_or_length = usedFromExisting;
+    materialImpact.purchased_qty_or_length = actualPurchased;
+    materialImpact.leftover_generated_qty_or_length = excessQty;
+    materialImpact.cost_incurred = totalPrice;
   }
 
   return summary ? [totalPrice, unitType, null] : [totalPrice, unitType, materialImpact];
@@ -279,5 +333,116 @@ export function getPriceByPart(
 
 export function getMultiplier(runningGrandTotal: number): number {
   return runningGrandTotal < 50000 ? 0.614 : 0.572;
+}
+
+export function applyMaterialImpactToExtraMaterialsInMemory(
+  materialsDict: ExtraMaterials,
+  materialImpact: MaterialImpact
+): void {
+  if (!materialImpact || materialImpact.part_number === 'N/A - Manual') return;
+
+  const partNumber = materialImpact.part_number;
+  const typeProcessedAs = materialImpact.type_processed_as;
+  const finish = materialImpact.finish;
+  if (!partNumber) return;
+
+  // Construct the key for extra materials based on part number and finish (for profiles)
+  let extraMaterialsKey = partNumber;
+  if (typeProcessedAs === 'profile' && finish) {
+    extraMaterialsKey = `${partNumber}-${finish.toLowerCase()}`;
+  }
+
+  if (!materialsDict[extraMaterialsKey]) {
+    materialsDict[extraMaterialsKey] = { quantity: 0, length_pieces: [] };
+  }
+  const partExtra = materialsDict[extraMaterialsKey];
+
+  if (typeProcessedAs === 'profile') {
+    // Handle bay width lists specially
+    const isBayWidthList = (materialImpact as any).is_bay_width_list || false;
+    const leftoverPiecesConsumed = (materialImpact as any).leftover_pieces_consumed || [];
+
+    if (isBayWidthList && leftoverPiecesConsumed.length > 0) {
+      // Process each consumed leftover piece
+      const tempLeftovers = [...(partExtra.length_pieces || [])].sort((a, b) => b - a);
+      for (const consumedInfo of leftoverPiecesConsumed) {
+        const originalLength = consumedInfo.original_length;
+        const usedLength = consumedInfo.used_length;
+
+        // Find and remove the matching leftover piece
+        let found = false;
+        for (let i = 0; i < tempLeftovers.length; i++) {
+          const pieceLen = tempLeftovers[i];
+          // Match by original length (with tolerance)
+          if (Math.abs(pieceLen - originalLength) < EPSILON) {
+            const remainingAfterUse = pieceLen - usedLength;
+            tempLeftovers.splice(i, 1);
+            if (remainingAfterUse > EPSILON) {
+              tempLeftovers.push(remainingAfterUse);
+              tempLeftovers.sort((a, b) => b - a);
+            }
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          // Fallback: find any piece >= used_length
+          for (let i = 0; i < tempLeftovers.length; i++) {
+            const pieceLen = tempLeftovers[i];
+            if (pieceLen >= usedLength - EPSILON) {
+              const remainingAfterUse = pieceLen - usedLength;
+              tempLeftovers.splice(i, 1);
+              if (remainingAfterUse > EPSILON) {
+                tempLeftovers.push(remainingAfterUse);
+                tempLeftovers.sort((a, b) => b - a);
+              }
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+
+      partExtra.length_pieces = tempLeftovers;
+      partExtra.quantity = 0.0;
+    } else {
+      // Standard handling for single quantity
+      const usedFromLeftover = materialImpact.used_from_leftover_qty_or_length || 0.0;
+      if (usedFromLeftover > EPSILON) {
+        const tempLeftovers = [...(partExtra.length_pieces || [])].sort((a, b) => b - a);
+        let consumed = false;
+        for (let i = 0; i < tempLeftovers.length; i++) {
+          const pieceLen = tempLeftovers[i];
+          if (pieceLen >= usedFromLeftover - EPSILON) {
+            const remainingAfterUse = pieceLen - usedFromLeftover;
+            tempLeftovers.splice(i, 1);
+            if (remainingAfterUse > EPSILON) {
+              tempLeftovers.push(remainingAfterUse);
+            }
+            consumed = true;
+            break;
+          }
+        }
+        partExtra.length_pieces = tempLeftovers;
+      }
+      partExtra.quantity = 0.0;
+    }
+
+    // Add leftover generated
+    const leftoverGenerated = materialImpact.leftover_generated_qty_or_length || 0.0;
+    if (leftoverGenerated > EPSILON) {
+      partExtra.length_pieces.push(leftoverGenerated);
+      partExtra.length_pieces.sort((a, b) => b - a);
+    }
+  } else if (typeProcessedAs === 'accessory') {
+    const currentQty = partExtra.quantity || 0;
+    const netChange = (materialImpact.leftover_generated_qty_or_length || 0.0) - 
+                      (materialImpact.used_from_leftover_qty_or_length || 0.0);
+    partExtra.quantity = Math.max(0, Math.round((currentQty + netChange) * 10000) / 10000);
+    partExtra.length_pieces = [];
+  }
+
+  materialsDict[extraMaterialsKey] = partExtra;
 }
 
