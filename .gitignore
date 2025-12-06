@@ -1,51 +1,45 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
 
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
+# Build outputs
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+build/
+*.exe
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Environments
+# Environment
 .env
-.venv/
-venv/
-env/
+.env.local
 
-# My own stuff
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python (original)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.spec
+
+# Logs
 *.log
-*.sqlite3
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+
+# Generated reports and Excel files
+reports/
+*.xlsx
+~$*.xlsx

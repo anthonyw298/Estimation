@@ -1,0 +1,87 @@
+:root {
+  --color-bg: #000000;
+  --color-surface: #1A1A1A;
+  --color-accent: #0073E6;
+  --color-text: #FFFFFF;
+  --color-text-dim: #B3B3B3;
+  --color-input-bg: #2A2A2A;
+  --color-accent-light: #D3D3D3;
+}
+
+.app {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #005bb5;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #c82333;
+}
+
+.input-field {
+  background-color: var(--color-input-bg);
+  border: 1px solid var(--color-accent-light);
+  border-radius: 5px;
+  padding: 10px;
+  color: var(--color-text);
+  font-size: 14px;
+  width: 100%;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.input-label {
+  color: var(--color-text-dim);
+  font-size: 12px;
+  margin-bottom: 5px;
+  display: block;
+}
+
+.card {
+  background-color: var(--color-surface);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 10px;
+}
+
+.snackbar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  padding: 15px 25px;
+  border-radius: 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
