@@ -604,6 +604,10 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
         print(f"⚠️ Could not load elevations JSON: {e}")
         return
 
+    # For summary, use a shared in-memory state that accumulates leftovers across all elevations
+    # This allows the summary to utilize waste materials across all elevations
+    summary_extra_materials_state = {}
+    
     try:
         extra_materials = load_extra_materials(extra_materials_json_path)
     except (FileNotFoundError, json.JSONDecodeError) as e:
@@ -804,14 +808,19 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 # Gaskets are treated as profiles (sold by length, with leftover tracking)
                 use_group = is_gasket
                 
-                total_price, unit_type_from_pricing, _ = get_price_by_part(
+                # Use shared in-memory state for summary to accumulate leftovers across all elevations
+                total_price, unit_type_from_pricing, material_impact = get_price_by_part(
                     part,
                     quantity_aggregated,
                     finish=item_finish,
+                    current_extra_materials=summary_extra_materials_state,
                     extra_materials_file=extra_materials_json_path,
-                    summary=True,
+                    summary=False,  # Use False to actually use and track leftovers
                     group=use_group
                 )
+                # Apply material impact to accumulate leftovers in summary state
+                if material_impact:
+                    apply_material_impact_to_extra_materials_in_memory(summary_extra_materials_state, material_impact)
                 original_total_cost_for_item = total_price if total_price is not None else 0.0
                 calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
 
@@ -827,7 +836,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
                 if (is_profile or is_gasket) and item_finish:
                     extra_materials_key_for_reuse = f"{part}-{item_finish}"
 
-                part_data = extra_materials.get(extra_materials_key_for_reuse, {})
+                # Use the shared summary state that accumulates leftovers across all elevations
+                part_data = summary_extra_materials_state.get(extra_materials_key_for_reuse, {})
                 if part_data.get("length_pieces"):
                     lengths = [float(x) for x in part_data["length_pieces"] if isinstance(x, (int, float, str))]
                     reusable_qty_sum = sum(lengths)
@@ -1319,6 +1329,10 @@ def generate_excel_report(
         for elev_name in sorted_elev_names:
             ws = wb.create_sheet(title=elev_name)
             elev_data = current_saved_elevations[elev_name]
+            
+            # Create a fresh extra_materials state for this elevation (no leftovers from other elevations)
+            # This ensures each elevation is calculated independently
+            elevation_extra_materials_state = {}
 
             # Format custom bay dimensions for display
             custom_bay_widths_str = ", ".join([f"{w:.2f} in" for w in elev_data.get('custom_bay_widths', [])]) if elev_data.get('custom_bay_widths') else "Equal distribution"
@@ -1441,7 +1455,7 @@ def generate_excel_report(
             next_row_after_profiles, impacts_p, profile_totals = _write_output_section(
                 ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish,
                 system_total_for_this_block, original_system_total_for_this_block, output_section_current_row,
-                overall_current_extra_materials_state, private_extra_materials_path, multiplier,
+                elevation_extra_materials_state, private_extra_materials_path, multiplier,
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
@@ -1451,7 +1465,7 @@ def generate_excel_report(
             next_row_after_accessories, impacts_a, accessory_totals = _write_output_section(
                 ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish,
                 system_total_for_this_block, original_system_total_for_this_block, next_row_after_profiles,
-                overall_current_extra_materials_state, private_extra_materials_path, multiplier,
+                elevation_extra_materials_state, private_extra_materials_path, multiplier,
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
@@ -1461,7 +1475,7 @@ def generate_excel_report(
             next_row_after_gaskets, impacts_g, gasket_totals = _write_output_section(
                 ws, "GASKETS", gaskets_for_section, COL_E, current_elevation_finish,
                 system_total_for_this_block, original_system_total_for_this_block, next_row_after_accessories,
-                overall_current_extra_materials_state, private_extra_materials_path, multiplier,
+                elevation_extra_materials_state, private_extra_materials_path, multiplier,
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
@@ -1483,7 +1497,7 @@ def generate_excel_report(
                 next_row_after_group, impacts_g, group_totals = _write_output_section(
                     ws, grp_title, grp_items, COL_E, None,
                     system_total_for_this_block, original_system_total_for_this_block, current_section_row,
-                    overall_current_extra_materials_state, private_extra_materials_path, multiplier,
+                    elevation_extra_materials_state, private_extra_materials_path, multiplier,
                     show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                     show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
                 )
