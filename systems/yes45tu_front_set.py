@@ -69,9 +69,17 @@ def calculate_yes45tu_quantities(
 
     # --- Total area calculations ---
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
-    total_door_area = calculate_total_door_area(doors)
-    total_glass_to_add_back = calculate_glass_to_add_back(doors)
-    adjusted_glass_area = max(total_glass_area - total_door_area + total_glass_to_add_back, 0)  # Prevent negative glass area
+    
+    # Only calculate door area if doors exist
+    has_doors = doors and len(doors) > 0
+    if has_doors:
+        total_door_area = calculate_total_door_area(doors)
+        total_glass_to_add_back = calculate_glass_to_add_back(doors)
+        adjusted_glass_area = max(total_glass_area - total_door_area + total_glass_to_add_back, 0)  # Prevent negative glass area
+    else:
+        total_door_area = 0.0
+        total_glass_to_add_back = 0.0
+        adjusted_glass_area = total_glass_area  # No door adjustments needed
 
     results = []
 
@@ -145,14 +153,6 @@ def calculate_yes45tu_quantities(
     manual_outputs = [
         glass_output,
         {
-            "description": "Door Area (to subtract from glass)",
-            "quantity": total_door_area,
-            "part_number": "N/A",
-            "type": "Calculations",
-            'unit': 'sqft',
-            'manual': True
-        },
-        {
             "description": "Joints Fabrication Labor",
             "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
             "part_number": "N/A",
@@ -162,6 +162,17 @@ def calculate_yes45tu_quantities(
             'manual': True
         }
     ]
+    
+    # Only include door area calculation if doors exist
+    if has_doors:
+        manual_outputs.insert(1, {
+            "description": "Door Area (to subtract from glass)",
+            "quantity": total_door_area,
+            "part_number": "N/A",
+            "type": "Calculations",
+            'unit': 'sqft',
+            'manual': True
+        })
 
     results.extend(manual_outputs)
     return results

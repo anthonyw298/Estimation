@@ -386,6 +386,26 @@ def main(page: ft.Page):
             if page.views: 
                 page.update()
 
+        def update_qty_per_elev_visibility(e):
+            # Show/hide the "Quantity Per Elevation" and cost per elevation checkboxes based on count value
+            if not inputs.get("qty_per_elev_container"):
+                return
+            
+            try:
+                count_val = int(inputs["count"].value) if inputs["count"].value else 0
+                should_show = count_val > 1
+                inputs["qty_per_elev_container"].visible = should_show
+                if inputs.get("cost_per_elev_container"):
+                    inputs["cost_per_elev_container"].visible = should_show
+                if page.views:
+                    page.update()
+            except (ValueError, TypeError):
+                inputs["qty_per_elev_container"].visible = False
+                if inputs.get("cost_per_elev_container"):
+                    inputs["cost_per_elev_container"].visible = False
+                if page.views:
+                    page.update()
+
         def update_dynamic_bay_inputs(e):
             # Handler to regenerate dynamic inputs when bays_wide/tall change
             try:
@@ -575,6 +595,15 @@ def main(page: ft.Page):
             inputs["bays_wide"].value = str(data.get("bays_wide", ""))
             inputs["bays_tall"].value = str(data.get("bays_tall", ""))
             
+            # Load and update quantity per elevation and cost per elevation checkboxes
+            if inputs.get("qty_per_elev_checkbox"):
+                inputs["qty_per_elev_checkbox"].value = data.get("show_qty_per_elevation", False)
+            if inputs.get("total_cost_per_elev_checkbox"):
+                inputs["total_cost_per_elev_checkbox"].value = data.get("show_total_cost_per_elevation", False)
+            if inputs.get("discounted_cost_per_elev_checkbox"):
+                inputs["discounted_cost_per_elev_checkbox"].value = data.get("show_discounted_cost_per_elevation", False)
+            update_qty_per_elev_visibility(None)  # Update visibility based on count
+            
             # Load legacy CSV if exists, else populate dynamic inputs?
             # Ideally we reconstruct dynamic inputs from stored list
             # But stored data uses list of floats.
@@ -612,6 +641,18 @@ def main(page: ft.Page):
             inputs["custom_h_col"].controls.clear()
             inputs["dynamic_w_fields"] = []
             inputs["dynamic_h_fields"] = []
+            
+            # Clear quantity per elevation and cost per elevation checkboxes
+            if inputs.get("qty_per_elev_checkbox"):
+                inputs["qty_per_elev_checkbox"].value = False
+            if inputs.get("qty_per_elev_container"):
+                inputs["qty_per_elev_container"].visible = False
+            if inputs.get("total_cost_per_elev_checkbox"):
+                inputs["total_cost_per_elev_checkbox"].value = False
+            if inputs.get("discounted_cost_per_elev_checkbox"):
+                inputs["discounted_cost_per_elev_checkbox"].value = False
+            if inputs.get("cost_per_elev_container"):
+                inputs["cost_per_elev_container"].visible = False
             
             state["current_doors"] = []
             render_doors()
@@ -733,6 +774,11 @@ def main(page: ft.Page):
                 sqft = calculate_rectangle_area(w/12, h/12)
                 perim = calculate_perimeter(w/12, h/12)
                 
+                # Get the checkbox values
+                show_qty_per_elev = inputs.get("qty_per_elev_checkbox", ft.Checkbox()).value if inputs.get("qty_per_elev_checkbox") else False
+                show_total_cost_per_elev = inputs.get("total_cost_per_elev_checkbox", ft.Checkbox()).value if inputs.get("total_cost_per_elev_checkbox") else False
+                show_discounted_cost_per_elev = inputs.get("discounted_cost_per_elev_checkbox", ft.Checkbox()).value if inputs.get("discounted_cost_per_elev_checkbox") else False
+                
                 data = {
                     "system": inputs["system"].value,
                     "finish": inputs["finish"].value,
@@ -742,7 +788,10 @@ def main(page: ft.Page):
                     "sqft_per_type": sqft,
                     "total_sqft": sqft * total,
                     "perimeter_ft": perim,
-                    "total_perimeter_ft": perim * total
+                    "total_perimeter_ft": perim * total,
+                    "show_qty_per_elevation": show_qty_per_elev,
+                    "show_total_cost_per_elevation": show_total_cost_per_elev,
+                    "show_discounted_cost_per_elevation": show_discounted_cost_per_elev
                 }
 
                 if data["system"] == "YES 45TU FRONT SET(OG)":
@@ -1013,11 +1062,51 @@ def main(page: ft.Page):
         saved_dd = create_dropdown("Load Elevation", "saved_elev", dd_options, on_change=on_elevation_load)
         
         # Form Group
+        # Create quantity per elevation checkbox first (outside the Column list)
+        qty_per_elev_checkbox = ft.Checkbox(
+            label="Show 'Quantity Per Elevation' column in report",
+            value=False,
+            fill_color=COLOR_ACCENT
+        )
+        inputs["qty_per_elev_checkbox"] = qty_per_elev_checkbox
+        
+        # Create cost per elevation checkboxes
+        total_cost_per_elev_checkbox = ft.Checkbox(
+            label="Show 'Total List Cost Per Elevation' column in report",
+            value=False,
+            fill_color=COLOR_ACCENT
+        )
+        inputs["total_cost_per_elev_checkbox"] = total_cost_per_elev_checkbox
+        
+        discounted_cost_per_elev_checkbox = ft.Checkbox(
+            label="Show 'Discounted Total List Cost Per Elevation' column in report",
+            value=False,
+            fill_color=COLOR_ACCENT
+        )
+        inputs["discounted_cost_per_elev_checkbox"] = discounted_cost_per_elev_checkbox
+        
         form_col = ft.Column([
             ft.Text("ELEVATION DETAILS", size=14, weight="bold", color=COLOR_ACCENT),
             ft.Row([create_dropdown("System", "system", state["system_options"], on_change=update_bay_visibility), 
                    create_dropdown("Finish", "finish", state["finish_options"])]),
-            ft.Row([create_input_field("Elevation Type (Name)", "type"), create_input_field("Quantity", "count")]),
+            ft.Row([create_input_field("Elevation Type (Name)", "type"), create_input_field("Quantity", "count", on_change=update_qty_per_elev_visibility)]),
+            
+            # Quantity Per Elevation Toggle (shown only when count > 1)
+            assign_ref("qty_per_elev_container", ft.Container(
+                content=ft.Row([qty_per_elev_checkbox]),
+                visible=False,
+                margin=ft.margin.only(top=5, bottom=5)
+            )),
+            
+            # Cost Per Elevation Toggles (shown only when count > 1)
+            assign_ref("cost_per_elev_container", ft.Container(
+                content=ft.Column([
+                    total_cost_per_elev_checkbox,
+                    discounted_cost_per_elev_checkbox
+                ], spacing=5),
+                visible=False,
+                margin=ft.margin.only(top=5, bottom=5)
+            )),
             
             # Dimensions
             ft.Container(content=ft.Column([
