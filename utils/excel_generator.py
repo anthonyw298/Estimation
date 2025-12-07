@@ -235,6 +235,8 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     section_material_impacts = []
     section_original_total = 0.0
     section_discounted_total = 0.0
+    section_original_per_elev_total = 0.0  # Sum of actual per-elevation costs
+    section_discounted_per_elev_total = 0.0  # Sum of actual per-elevation discounted costs
 
     for item in items:
         qty_raw = item.get('quantity', 0)
@@ -422,20 +424,107 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         ws.cell(row=current_row, column=colE + col_offset, value=original_item_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         col_offset += 1
         
-        # Total List Cost Per Elevation (if enabled)
+        # Total List Cost Per Elevation (if enabled) - calculate actual purchase cost for per-elevation quantity
+        original_cost_per_elev = None
         if show_total_cost_per_elevation and total_count > 1:
-            cost_per_elev = original_item_total_cost / total_count
-            ws.cell(row=current_row, column=colE + col_offset, value=cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            # Calculate the quantity per elevation
+            if isinstance(qty_raw, list):
+                # For lists, calculate pieces per elevation
+                num_pieces = len(qty_raw)
+                pieces_per_elev = num_pieces / total_count
+                
+                # Check if this is a bay width part - if so, keep as list
+                is_bay_width_for_per_elev = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
+                
+                if is_bay_width_for_per_elev:
+                    # For bay width parts, take first pieces_per_elev items
+                    pieces_per_elev_int = int(pieces_per_elev)
+                    if pieces_per_elev_int > 0 and pieces_per_elev_int <= len(qty_raw):
+                        qty_per_elev = qty_raw[:pieces_per_elev_int]
+                    else:
+                        # Fallback: divide each piece equally (not ideal but works)
+                        qty_per_elev = [q / total_count for q in qty_raw]
+                else:
+                    # For non-bay-width parts, if all pieces are the same, use single value
+                    if len(qty_raw) > 0 and all(abs(x - qty_raw[0]) < 0.001 for x in qty_raw):
+                        # All pieces same length, per elevation is just one piece
+                        qty_per_elev = qty_raw[0]
+                    else:
+                        # Different lengths - sum and divide
+                        qty_per_elev = qty_sum / total_count
+            else:
+                # Single quantity value
+                qty_per_elev = qty_raw / total_count
+            
+            # Calculate actual purchase cost for per-elevation quantity (accounts for minimum purchase lengths)
+            if not manual and pn and pn != "N/A":
+                use_group_for_per_elev = is_gasket
+                
+                # Get price for per-elevation quantity
+                per_elev_price, _, _ = get_price_by_part(
+                    pn, qty_per_elev, 
+                    finish=elevation_finish, 
+                    current_extra_materials=current_extra_materials_state, 
+                    extra_materials_file=extra_materials_path, 
+                    summary=True,  # Use summary=True to get price without material impact
+                    group=use_group_for_per_elev,
+                    description=item.get('description', '')
+                )
+                original_cost_per_elev = per_elev_price if per_elev_price is not None else (original_item_total_cost / total_count)
+            else:
+                # For manual items, just divide the cost
+                original_cost_per_elev = original_item_total_cost / total_count
+            
+            ws.cell(row=current_row, column=colE + col_offset, value=original_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            section_original_per_elev_total += original_cost_per_elev  # Track sum of per-elevation costs
             col_offset += 1
         
         # Discounted Total List Cost
         ws.cell(row=current_row, column=colE + col_offset, value=item_total_cost_for_display).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         col_offset += 1
         
-        # Discounted Total List Cost Per Elevation (if enabled)
+        # Discounted Total List Cost Per Elevation (if enabled) - apply multiplier to per-elevation cost
         if show_discounted_cost_per_elevation and total_count > 1:
-            discounted_cost_per_elev = item_total_cost_for_display / total_count
+            if original_cost_per_elev is not None:
+                # Use the calculated per-elevation cost and apply multiplier
+                discounted_cost_per_elev = original_cost_per_elev * multiplier if (is_profile or is_gasket or is_accessory) else original_cost_per_elev
+            else:
+                # Fallback: recalculate per-elevation quantity and price (shouldn't happen if original_cost_per_elev was calculated)
+                if isinstance(qty_raw, list):
+                    num_pieces = len(qty_raw)
+                    pieces_per_elev = num_pieces / total_count
+                    is_bay_width_for_per_elev = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
+                    
+                    if is_bay_width_for_per_elev:
+                        pieces_per_elev_int = int(pieces_per_elev)
+                        if pieces_per_elev_int > 0 and pieces_per_elev_int <= len(qty_raw):
+                            qty_per_elev = qty_raw[:pieces_per_elev_int]
+                        else:
+                            qty_per_elev = [q / total_count for q in qty_raw]
+                    else:
+                        if len(qty_raw) > 0 and all(abs(x - qty_raw[0]) < 0.001 for x in qty_raw):
+                            qty_per_elev = qty_raw[0]
+                        else:
+                            qty_per_elev = qty_sum / total_count
+                else:
+                    qty_per_elev = qty_raw / total_count
+                
+                if not manual and pn and pn != "N/A":
+                    use_group_for_per_elev = is_gasket
+                    per_elev_price, _, _ = get_price_by_part(
+                        pn, qty_per_elev,
+                        finish=elevation_finish,
+                        current_extra_materials=current_extra_materials_state,
+                        extra_materials_file=extra_materials_path,
+                        summary=True,
+                        group=use_group_for_per_elev,
+                        description=item.get('description', '')
+                    )
+                    discounted_cost_per_elev = (per_elev_price * multiplier) if (is_profile or is_gasket or is_accessory) and per_elev_price is not None else (item_total_cost_for_display / total_count)
+                else:
+                    discounted_cost_per_elev = item_total_cost_for_display / total_count
             ws.cell(row=current_row, column=colE + col_offset, value=discounted_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            section_discounted_per_elev_total += discounted_cost_per_elev  # Track sum of per-elevation discounted costs
             col_offset += 1
         
         current_row += 1
@@ -467,10 +556,9 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
     total_col_offset += 1
     
-    # Total List Cost Per Elevation (if enabled) - leave blank or show per elevation total
+    # Total List Cost Per Elevation (if enabled) - use sum of actual per-elevation costs
     if show_total_cost_per_elevation and total_count > 1:
-        cost_per_elev_total = section_original_total / total_count
-        ws.cell(row=current_row, column=colE + total_col_offset, value=cost_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=colE + total_col_offset, value=section_original_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
         total_col_offset += 1
     
@@ -479,10 +567,9 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
     total_col_offset += 1
     
-    # Discounted Total List Cost Per Elevation (if enabled) - leave blank or show per elevation total
+    # Discounted Total List Cost Per Elevation (if enabled) - use sum of actual per-elevation discounted costs
     if show_discounted_cost_per_elevation and total_count > 1:
-        discounted_cost_per_elev_total = section_discounted_total / total_count
-        ws.cell(row=current_row, column=colE + total_col_offset, value=discounted_cost_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=colE + total_col_offset, value=section_discounted_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
         total_col_offset += 1
     
