@@ -28,8 +28,8 @@ def calculate_sill_flash_screw(bays_wide: int, total_count: int) -> int:
 def calculate_end_dam_screw(total_count: int) -> int:
     return 4 * total_count
 
-def calculate_setting_block_chair(bays_wide: int) -> int:
-    return 2 * bays_wide
+def calculate_setting_block_chair(bays_wide: int, total_count: int) -> int:
+    return 2 * bays_wide * total_count
 
 def calculate_side_block(bays_wide: int, bays_tall: int, total_count: int) -> int:
     return (bays_wide - 1) * bays_tall * total_count

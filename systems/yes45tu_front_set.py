@@ -50,7 +50,7 @@ def calculate_yes45tu_quantities(
         ("PC-1220", calculate_assembly_screw(bays_wide, bays_tall, total_count)),
         ("PM-1006-SS", calculate_sill_flash_screw(bays_wide, total_count)),
         ("UA-1212", calculate_end_dam_screw(total_count)),
-        ("E1-2530", calculate_setting_block_chair(bays_wide)),
+        ("E1-2530", calculate_setting_block_chair(bays_wide, total_count)),
         ("E2-0166", calculate_side_block(bays_wide, bays_tall, total_count)),
         ("E2-0177", calculate_setting_block(bays_wide, total_count)),
         ("E2-0545", calculate_anti_walk_block_deep(bays_tall, total_count)),
