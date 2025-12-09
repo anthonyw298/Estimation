@@ -326,14 +326,18 @@ def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, fi
         print(f"Error calculating price: {e}")
         return 0.0
 
-def calculate_door_info(doors: list,finish='Clear') -> list:
+def calculate_door_info(doors: list, finish='Clear', total_count: int = 1) -> list:
     """
     Takes a list of door inputs and returns a list of dictionaries with door information,
     including calculated price and other details.
+    
+    Note: door count is per elevation, so it's multiplied by total_count to get total quantity.
 
     Args:
         doors (list): A list of dictionaries, where each dictionary represents a door
-                      and contains keys like 'size', 'count', 'stile', and 'hardware'.
+                      and contains keys like 'size', 'count' (per elevation), 'stile', and 'hardware'.
+        finish (str): Finish type for doors
+        total_count (int): Total number of elevations. Door count is per elevation, so multiply by this.
 
     Returns:
         list: A list of dictionaries, where each dictionary represents a door with
@@ -343,17 +347,19 @@ def calculate_door_info(doors: list,finish='Clear') -> list:
     if doors:
         for door_info in doors:
             door_size_str = door_info.get('size')
-            door_count = door_info.get('count', 0)
+            door_count_per_elev = door_info.get('count', 0)  # Count is per elevation
             door_stile = door_info.get('stile')
-            door_hardware = door_info.get('hardware', [])
+            door_hardware = door_info.get('hardware', {})
 
-            if door_size_str and door_count > 0:
-                door_price = calculate_door_price(door_size_str, door_stile, door_hardware,finish)
+            if door_size_str and door_count_per_elev > 0:
+                # Calculate total door count (per elevation × total_count)
+                total_door_count = door_count_per_elev * total_count
+                door_price = calculate_door_price(door_size_str, door_stile, door_hardware, finish)
                 
                 door_items.append({
                     "description": f"Door ({door_size_str})", 
                     "Style": door_stile,
-                    "quantity": door_count,
+                    "quantity": total_door_count,  # Total quantity across all elevations
                     "part_number": "N/A",
                     "type": "Doors",
                     'price': door_price,

@@ -737,8 +737,8 @@ def main(page: ft.Page):
             render_doors()
             save_doors_action()
             
-            # Clear door inputs
-            inputs["door_count"].value = ""
+            # Clear door inputs - default count to 1 (per elevation)
+            inputs["door_count"].value = "1"
             for cb in hardware_cbs.values(): cb.value = False
             state["selected_door_index"] = None
             
@@ -902,7 +902,7 @@ def main(page: ft.Page):
 
                 # Append formatted door items to calculated_outputs so they are persisted in state and file
                 if state["current_doors"]:
-                    door_items = calculate_door_info(state["current_doors"], finish=data["finish"])
+                    door_items = calculate_door_info(state["current_doors"], finish=data["finish"], total_count=total)
                     data["calculated_outputs"].extend(door_items)
 
                 state["saved_elevations"][elev] = data
@@ -1149,7 +1149,7 @@ def main(page: ft.Page):
 
         door_col = ft.Column([
             ft.Text("DOOR MANAGER", size=14, weight="bold", color=COLOR_ACCENT),
-            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count")]),
+            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count", value="1")]),
             create_dropdown("Style", "door_stile", state["stile_options"]),
             ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
             ft.Column([cb for cb in hardware_cbs.values()], spacing=0),

@@ -71,10 +71,17 @@ def calculate_yes45tu_quantities(
     total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
     
     # Only calculate door area if doors exist
+    # Door count is per elevation, so multiply by total_count for total calculations
     has_doors = doors and len(doors) > 0
     if has_doors:
-        total_door_area = calculate_total_door_area(doors)
-        total_glass_to_add_back = calculate_glass_to_add_back(doors)
+        # Multiply door counts by total_count since door count is per elevation
+        doors_with_total_count = []
+        for door in doors:
+            door_copy = door.copy()
+            door_copy['count'] = door.get('count', 0) * total_count
+            doors_with_total_count.append(door_copy)
+        total_door_area = calculate_total_door_area(doors_with_total_count)
+        total_glass_to_add_back = calculate_glass_to_add_back(doors_with_total_count)
         adjusted_glass_area = max(total_glass_area - total_door_area + total_glass_to_add_back, 0)  # Prevent negative glass area
     else:
         total_door_area = 0.0

@@ -1,7 +1,7 @@
 {
     "1": {
         "system": "YES 45TU FRONT SET(OG)",
-        "finish": "Clear",
+        "finish": "Black",
         "total_count": 2,
         "bays_wide": 4,
         "bays_tall": 2,
@@ -99,23 +99,23 @@
                 ],
                 "part_number": "BE9-2513",
                 "type": "profiles",
-                "price": 16.079125
+                "price": 17.687037500000002
             },
             {
                 "description": "Horizontal Sill/Jamb Screw Spline Assembly (Sill)",
                 "quantity": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
                 "part_number": "BE9-2513",
                 "type": "profiles",
-                "price": 10.719416666666667
+                "price": 11.791350144895734
             },
             {
                 "description": "Vertical Flush Filler",
@@ -129,7 +129,7 @@
                 ],
                 "part_number": "E9-2512",
                 "type": "profiles",
-                "price": 3.8375
+                "price": 4.22125
             },
             {
                 "description": "Vertical Two Piece Mullion Screw Spline Assembly",
@@ -143,39 +143,39 @@
                 ],
                 "part_number": "BE9-2511",
                 "type": "profiles",
-                "price": 12.714916666666667
+                "price": 13.986408333333335
             },
             {
                 "description": "Horizontal Horizontal Screw Spline Assembly",
                 "quantity": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
                 "part_number": "BE9-2515",
                 "type": "profiles",
-                "price": 13.482416666666666
+                "price": 29.6612960685444
             },
             {
                 "description": "Horizontal Head",
                 "quantity": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
                 "part_number": "BE9-2514",
                 "type": "profiles",
-                "price": 11.359
+                "price": 24.989782645984274
             },
             {
                 "description": "Thermal Sill Flashing",
@@ -185,31 +185,31 @@
                 ],
                 "part_number": "BE9-2578",
                 "type": "profiles",
-                "price": 6.7540000000000004
+                "price": 7.429400000000001
             },
             {
                 "description": "Horizontal Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
                 "quantity": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
                 "part_number": "E9-2519",
                 "type": "profiles",
-                "price": 2.1758625
+                "price": 3.5901706318259503
             },
             {
                 "description": "Glazing Gasket For 1\u201d Glazing",
@@ -249,9 +249,9 @@
                 "purchased_qty_or_length": 48.0,
                 "leftover_generated_qty_or_length": 16.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 838.0,
+                "cost_incurred": 921.8000000000002,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Vertical Sill/Jamb Screw Spline Assembly (Jamb)",
                 "bay_widths_processed": [
                     8.0,
@@ -266,56 +266,56 @@
             {
                 "part_number": "BE9-2513",
                 "requested_qty": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
                 "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 15.0,
-                "used_from_leftover_qty_or_length": 15.0,
-                "cost_incurred": 419.0,
+                "leftover_generated_qty_or_length": 15.722216666666666,
+                "used_from_leftover_qty_or_length": 15.722233333333334,
+                "cost_incurred": 460.9000000000001,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Horizontal Sill/Jamb Screw Spline Assembly (Sill)",
                 "bay_widths_processed": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    0.8333333333333334
                 ],
                 "is_bay_width_list": true,
                 "leftover_pieces_consumed": [
                     {
                         "original_length": 16.0,
-                        "used_length": 3.0
+                        "used_length": 3.722225
                     },
                     {
-                        "original_length": 13.0,
-                        "used_length": 3.0
+                        "original_length": 12.277775,
+                        "used_length": 3.722225
                     },
                     {
-                        "original_length": 10.0,
-                        "used_length": 3.0
+                        "original_length": 8.55555,
+                        "used_length": 3.722225
                     },
                     {
-                        "original_length": 7.0,
-                        "used_length": 3.0
+                        "original_length": 4.833325,
+                        "used_length": 3.722225
                     },
                     {
-                        "original_length": 4.0,
-                        "used_length": 3.0
+                        "original_length": 1.1111000000000004,
+                        "used_length": 0.8333333333333334
                     }
                 ],
-                "leftover_generated_qty_or_length_display": "15.00 ft"
+                "leftover_generated_qty_or_length_display": "15.72 ft"
             },
             {
                 "part_number": "E9-2512",
@@ -330,9 +330,9 @@
                 "purchased_qty_or_length": 48.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 300.0,
+                "cost_incurred": 330.0,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Vertical Flush Filler",
                 "bay_widths_processed": [
                     8.0,
@@ -359,9 +359,9 @@
                 "purchased_qty_or_length": 48.0,
                 "leftover_generated_qty_or_length": 0.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 994.0,
+                "cost_incurred": 1093.4,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Vertical Two Piece Mullion Screw Spline Assembly",
                 "bay_widths_processed": [
                     8.0,
@@ -378,68 +378,68 @@
             {
                 "part_number": "BE9-2515",
                 "requested_qty": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
-                "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 0.0,
+                "purchased_qty_or_length": 48.0,
+                "leftover_generated_qty_or_length": 23.999983333333333,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 527.0,
+                "cost_incurred": 1159.4,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Horizontal Horizontal Screw Spline Assembly",
                 "bay_widths_processed": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    0.8333333333333334
                 ],
                 "is_bay_width_list": true,
                 "leftover_pieces_consumed": [],
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "24.00 ft"
             },
             {
                 "part_number": "BE9-2514",
                 "requested_qty": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
-                "purchased_qty_or_length": 24.0,
-                "leftover_generated_qty_or_length": 0.0,
+                "purchased_qty_or_length": 48.0,
+                "leftover_generated_qty_or_length": 23.999983333333333,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 444.0,
+                "cost_incurred": 976.8000000000001,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Horizontal Head",
                 "bay_widths_processed": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    0.8333333333333334
                 ],
                 "is_bay_width_list": true,
                 "leftover_pieces_consumed": [],
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "24.00 ft"
             },
             {
                 "part_number": "BE9-2578",
@@ -447,9 +447,9 @@
                 "purchased_qty_or_length": 24.0,
                 "leftover_generated_qty_or_length": 12.0,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 264.0,
+                "cost_incurred": 290.40000000000003,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "12.00 ft"
             },
@@ -461,58 +461,58 @@
                 "used_from_leftover_qty_or_length": 12.0,
                 "cost_incurred": 0.0,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "0.00 ft"
             },
             {
                 "part_number": "E9-2519",
                 "requested_qty": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    3.722225,
+                    3.722225,
+                    3.722225
                 ],
-                "purchased_qty_or_length": 48.0,
-                "leftover_generated_qty_or_length": 0.0,
+                "purchased_qty_or_length": 72.0,
+                "leftover_generated_qty_or_length": 23.999966666666666,
                 "used_from_leftover_qty_or_length": 0.0,
-                "cost_incurred": 170.1,
+                "cost_incurred": 280.665,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": "Horizontal Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
                 "bay_widths_processed": [
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0,
-                    3.0
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    3.722225,
+                    0.8333333333333334,
+                    0.8333333333333334,
+                    0.8333333333333334,
+                    0.8333333333333334
                 ],
                 "is_bay_width_list": true,
                 "leftover_pieces_consumed": [],
-                "leftover_generated_qty_or_length_display": "0.00 ft"
+                "leftover_generated_qty_or_length_display": "24.00 ft"
             },
             {
                 "part_number": "E1-0199",
@@ -522,7 +522,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 64.8,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "16.00 pcs"
             },
@@ -534,7 +534,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 119.0,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "34.00 pcs"
             },
@@ -546,7 +546,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 36.6,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "88.00 pcs"
             },
@@ -558,7 +558,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 46.65,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "76.00 pcs"
             },
@@ -570,7 +570,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 48.6,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "92.00 pcs"
             },
@@ -582,7 +582,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 72.0,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "0.00 pcs"
             },
@@ -594,7 +594,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 76.95,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "38.00 pcs"
             },
@@ -606,7 +606,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 76.95,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "34.00 pcs"
             },
@@ -618,7 +618,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 147.0,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "42.00 pcs"
             },
@@ -630,7 +630,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 56.7,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "38.00 pcs"
             },
@@ -642,7 +642,7 @@
                 "used_from_leftover_qty_or_length": 0,
                 "cost_incurred": 95.25,
                 "type_processed_as": "accessory",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "34.00 pcs"
             },
@@ -654,7 +654,7 @@
                 "used_from_leftover_qty_or_length": 0.0,
                 "cost_incurred": 405.0,
                 "type_processed_as": "profile",
-                "finish": "Clear",
+                "finish": "Black",
                 "description": null,
                 "leftover_generated_qty_or_length_display": "52.00 ft"
             },
@@ -681,10 +681,18 @@
                 "leftover_generated_qty_or_length_display": "0.00 joints"
             }
         ],
-        "custom_bay_widths": [],
-        "custom_bay_heights": [],
-        "show_qty_per_elevation": false,
-        "show_total_cost_per_elevation": false,
-        "show_discounted_cost_per_elevation": false
+        "custom_bay_widths": [
+            10.0,
+            44.6667,
+            44.6667,
+            44.6667
+        ],
+        "custom_bay_heights": [
+            40.0,
+            56.0
+        ],
+        "show_qty_per_elevation": true,
+        "show_total_cost_per_elevation": true,
+        "show_discounted_cost_per_elevation": true
     }
 }

@@ -592,7 +592,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     return current_row + 1, section_material_impacts, section_totals
 
 
-def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
+def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb=None):
     """
     Reads elevation data, aggregates quantities and prices by part number across all elevations,
     and writes a clean summary section into the worksheet, grouped by profiles, accessories, doors, glass, and labor.
@@ -1114,12 +1114,51 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path):
     ws.cell(row=gt_row, column=7).font = Font(bold=True)
     ws.cell(row=gt_row, column=7).border = Border(right=Side(style='thin'), top=Side(style='thin'))
 
-    # Discounted Total
+    # Discounted Total - sum from elevation sheets if available, otherwise use calculated total
+    sum_from_elevations = 0.0
+    if wb:
+        try:
+            # Read "TOTAL ELEVATION COST" from each elevation sheet
+            # The total is in column PRICE_COL (9) in the row with "{elev_name} TOTAL COSTS"
+            PRICE_COL = 9
+            for elev_name in data.keys():
+                if elev_name in wb.sheetnames:
+                    elev_ws = wb[elev_name]
+                    # Search for the row containing "{elev_name} TOTAL COSTS"
+                    found_total = False
+                    for row in range(1, elev_ws.max_row + 1):
+                        # Check header column (PRICE_COL - 2 = 7) for the total costs label
+                        header_cell = elev_ws.cell(row=row, column=PRICE_COL - 2)
+                        if header_cell.value and isinstance(header_cell.value, str):
+                            if "TOTAL COSTS" in header_cell.value.upper() and elev_name.upper() in header_cell.value.upper():
+                                # Found the totals row, read the total cost from column PRICE_COL (9)
+                                total_cost_cell = elev_ws.cell(row=row, column=PRICE_COL)
+                                if total_cost_cell.value is not None:
+                                    try:
+                                        sum_from_elevations += float(total_cost_cell.value)
+                                        found_total = True
+                                        print(f"Found total for {elev_name}: ${total_cost_cell.value}")
+                                    except (ValueError, TypeError):
+                                        pass
+                                break
+                    if not found_total:
+                        print(f"Warning: Could not find total for elevation {elev_name}")
+        except Exception as e:
+            print(f"Error reading elevation totals from sheets: {e}")
+            import traceback
+            traceback.print_exc()
+            sum_from_elevations = 0.0
+    
+    # Use sum from elevations if available, otherwise use calculated total
+    final_discounted_total = sum_from_elevations if sum_from_elevations > 0 else grand_discounted_total
+    if sum_from_elevations > 0:
+        print(f"Summary total from elevations: ${sum_from_elevations:.2f}, calculated: ${grand_discounted_total:.2f}, using: ${final_discounted_total:.2f}")
+    
     ws.cell(row=gt_row+1, column=6, value="Overall Discounted Total").font = Font(bold=True)
     ws.cell(row=gt_row+1, column=6).alignment = Alignment(horizontal='right')
     ws.cell(row=gt_row+1, column=6).border = Border(left=Side(style='thin'))
 
-    ws.cell(row=gt_row+1, column=7, value=grand_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=gt_row+1, column=7, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=gt_row+1, column=7).font = Font(bold=True)
     ws.cell(row=gt_row+1, column=7).border = Border(right=Side(style='thin'))
 
@@ -1254,7 +1293,7 @@ def generate_excel_report(
         base_outputs = [item for item in base_outputs if not (item.get('type', '').lower() in ['door', 'doors'] and item.get('manual', False))]
         
         # Recalculate door items fresh from current inputs
-        door_items = calculate_door_info(doors, finish_input) if doors else []
+        door_items = calculate_door_info(doors, finish_input, total_count) if doors else []
         
         # Avoid mutating the incoming list reference
         elevation_outputs = base_outputs + door_items
@@ -1407,7 +1446,7 @@ def generate_excel_report(
                 )
             
             output_section_current_row = 1
-            profiles_for_section, accessories_for_section, gaskets_for_section, other_items_for_section = [], [], [], []
+            profiles_for_section, accessories_for_section, gaskets_for_section, doors_for_section, other_items_for_section = [], [], [], [], []
 
             current_elevation_finish = elev_data.get("finish")
 
@@ -1415,9 +1454,12 @@ def generate_excel_report(
                 pn, manual = item.get('part_number'), item.get('manual', False)
                 desc = item.get('description', '').strip()
                 is_gasket = "gasket" in desc.lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]
+                is_door = item.get('type', '').lower() in ['door', 'doors']
                 
                 if pn and pn != "N/A":
-                    if manual:
+                    if manual and is_door:
+                        doors_for_section.append(item)
+                    elif manual:
                         other_items_for_section.append(item)
                     elif pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(item)
@@ -1428,7 +1470,10 @@ def generate_excel_report(
                     else:
                         other_items_for_section.append(item)
                 else:
-                    other_items_for_section.append(item)
+                    if is_door:
+                        doors_for_section.append(item)
+                    else:
+                        other_items_for_section.append(item)
 
             system_total_for_this_block = [0.0]
             original_system_total_for_this_block = [0.0]
@@ -1440,17 +1485,11 @@ def generate_excel_report(
             show_discounted_cost_per_elev = elev_data.get('show_discounted_cost_per_elevation', False)
             elev_total_count = elev_data.get('total_count', 1)
             
-            # Track section totals for cost breakdown
-            profile_original_total = 0.0
-            profile_discounted_total = 0.0
-            accessory_original_total = 0.0
-            accessory_discounted_total = 0.0
-            gasket_original_total = 0.0
-            gasket_discounted_total = 0.0
-            glass_original_total = 0.0
-            glass_discounted_total = 0.0
-            fabrication_original_total = 0.0
-            fabrication_discounted_total = 0.0
+            # Track totals row numbers for reading from Excel columns
+            profile_totals_row = None
+            accessory_totals_row = None
+            gasket_totals_row = None
+            door_totals_row = None
 
             next_row_after_profiles, impacts_p, profile_totals = _write_output_section(
                 ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish,
@@ -1459,8 +1498,7 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            profile_original_total = profile_totals['original']
-            profile_discounted_total = profile_totals['discounted']
+            profile_totals_row = next_row_after_profiles - 1  # Totals row is one before next_row
 
             next_row_after_accessories, impacts_a, accessory_totals = _write_output_section(
                 ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish,
@@ -1469,8 +1507,7 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            accessory_original_total = accessory_totals['original']
-            accessory_discounted_total = accessory_totals['discounted']
+            accessory_totals_row = next_row_after_accessories - 1
 
             next_row_after_gaskets, impacts_g, gasket_totals = _write_output_section(
                 ws, "GASKETS", gaskets_for_section, COL_E, current_elevation_finish,
@@ -1479,15 +1516,27 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            gasket_original_total = gasket_totals['original']
-            gasket_discounted_total = gasket_totals['discounted']
+            gasket_totals_row = next_row_after_gaskets - 1
 
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
 
-            current_section_row = next_row_after_gaskets
+            # Process doors section
+            next_row_after_doors, impacts_d, door_totals = _write_output_section(
+                ws, "DOORS", doors_for_section, COL_E, current_elevation_finish,
+                system_total_for_this_block, original_system_total_for_this_block, next_row_after_gaskets,
+                elevation_extra_materials_state, private_extra_materials_path, multiplier,
+                show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
+                show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+            )
+            door_totals_row = next_row_after_doors - 1
+            newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
+
+            current_section_row = next_row_after_doors
             grouped_other_misc = {}
+            glass_totals_rows = []
+            fabrication_totals_rows = []
 
             for item in other_items_for_section:
                 item_type = item.get('type', 'MISCELLANEOUS ITEMS').upper()
@@ -1503,14 +1552,15 @@ def generate_excel_report(
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
                 
+                # Track totals row for reading from Excel
+                group_totals_row = next_row_after_group - 1
+                
                 # Categorize other items into Glass or Fabrication
                 if grp_title == "GLASS" or any(item.get('part_number') == "GLASS_AREA" or item.get('type', '').lower() == 'glass' for item in grp_items):
-                    glass_original_total += group_totals['original']
-                    glass_discounted_total += group_totals['discounted']
+                    glass_totals_rows.append(group_totals_row)
                 else:
                     # Treat other items as fabrication costs
-                    fabrication_original_total += group_totals['original']
-                    fabrication_discounted_total += group_totals['discounted']
+                    fabrication_totals_rows.append(group_totals_row)
                 
                 current_section_row = next_row_after_group
                 print(f"Section '{grp_title}' ended at row {current_section_row}")
@@ -1534,8 +1584,30 @@ def generate_excel_report(
             cost_per_elev_col = PRICE_COL - 1
             total_elev_cost_col = PRICE_COL
             
+            # Calculate column numbers for reading from Excel
+            # Use the same logic as _write_output_section uses for writing totals row
+            # total_col_offset starts at 2 (after Description, Part Number, Total Quantity Required)
+            # Then: +1 if qty_per_elev, +1 (label), +1 (Total List Cost), +1 if total_cost_per_elev, then Discounted Total List Cost
+            total_col_offset = 2  # Start after "Total Quantity Required"
+            if show_qty_per_elev and elev_total_count > 1:
+                total_col_offset += 1  # Skip "Quantity Per Elevation" column
+            total_col_offset += 1  # Skip to "Total List Cost" column (where label is written)
+            total_col_offset += 1  # Skip "Total List Cost" value column
+            if show_total_cost_per_elev and elev_total_count > 1:
+                total_col_offset += 1  # Skip "Total List Cost Per Elevation" column
+            # Now total_col_offset points to "Discounted Total List Cost" column
+            
+            col_k = COL_E + total_col_offset  # Discounted Total List Cost (Column K)
+            col_l = col_k + 1 if (show_discounted_cost_per_elev and elev_total_count > 1) else None  # Discounted Total List Cost Per Elevation (Column L)
+            
+            print(f"Column calculation: show_qty_per_elev={show_qty_per_elev}, show_total_cost_per_elev={show_total_cost_per_elev}, show_discounted_cost_per_elev={show_discounted_cost_per_elev}")
+            print(f"Total col offset={total_col_offset}, Column K={col_k}, Column L={col_l}")
+            
+            total_count = elev_data.get("total_count", 1)
+            
             # Debug: print row numbers to verify
             print(f"Cost summary for '{elev_name}': Last section row={current_section_row}, Spacing={spacing_rows} rows, Cost summary starts at row={cost_summary_row}")
+            print(f"Column K={col_k}, Column L={col_l}")
             
             # Headers on second row
             ws.cell(row=cost_summary_row, column=header_col, value="COST/ELEVATION").font = Font(bold=True)
@@ -1548,35 +1620,58 @@ def generate_excel_report(
             
             cost_summary_row += 1
             
-            # Profile Costs
+            # Helper function to read values from Excel cells
+            def read_cell_value(row, col):
+                """Read cell value, return 0 if None or empty"""
+                cell = ws.cell(row=row, column=col)
+                return cell.value if cell.value is not None else 0.0
+            
+            # Profile Costs - read from column L (per elevation) and column K (total)
+            profile_cost_per_elev = read_cell_value(profile_totals_row, col_l) if col_l else read_cell_value(profile_totals_row, col_k) / total_count
+            profile_total_cost = read_cell_value(profile_totals_row, col_k)
             ws.cell(row=cost_summary_row, column=header_col, value="PROFILE COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=profile_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            total_count = elev_data.get("total_count", 1)
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=profile_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=profile_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=profile_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
             # Accessory Costs
+            accessory_cost_per_elev = read_cell_value(accessory_totals_row, col_l) if col_l else read_cell_value(accessory_totals_row, col_k) / total_count
+            accessory_total_cost = read_cell_value(accessory_totals_row, col_k)
             ws.cell(row=cost_summary_row, column=header_col, value="ACCESSORY COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=accessory_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=accessory_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
             # Gasket Costs
+            gasket_cost_per_elev = read_cell_value(gasket_totals_row, col_l) if col_l else read_cell_value(gasket_totals_row, col_k) / total_count
+            gasket_total_cost = read_cell_value(gasket_totals_row, col_k)
             ws.cell(row=cost_summary_row, column=header_col, value="GASKET COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=gasket_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=gasket_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=gasket_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=gasket_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
-            # Glass Costs
+            # Door Costs
+            door_cost_per_elev = read_cell_value(door_totals_row, col_l) if col_l else read_cell_value(door_totals_row, col_k) / total_count
+            door_total_cost = read_cell_value(door_totals_row, col_k)
+            ws.cell(row=cost_summary_row, column=header_col, value="DOOR COSTS")
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=door_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=door_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            cost_summary_row += 1
+            
+            # Glass Costs - sum from all glass sections
+            glass_cost_per_elev = sum(read_cell_value(row, col_l) if col_l else read_cell_value(row, col_k) / total_count for row in glass_totals_rows) if glass_totals_rows else 0.0
+            glass_total_cost = sum(read_cell_value(row, col_k) for row in glass_totals_rows) if glass_totals_rows else 0.0
             ws.cell(row=cost_summary_row, column=header_col, value="GLASS COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=glass_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=glass_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=glass_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=glass_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
-            # Fabrication Costs
+            # Fabrication Costs - sum from all fabrication sections
+            fabrication_cost_per_elev = sum(read_cell_value(row, col_l) if col_l else read_cell_value(row, col_k) / total_count for row in fabrication_totals_rows) if fabrication_totals_rows else 0.0
+            fabrication_total_cost = sum(read_cell_value(row, col_k) for row in fabrication_totals_rows) if fabrication_totals_rows else 0.0
             ws.cell(row=cost_summary_row, column=header_col, value="FABRICATION COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=fabrication_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=fabrication_discounted_total * total_count).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=fabrication_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=fabrication_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
             # Separator line
@@ -1584,9 +1679,11 @@ def generate_excel_report(
                 ws.cell(row=cost_summary_row, column=col).border = Border(top=Side(style='thin'))
             cost_summary_row += 1
             
-            # Total Costs
-            total_cost_per_elev = profile_discounted_total + accessory_discounted_total + gasket_discounted_total + glass_discounted_total + fabrication_discounted_total
-            total_elevation_cost = total_cost_per_elev * total_count
+            # Total Costs - sum from column L (per elevation) and column K (total)
+            total_cost_per_elev = (profile_cost_per_elev + accessory_cost_per_elev + gasket_cost_per_elev + 
+                                   door_cost_per_elev + glass_cost_per_elev + fabrication_cost_per_elev)
+            total_elevation_cost = (profile_total_cost + accessory_total_cost + gasket_total_cost + 
+                                   door_total_cost + glass_total_cost + fabrication_total_cost)
             
             ws.cell(row=cost_summary_row, column=header_col, value=f"{elev_name} TOTAL COSTS").font = Font(bold=True)
             ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=total_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -1619,7 +1716,7 @@ def generate_excel_report(
     save_extra_materials(overall_current_extra_materials_state, private_extra_materials_path)
 
     summary_ws = wb.create_sheet(title="Summary")
-    create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path)
+    create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb)
     
     final_save_path = os.path.join(public_reports_dir, os.path.basename(excel_path)) if mode == "export_all" else private_excel_path
     
