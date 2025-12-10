@@ -1,0 +1,285 @@
+{
+    "1": {
+        "system": "YES 45TU FRONT SET(OG)",
+        "finish": "Clear",
+        "total_count": 4,
+        "bays_wide": 4,
+        "bays_tall": 2,
+        "opening_width_inches": 144.0,
+        "opening_height_inches": 96.0,
+        "sqft_per_type": 96.0,
+        "total_sqft": 384.0,
+        "perimeter_ft": 40.0,
+        "total_perimeter_ft": 160.0,
+        "calculated_outputs": [
+            {
+                "description": "End Dam For Sill Flashing",
+                "quantity": 8,
+                "part_number": "E1-0199",
+                "type": "accessories"
+            },
+            {
+                "description": "Water Deflector",
+                "quantity": 32,
+                "part_number": "E2-0047",
+                "type": "accessories"
+            },
+            {
+                "description": "#12 x 1-1/4\u201d PHSMS Type AB, Zinc Plated Steel, For Screw Spline Attachment",
+                "quantity": 224,
+                "part_number": "PC-1220",
+                "type": "accessories"
+            },
+            {
+                "description": "#10-24 x 3/8\u201d PHMS, Stainless Steel, For Attachment of Sill to Sill Flashing",
+                "quantity": 48,
+                "part_number": "PM-1006-SS",
+                "type": "accessories"
+            },
+            {
+                "description": "#12 x 3/4\u201d UFHSMS Type A, Zinc Plated Steel For End Dam Attachment",
+                "quantity": 16,
+                "part_number": "UA-1212",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block Chair Use with E2-0177 Setting Block at Sill",
+                "quantity": 32,
+                "part_number": "E1-2530",
+                "type": "accessories"
+            },
+            {
+                "description": "Side Block For Intermediate Vertical Shallow Pocket",
+                "quantity": 24,
+                "part_number": "E2-0166",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block For Sill",
+                "quantity": 32,
+                "part_number": "E2-0177",
+                "type": "accessories"
+            },
+            {
+                "description": "1-1/8\u201d \u201cW\u201d Side Block For Jamb",
+                "quantity": 16,
+                "part_number": "E2-0545",
+                "type": "accessories"
+            },
+            {
+                "description": "1/2\u201d \u201cW\u201d Side Block For Intermediate Vertical Deep Pocket",
+                "quantity": 24,
+                "part_number": "E2-0154",
+                "type": "accessories"
+            },
+            {
+                "description": "Setting Block For Intermediate Horizontal",
+                "quantity": 32,
+                "part_number": "E2-0611",
+                "type": "accessories"
+            },
+            {
+                "description": "Vertical Sill/Jamb Screw Spline Assembly (Jamb)",
+                "quantity": [
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0
+                ],
+                "part_number": "BE9-2513",
+                "type": "profiles"
+            },
+            {
+                "description": "Horizontal Sill/Jamb Screw Spline Assembly (Sill)",
+                "quantity": [
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0
+                ],
+                "part_number": "BE9-2513",
+                "type": "profiles"
+            },
+            {
+                "description": "Vertical Flush Filler",
+                "quantity": [
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0
+                ],
+                "part_number": "E9-2512",
+                "type": "profiles"
+            },
+            {
+                "description": "Vertical Two Piece Mullion Screw Spline Assembly",
+                "quantity": [
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0,
+                    8.0
+                ],
+                "part_number": "BE9-2511",
+                "type": "profiles"
+            },
+            {
+                "description": "Horizontal Horizontal Screw Spline Assembly",
+                "quantity": [
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0
+                ],
+                "part_number": "BE9-2515",
+                "type": "profiles"
+            },
+            {
+                "description": "Horizontal Head",
+                "quantity": [
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0
+                ],
+                "part_number": "BE9-2514",
+                "type": "profiles"
+            },
+            {
+                "description": "Thermal Sill Flashing",
+                "quantity": [
+                    12.0,
+                    12.0,
+                    12.0,
+                    12.0
+                ],
+                "part_number": "BE9-2578",
+                "type": "profiles"
+            },
+            {
+                "description": "Horizontal Glass Stop (Use with BE9-2514, BE9-2515, BE9-2517)",
+                "quantity": [
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0,
+                    3.0
+                ],
+                "part_number": "E9-2519",
+                "type": "profiles"
+            },
+            {
+                "description": "Glazing Gasket For 1\u201d Glazing",
+                "quantity": 896.0,
+                "part_number": "E2-0052",
+                "type": "accessories"
+            },
+            {
+                "description": "Glass Area (Adjusted)",
+                "quantity": 335.0,
+                "part_number": "N/A",
+                "type": "Glass",
+                "price": 10.5,
+                "unit": "sqft",
+                "manual": true
+            },
+            {
+                "description": "Joints Fabrication Labor",
+                "quantity": 96,
+                "part_number": "N/A",
+                "type": "Fabrication",
+                "price": 15.0,
+                "unit": "joints",
+                "manual": true
+            }
+        ],
+        "material_impact": [],
+        "custom_bay_widths": [],
+        "custom_bay_heights": [],
+        "show_qty_per_elevation": false,
+        "show_total_cost_per_elevation": false,
+        "show_discounted_cost_per_elevation": false
+    }
+}

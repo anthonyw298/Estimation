@@ -303,42 +303,101 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                 total_price = unit_price * actual_purchased_length
                 
                 # Optimize cuts across new sticks to maximize leftover lengths and minimize leftover pieces
-                # Strategy: Try different packing approaches to minimize leftover pieces
+                # Strategy: Maximize the largest leftover piece by prioritizing complete fills
                 new_leftovers = []
                 # Sort bay widths in descending order for optimal packing
                 remaining_bays_to_cut = sorted(bay_widths, reverse=True)
                 print(f"DEBUG: Bay width optimization for {part_number}: total_needed={total_needed}, used_from_leftover={used_from_leftover}, remaining_needed={remaining_needed}, num_sticks={num_bundles_needed}, min_purchase={min_purchase_length}, bays_to_cut={remaining_bays_to_cut}")
                 
-                # Process each stick separately using greedy algorithm
-                # Strategy: Fill sticks as completely as possible
+                # Improved optimization: Maximize the largest leftover piece
+                # Strategy: 
+                # 1. Fill earlier sticks as completely as possible (prefer smaller pieces that can fill exactly)
+                # 2. Save larger pieces for the last stick to maximize leftover
+                # 3. Prioritize exact fits (pieces that fill a stick completely)
+                
+                # Count pieces by size
+                from collections import Counter
+                piece_counts = Counter(remaining_bays_to_cut)
+                unique_sizes = sorted(piece_counts.keys(), reverse=True)
+                
+                # Create a working copy of piece counts
+                remaining_counts = piece_counts.copy()
+                
+                # Process sticks one at a time
                 for stick_num in range(num_bundles_needed):
                     current_stick_remaining = min_purchase_length
                     pieces_used_this_stick = []
                     
-                    print(f"DEBUG: Bay width stick {stick_num+1}, starting with {current_stick_remaining}ft, bays available: {len(remaining_bays_to_cut)}")
+                    print(f"DEBUG: Bay width stick {stick_num+1}, starting with {current_stick_remaining}ft")
                     
-                    # Greedy algorithm: repeatedly find the largest piece that fits
-                    # Continue until no more pieces fit in this stick
-                    while remaining_bays_to_cut and current_stick_remaining > EPSILON:
-                        # Find the largest piece that fits in current stick
-                        best_fit_index = None
+                    is_last_stick = (stick_num == num_bundles_needed - 1)
+                    
+                    # Greedy algorithm: repeatedly find pieces that fit
+                    # Priority: exact fits first (single piece or multiple pieces that fill exactly), then optimize based on stick position
+                    while current_stick_remaining > EPSILON:
+                        best_fit_size = None
                         best_fit_length = 0.0
+                        is_exact_fit = False
+                        num_pieces_to_use = 1
                         
-                        for i, bay_width in enumerate(remaining_bays_to_cut):
-                            if bay_width <= current_stick_remaining + EPSILON:
-                                if bay_width > best_fit_length:
-                                    best_fit_index = i
-                                    best_fit_length = bay_width
+                        # First pass: look for exact fits (single piece that fills the stick completely)
+                        for size in unique_sizes:
+                            if remaining_counts[size] > 0:
+                                # Check if this size exactly fills the stick
+                                if abs(current_stick_remaining - size) < EPSILON:
+                                    best_fit_size = size
+                                    best_fit_length = size
+                                    is_exact_fit = True
+                                    num_pieces_to_use = 1
+                                    break
                         
-                        # If we found a piece that fits, use it
-                        if best_fit_index is not None:
-                            bay_width = remaining_bays_to_cut[best_fit_index]
-                            current_stick_remaining -= bay_width
-                            pieces_used_this_stick.append(bay_width)
-                            remaining_bays_to_cut.pop(best_fit_index)
-                            print(f"DEBUG: Bay width stick {stick_num+1} - Used {bay_width}ft, remaining in stick: {current_stick_remaining}ft, bays left: {len(remaining_bays_to_cut)}")
+                        # Second pass: for earlier sticks, check if we can fill exactly with multiple smaller pieces
+                        if not is_exact_fit and not is_last_stick:
+                            # Try to find combination that fills exactly (greedy: use smaller pieces first)
+                            for size in unique_sizes[::-1]:  # Check smaller pieces first
+                                if remaining_counts[size] > 0 and size <= current_stick_remaining + EPSILON:
+                                    # Check if we can fill exactly with this size
+                                    num_fit = int(current_stick_remaining / size)
+                                    if num_fit <= remaining_counts[size] and abs(current_stick_remaining - num_fit * size) < EPSILON:
+                                        # We can fill exactly with this size!
+                                        best_fit_size = size
+                                        best_fit_length = size
+                                        is_exact_fit = True
+                                        num_pieces_to_use = num_fit
+                                        break
+                        
+                        # If no exact fit found, find best single piece that fits
+                        if not is_exact_fit:
+                            if is_last_stick:
+                                # Last stick: prefer larger pieces
+                                for size in unique_sizes:
+                                    if remaining_counts[size] > 0 and size <= current_stick_remaining + EPSILON:
+                                        if size > best_fit_length:
+                                            best_fit_size = size
+                                            best_fit_length = size
+                            else:
+                                # Earlier sticks: prefer smaller pieces to fill completely
+                                for size in unique_sizes[::-1]:
+                                    if remaining_counts[size] > 0 and size <= current_stick_remaining + EPSILON:
+                                        if best_fit_size is None or size > best_fit_length:
+                                            best_fit_size = size
+                                            best_fit_length = size
+                        
+                        if best_fit_size is not None:
+                            # Use as many as possible if it's an exact fill with multiple pieces
+                            if is_exact_fit and num_pieces_to_use > 1:
+                                for _ in range(num_pieces_to_use):
+                                    pieces_used_this_stick.append(best_fit_size)
+                                    current_stick_remaining -= best_fit_size
+                                    remaining_counts[best_fit_size] -= 1
+                                print(f"DEBUG: Bay width stick {stick_num+1} - Used {num_pieces_to_use}x{best_fit_size}ft (exact fill), remaining in stick: {current_stick_remaining}ft")
+                            else:
+                                pieces_used_this_stick.append(best_fit_size)
+                                current_stick_remaining -= best_fit_size
+                                remaining_counts[best_fit_size] -= 1
+                                print(f"DEBUG: Bay width stick {stick_num+1} - Used {best_fit_size}ft, remaining in stick: {current_stick_remaining}ft")
                         else:
-                            # No more pieces fit in this stick, move to next stick
+                            # No more pieces fit in this stick
                             print(f"DEBUG: Bay width stick {stick_num+1} - No more pieces fit, leftover: {current_stick_remaining}ft")
                             break
                     
@@ -349,8 +408,8 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                     elif current_stick_remaining >= min_purchase_length - EPSILON:
                         print(f"DEBUG: Bay width stick {stick_num+1} - Rejected leftover {current_stick_remaining}ft (full stick)")
                     
-                    # If we've used all bays, no need for more sticks
-                    if not remaining_bays_to_cut:
+                    # If all pieces are used, no need for more sticks
+                    if sum(remaining_counts.values()) == 0:
                         break
                 
                 material_impact_details['purchased_qty_or_length'] = actual_purchased_length
