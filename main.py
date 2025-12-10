@@ -716,9 +716,17 @@ def main(page: ft.Page):
             # Auto-save elevation if updating a door on an existing elevation
             is_existing_elevation = inputs["saved_elev"].value is not None and inputs["saved_elev"].value != ""
             
+            # Validate door count - must be a positive integer
+            door_count_str = inputs["door_count"].value.strip() if inputs["door_count"].value else ""
+            if not door_count_str:
+                show_snack("Door count is required")
+                return
             try:
-                count = int(inputs["door_count"].value)
-            except:
+                count = int(door_count_str)
+                if count <= 0:
+                    show_snack("Door count must be greater than 0")
+                    return
+            except ValueError:
                 show_snack("Invalid door count")
                 return
                 
@@ -737,8 +745,8 @@ def main(page: ft.Page):
             render_doors()
             save_doors_action()
             
-            # Clear door inputs - default count to 1 (per elevation)
-            inputs["door_count"].value = "1"
+            # Clear door inputs - leave count blank
+            inputs["door_count"].value = ""
             for cb in hardware_cbs.values(): cb.value = False
             state["selected_door_index"] = None
             
@@ -1043,7 +1051,11 @@ def main(page: ft.Page):
                 )
                 show_snack(f"Full Report Generated: {out}", "green")
             except Exception as ex:
-                show_snack(f"Report Error: {ex}", "red")
+                error_msg = f"Report Error: {ex}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                show_snack(error_msg, "red")
 
         # --- UI Structure ---
         
@@ -1149,7 +1161,7 @@ def main(page: ft.Page):
 
         door_col = ft.Column([
             ft.Text("DOOR MANAGER", size=14, weight="bold", color=COLOR_ACCENT),
-            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count", value="1")]),
+            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count")]),
             create_dropdown("Style", "door_stile", state["stile_options"]),
             ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
             ft.Column([cb for cb in hardware_cbs.values()], spacing=0),
