@@ -242,7 +242,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
         # NOTE: For elevation reports, we use separate leftover pools, so elevation_extra_materials_state starts empty
         # This means used_from_leftover will be 0, and we need to optimize all pieces from new material
         if isinstance(requested_qty, list) and is_bay_width_part and not summary:
-            print(f"DEBUG: Bay width path for {part_number}, requested_qty={requested_qty}, is_bay_width_part={is_bay_width_part}")
             # For bay width parts, optimize across the entire list
             bay_widths = [float(q) for q in requested_qty]
             total_needed = sum(bay_widths)
@@ -294,7 +293,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                     matched_bays.append(bay_width)
             
             remaining_needed = total_needed - used_from_leftover
-            print(f"DEBUG: Bay width calculation: total_needed={total_needed}, used_from_leftover={used_from_leftover}, remaining_needed={remaining_needed}, leftover_pieces_sim={leftover_pieces_sim}")
             
             if remaining_needed > EPSILON:
                 # Purchase new material for remaining needs
@@ -307,7 +305,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                 new_leftovers = []
                 # Sort bay widths in descending order for optimal packing
                 remaining_bays_to_cut = sorted(bay_widths, reverse=True)
-                print(f"DEBUG: Bay width optimization for {part_number}: total_needed={total_needed}, used_from_leftover={used_from_leftover}, remaining_needed={remaining_needed}, num_sticks={num_bundles_needed}, min_purchase={min_purchase_length}, bays_to_cut={remaining_bays_to_cut}")
                 
                 # Improved optimization: Maximize the largest leftover piece
                 # Strategy: 
@@ -327,8 +324,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                 for stick_num in range(num_bundles_needed):
                     current_stick_remaining = min_purchase_length
                     pieces_used_this_stick = []
-                    
-                    print(f"DEBUG: Bay width stick {stick_num+1}, starting with {current_stick_remaining}ft")
                     
                     is_last_stick = (stick_num == num_bundles_needed - 1)
                     
@@ -390,23 +385,17 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                                     pieces_used_this_stick.append(best_fit_size)
                                     current_stick_remaining -= best_fit_size
                                     remaining_counts[best_fit_size] -= 1
-                                print(f"DEBUG: Bay width stick {stick_num+1} - Used {num_pieces_to_use}x{best_fit_size}ft (exact fill), remaining in stick: {current_stick_remaining}ft")
                             else:
                                 pieces_used_this_stick.append(best_fit_size)
                                 current_stick_remaining -= best_fit_size
                                 remaining_counts[best_fit_size] -= 1
-                                print(f"DEBUG: Bay width stick {stick_num+1} - Used {best_fit_size}ft, remaining in stick: {current_stick_remaining}ft")
                         else:
                             # No more pieces fit in this stick
-                            print(f"DEBUG: Bay width stick {stick_num+1} - No more pieces fit, leftover: {current_stick_remaining}ft")
                             break
                     
                     # Save leftover from this stick (only if less than full stick)
                     if current_stick_remaining > EPSILON and current_stick_remaining < min_purchase_length - EPSILON:
                         new_leftovers.append(current_stick_remaining)
-                        print(f"DEBUG: Bay width stick {stick_num+1} - Saved leftover: {current_stick_remaining}ft")
-                    elif current_stick_remaining >= min_purchase_length - EPSILON:
-                        print(f"DEBUG: Bay width stick {stick_num+1} - Rejected leftover {current_stick_remaining}ft (full stick)")
                     
                     # If all pieces are used, no need for more sticks
                     if sum(remaining_counts.values()) == 0:
@@ -416,7 +405,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                 material_impact_details['cost_incurred'] = total_price
                 # Store new leftovers - filter out zero, negative, or full-stick leftovers
                 valid_leftovers = [lo for lo in new_leftovers if lo > EPSILON and lo < min_purchase_length - EPSILON]
-                print(f"DEBUG: Bay width optimization result for {part_number}: remaining_needed={remaining_needed}, new_leftovers={new_leftovers}, valid_leftovers={valid_leftovers}, min_purchase={min_purchase_length}")
                 if valid_leftovers:
                     material_impact_details['all_new_leftovers'] = sorted(valid_leftovers, reverse=True)
                     material_impact_details['leftover_generated_qty_or_length'] = max(valid_leftovers)
@@ -439,9 +427,7 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
         else:
             # Standard handling for single quantity or non-bay-width parts
             # If it's a list, optimize cuts across multiple pieces to maximize leftover lengths
-            print(f"DEBUG: Checking if {part_number} is list: isinstance={isinstance(requested_qty, list)}, requested_qty={requested_qty}")
             if isinstance(requested_qty, list):
-                print(f"DEBUG: List optimization path for {part_number}, pieces={requested_qty}")
                 # Sort pieces in descending order (largest first) for optimal cutting
                 pieces_needed = sorted([float(q) for q in requested_qty], reverse=True)
                 total_needed = sum(pieces_needed)
@@ -493,15 +479,11 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                     remaining_pieces_sorted = sorted(remaining_pieces, reverse=True)
                     new_leftovers = []
                     
-                    print(f"DEBUG: Optimizing cuts for {part_number}, remaining_pieces={remaining_pieces_sorted}, num_sticks={num_bundles_needed}, min_purchase={min_purchase_length}")
-                    
                     # Process each stick separately
                     # Strategy: Fill sticks as completely as possible, leaving one large leftover if possible
                     for stick_num in range(num_bundles_needed):
                         current_stick_remaining = min_purchase_length
                         pieces_used_this_stick = []
-                        
-                        print(f"DEBUG: Processing stick {stick_num+1}, starting with {current_stick_remaining}ft, pieces available: {len(remaining_pieces_sorted)}")
                         
                         # Improved greedy algorithm: repeatedly find the largest piece that fits
                         # Strategy: Try to fill sticks completely to minimize leftover pieces
@@ -523,7 +505,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                                 current_stick_remaining -= piece_len
                                 pieces_used_this_stick.append(piece_len)
                                 remaining_pieces_sorted.pop(best_fit_index)
-                                print(f"DEBUG: Stick {stick_num+1} - Used {piece_len}ft, remaining in stick: {current_stick_remaining}ft, pieces left: {len(remaining_pieces_sorted)}")
                                 
                                 # Continue trying to fit more pieces (don't break early)
                                 # Only break if stick is completely full
@@ -537,9 +518,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                         # Save leftover from this stick (only if it's less than a full stick)
                         if current_stick_remaining > EPSILON and current_stick_remaining < min_purchase_length - EPSILON:
                             new_leftovers.append(current_stick_remaining)
-                            print(f"DEBUG: Stick {stick_num+1} - Saved leftover: {current_stick_remaining}ft (used pieces: {pieces_used_this_stick})")
-                        elif current_stick_remaining >= min_purchase_length - EPSILON:
-                            print(f"DEBUG: Stick {stick_num+1} - Rejected leftover {current_stick_remaining}ft (full stick or larger)")
                         
                         # If we've used all pieces, no need for more sticks
                         if not remaining_pieces_sorted:
@@ -559,12 +537,10 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                         material_impact_details['all_new_leftovers'] = sorted(valid_leftovers, reverse=True)
                         # Also set the largest for backward compatibility
                         material_impact_details['leftover_generated_qty_or_length'] = max(valid_leftovers)
-                        print(f"DEBUG: Generated leftovers for {part_number}: {material_impact_details['all_new_leftovers']}, remaining_pieces={remaining_pieces}, total_needed={total_needed}")
                     else:
                         # No valid leftovers
                         material_impact_details['all_new_leftovers'] = []
                         material_impact_details['leftover_generated_qty_or_length'] = 0.0
-                        print(f"DEBUG: No valid leftovers for {part_number}, new_leftovers={new_leftovers}, min_purchase={min_purchase_length}")
                 else:
                     # All needs met from leftovers
                     total_price = 0.0
@@ -575,7 +551,6 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                 material_impact_details['leftover_pieces_consumed'] = leftover_pieces_to_use
             else:
                 # Single quantity - use existing logic
-                print(f"DEBUG: Single quantity path for {part_number}, requested_qty={requested_qty}")
                 suitable_index = None
                 
                 if not summary:
@@ -610,11 +585,9 @@ def get_price_by_part(part_number, requested_qty, finish=None, current_extra_mat
                     if leftover_piece > EPSILON and leftover_piece < min_purchase_length - EPSILON: 
                         material_impact_details['leftover_generated_qty_or_length'] = leftover_piece
                         material_impact_details['all_new_leftovers'] = [leftover_piece]
-                        print(f"DEBUG: Single quantity leftover for {part_number}: {leftover_piece}")
                     else:
                         material_impact_details['leftover_generated_qty_or_length'] = 0.0
                         material_impact_details['all_new_leftovers'] = []
-                        print(f"DEBUG: Single quantity - rejected leftover {leftover_piece} for {part_number} (min_purchase={min_purchase_length})")
         
         material_impact_details['type_processed_as'] = 'profile' # Even if it's E2-0052, it's processed like a profile for inventory
 
@@ -967,24 +940,18 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
             part_extra['length_pieces'] = []
         
         if all_new_leftovers:
-            print(f"DEBUG: Adding {len(all_new_leftovers)} leftovers to {part_number}, min_purchase={min_purchase_length}")
             for leftover in all_new_leftovers:
                 if leftover > EPSILON and leftover < min_purchase_length - EPSILON:
                     part_extra['length_pieces'].append(leftover)
-                    print(f"DEBUG: Added leftover {leftover} to {part_number}")
-                else:
-                    print(f"DEBUG: Rejected leftover {leftover} for {part_number} (EPSILON={EPSILON}, min_purchase={min_purchase_length})")
         elif leftover_generated_qty_or_length > EPSILON:
             # Fallback to single leftover if all_new_leftovers not provided
             # Validate: must be < min_purchase_length
             if leftover_generated_qty_or_length < min_purchase_length - EPSILON:
                 part_extra['length_pieces'].append(leftover_generated_qty_or_length)
-                print(f"DEBUG: Added single leftover {leftover_generated_qty_or_length} to {part_number}")
         
         # Sort the list after adding new leftovers
         if isinstance(part_extra.get('length_pieces'), list):
             part_extra['length_pieces'].sort()
-            print(f"DEBUG: Final length_pieces for {part_number}: {part_extra['length_pieces']}")
 
     elif type_processed_as == 'accessory':
         current_qty = part_extra.get('quantity', 0)
