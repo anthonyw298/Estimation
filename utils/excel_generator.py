@@ -1243,30 +1243,71 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     }
     
     # Load percentages from settings file
-    if summary_settings_path and os.path.exists(summary_settings_path):
-        try:
-            with open(summary_settings_path, 'r') as f:
-                settings_data = json.load(f)
-                summary_pcts = {
-                    "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
-                    "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
-                    "Admin and Management": settings_data.get("admin_management_pct", 0.0),
-                    "Engineering": settings_data.get("engineering_pct", 0.0),
-                    "Packaging Materials": settings_data.get("packaging_materials_pct", 0.0),
-                    "Shipping and Transport": settings_data.get("shipping_transport_pct", 0.0),
-                    "Commissions": settings_data.get("commissions_pct", 0.0)
-                }
-                print(f"✅ Loaded summary percentages from {summary_settings_path}")
-                print(f"   Percentages: {summary_pcts}")
-        except Exception as e:
-            print(f"❌ Error loading summary percentages from settings: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        if summary_settings_path:
-            print(f"⚠️ Summary settings file doesn't exist: {summary_settings_path}")
-        else:
-            print(f"⚠️ Summary settings path not provided")
+    print(f"🔍 Attempting to load settings from: {summary_settings_path}")
+    print(f"   Elevations path: {elevations_json_path}")
+    
+    # Always try to construct path from elevations path first (most reliable)
+    settings_paths_to_try = []
+    
+    # 1. Try provided path
+    if summary_settings_path:
+        settings_paths_to_try.append(summary_settings_path)
+        settings_paths_to_try.append(os.path.abspath(summary_settings_path))
+    
+    # 2. Construct from elevations path (most reliable)
+    elev_dir = os.path.dirname(elevations_json_path)
+    elev_basename = os.path.basename(elevations_json_path)
+    if "_Elevations.json" in elev_basename:
+        project_base = elev_basename.replace("_Elevations.json", "")
+        constructed_path = os.path.join(elev_dir, f"{project_base}_Settings.json")
+        settings_paths_to_try.append(constructed_path)
+        print(f"   Constructed from elevations: {constructed_path}")
+    
+    # 3. Try in same directory as elevations
+    if summary_settings_path:
+        settings_paths_to_try.append(os.path.join(elev_dir, os.path.basename(summary_settings_path)))
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_paths = []
+    for path in settings_paths_to_try:
+        if path and path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+    
+    settings_loaded = False
+    for path_to_try in unique_paths:
+        if os.path.exists(path_to_try):
+            try:
+                print(f"   ✅ Found file, trying to read: {path_to_try}")
+                with open(path_to_try, 'r') as f:
+                    settings_data = json.load(f)
+                    summary_pcts = {
+                        "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
+                        "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
+                        "Admin and Management": settings_data.get("admin_management_pct", 0.0),
+                        "Engineering": settings_data.get("engineering_pct", 0.0),
+                        "Packaging Materials": settings_data.get("packaging_materials_pct", 0.0),
+                        "Shipping and Transport": settings_data.get("shipping_transport_pct", 0.0),
+                        "Commissions": settings_data.get("commissions_pct", 0.0)
+                    }
+                    print(f"✅ Loaded summary percentages from {path_to_try}")
+                    print(f"   Percentages: {summary_pcts}")
+                    settings_loaded = True
+                    break
+            except Exception as e:
+                print(f"   ❌ Error reading {path_to_try}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+    
+    if not settings_loaded:
+        print(f"⚠️ Could not load settings from any path. Tried:")
+        for path_to_try in unique_paths:
+            exists = "✅ EXISTS" if os.path.exists(path_to_try) else "❌ NOT FOUND"
+            print(f"   {exists}: {path_to_try}")
+        if not summary_settings_path:
+            print(f"   ⚠️ No summary settings path was provided to create_summary_sheet")
     
     # Calculate base amount: use discounted total only
     base_amount = final_discounted_total
@@ -1300,9 +1341,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         print(f"✅ Miscellaneous Cost section added with {items_added} items, total: ${summary_total:.2f}")
     else:
         # Show a message if no percentages are set
-        ws.cell(row=summary_section_row, column=6, value="(No miscellaneous costs configured)").font = Font(italic=True, color="808080")
+        ws.cell(row=summary_section_row, column=6, value="(No miscellaneous costs configured)").font = Font(italic=True)
         summary_section_row += 1
         print(f"⚠️ No miscellaneous cost items to add (all percentages are 0)")
+        print(f"   Summary settings path was: {summary_settings_path}")
+        print(f"   All percentages: {summary_pcts}")
+    
+    print(f"📝 Miscellaneous Cost section written to rows {gt_row + 5} to {summary_section_row}")
 
     _autofit_columns(ws, 1, 10, start_row, summary_section_row)
     _clean_trailing_blank_rows(ws, 1)
@@ -1936,15 +1981,39 @@ def generate_excel_report(
     save_extra_materials(overall_current_extra_materials_state, private_extra_materials_path)
 
     summary_ws = wb.create_sheet(title="Summary")
-    # Get summary settings path
+    # Get summary settings path - always construct from elevations path to ensure consistency
+    private_summary_settings_path = None
     if summary_settings_path:
-        summary_settings_path_abs = os.path.abspath(summary_settings_path)
-        if os.path.dirname(summary_settings_path_abs) == private_projects_dir and os.path.exists(summary_settings_path_abs):
-            private_summary_settings_path = summary_settings_path_abs
+        # Extract project base name from elevations path
+        elev_basename = os.path.basename(private_elevations_path)
+        if "_Elevations.json" in elev_basename:
+            project_base = elev_basename.replace("_Elevations.json", "")
+            # Construct settings path in the same directory as elevations
+            private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
+            print(f"🔍 Constructed settings path from elevations: {private_summary_settings_path}")
         else:
-            private_summary_settings_path = os.path.join(private_projects_dir, os.path.basename(summary_settings_path))
+            # Fallback to provided path
+            summary_settings_path_abs = os.path.abspath(summary_settings_path)
+            if os.path.exists(summary_settings_path_abs):
+                private_summary_settings_path = summary_settings_path_abs
+                print(f"🔍 Using provided settings path: {private_summary_settings_path}")
+            else:
+                # Try in private projects dir
+                private_summary_settings_path = os.path.join(private_projects_dir, os.path.basename(summary_settings_path))
+                print(f"🔍 Trying constructed path: {private_summary_settings_path}")
     else:
-        private_summary_settings_path = None
+        # Try to construct from elevations path even if not provided
+        elev_basename = os.path.basename(private_elevations_path)
+        if "_Elevations.json" in elev_basename:
+            project_base = elev_basename.replace("_Elevations.json", "")
+            private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
+            print(f"🔍 No settings path provided, constructing from elevations: {private_summary_settings_path}")
+    
+    if private_summary_settings_path and os.path.exists(private_summary_settings_path):
+        print(f"✅ Settings file found: {private_summary_settings_path}")
+    elif private_summary_settings_path:
+        print(f"⚠️ Settings file not found: {private_summary_settings_path}")
+    
     create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb, summary_settings_path=private_summary_settings_path)
     
     final_save_path = os.path.join(public_reports_dir, os.path.basename(excel_path)) if mode == "export_all" else private_excel_path

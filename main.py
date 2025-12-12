@@ -784,6 +784,49 @@ def main(page: ft.Page):
         def save_elevation_action(e):
             is_update = inputs["save_btn"].text == "UPDATE ELEVATION"
             try:
+                # Auto-save miscellaneous cost settings before generating report
+                def get_pct(key):
+                    field = inputs.get(key)
+                    if field is None:
+                        return 0.0
+                    val = field.value if hasattr(field, 'value') else ""
+                    try:
+                        return float(val) if val and str(val).strip() else 0.0
+                    except (ValueError, AttributeError, TypeError):
+                        return 0.0
+                
+                misc_settings = {
+                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
+                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
+                    "admin_management_pct": get_pct("admin_management_pct"),
+                    "engineering_pct": get_pct("engineering_pct"),
+                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
+                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
+                    "commissions_pct": get_pct("commissions_pct")
+                }
+                paths = get_project_paths(state["current_project"])
+                save_project_settings(state["current_project"], misc_settings)
+                print(f"💾 Auto-saved miscellaneous cost settings before report generation: {misc_settings}")
+                print(f"   Settings file location: {paths['settings']}")
+                # Verify file was created and wait a moment for file system
+                import time
+                time.sleep(0.1)  # Small delay to ensure file is written
+                if os.path.exists(paths["settings"]):
+                    print(f"   ✅ Settings file exists at: {paths['settings']}")
+                    try:
+                        with open(paths["settings"], 'r') as f:
+                            saved_data = json.load(f)
+                            print(f"   ✅ Verified saved data: {saved_data}")
+                            # Double-check the values match
+                            if saved_data != misc_settings:
+                                print(f"   ⚠️ WARNING: Saved data doesn't match! Expected: {misc_settings}, Got: {saved_data}")
+                    except Exception as e:
+                        print(f"   ❌ Error reading saved file: {e}")
+                else:
+                    print(f"   ❌ Settings file NOT found at: {paths['settings']}")
+                    print(f"   Current working directory: {os.getcwd()}")
+                    print(f"   Absolute path would be: {os.path.abspath(paths['settings'])}")
+                
                 elev = inputs["type"].value.strip() if inputs["type"].value else ""
                 if not elev: raise ValueError("Elevation Name Required")
                 
@@ -1110,9 +1153,14 @@ def main(page: ft.Page):
                         print(f"⚠️ Field '{key}' not found in inputs")
                         return 0.0
                     val = field.value if hasattr(field, 'value') else ""
+                    if not val or not str(val).strip():
+                        return 0.0
                     try:
-                        return float(val) if val and str(val).strip() else 0.0
-                    except (ValueError, AttributeError, TypeError):
+                        pct_val = float(str(val).strip())
+                        print(f"   {key}: '{val}' -> {pct_val}")
+                        return pct_val
+                    except (ValueError, AttributeError, TypeError) as err:
+                        print(f"   ⚠️ Could not convert {key} value '{val}': {err}")
                         return 0.0
                 
                 settings = {
@@ -1126,8 +1174,93 @@ def main(page: ft.Page):
                 }
                 
                 print(f"💾 Saving summary settings: {settings}")
+                paths = get_project_paths(state["current_project"])
+                
+                # Save settings with explicit file flush
                 save_project_settings(state["current_project"], settings)
-                show_snack("Miscellaneous cost settings saved", "green")
+                
+                # Verify file was written correctly
+                import time
+                time.sleep(0.2)  # Small delay to ensure file is written
+                
+                if os.path.exists(paths["settings"]):
+                    try:
+                        with open(paths["settings"], 'r') as f:
+                            saved_data = json.load(f)
+                            print(f"✅ Verified saved settings: {saved_data}")
+                            if saved_data != settings:
+                                print(f"⚠️ WARNING: Saved data doesn't match! Expected: {settings}, Got: {saved_data}")
+                    except Exception as verify_err:
+                        print(f"❌ Error verifying saved file: {verify_err}")
+                else:
+                    print(f"❌ Settings file NOT found at: {paths['settings']}")
+                    show_snack("Error: Settings file not created", "red")
+                    return
+                
+                # Check if any percentages are > 0
+                has_percentages = any(pct > 0 for pct in settings.values())
+                print(f"📊 Has non-zero percentages: {has_percentages}")
+                
+                # Regenerate the Excel report to show the updated miscellaneous summary
+                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                    try:
+                        print(f"🔄 Regenerating report with updated miscellaneous cost settings...")
+                        print(f"   Settings file path: {paths['settings']}")
+                        print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
+                        print(f"   Excel file path: {paths['excel']}")
+                        
+                        # Generate to a temporary location first, then copy to main project file
+                        # This ensures the file is fully written before we try to use it
+                        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        os.makedirs("reports", exist_ok=True)
+                        temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
+                        
+                        generate_excel_report(
+                            temp_report_path, 
+                            paths["elevations"], 
+                            paths["materials"],
+                            "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
+                            None, False, None, None, mode="export_all",
+                            summary_settings_path=paths["settings"]
+                        )
+                        
+                        # Copy the generated report to the main project Excel file location
+                        import shutil
+                        if os.path.exists(temp_report_path):
+                            # Ensure the directory exists
+                            excel_dir = os.path.dirname(paths["excel"])
+                            if excel_dir:
+                                os.makedirs(excel_dir, exist_ok=True)
+                            
+                            # Copy to main project file
+                            shutil.copy2(temp_report_path, paths["excel"])
+                            print(f"✅ Copied updated report to main project file: {paths['excel']}")
+                            
+                            # Clean up temp file
+                            try:
+                                os.remove(temp_report_path)
+                            except:
+                                pass
+                        else:
+                            print(f"⚠️ Generated report file not found at: {temp_report_path}")
+                        
+                        print(f"✅ Report regenerated successfully with miscellaneous cost settings")
+                        if has_percentages:
+                            show_snack("Miscellaneous cost settings saved and report updated. Please close and reopen Excel to see changes.", "green")
+                        else:
+                            show_snack("Settings saved (all percentages are 0%)", "orange")
+                    except Exception as report_err:
+                        error_msg = f"Settings saved but report update failed: {str(report_err)}"
+                        print(f"❌ {error_msg}")
+                        import traceback
+                        traceback.print_exc()
+                        show_snack("Settings saved, but report update failed", "orange")
+                else:
+                    if has_percentages:
+                        show_snack("Miscellaneous cost settings saved", "green")
+                    else:
+                        show_snack("Settings saved (all percentages are 0%)", "orange")
+                
                 print(f"✅ Settings saved successfully")
                 page.update()
             except Exception as ex:
