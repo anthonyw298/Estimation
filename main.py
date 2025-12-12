@@ -111,8 +111,29 @@ def main(page: ft.Page):
         return {
             "excel": f"{base}_Report.xlsx",
             "elevations": f"{base}_Elevations.json",
-            "materials": f"{base}_ExtraMaterials.json"
+            "materials": f"{base}_ExtraMaterials.json",
+            "settings": f"{base}_Settings.json"
         }
+    
+    def load_project_settings(project_name):
+        paths = get_project_paths(project_name)
+        if os.path.exists(paths["settings"]):
+            try:
+                with open(paths["settings"], 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+    
+    def save_project_settings(project_name, settings):
+        paths = get_project_paths(project_name)
+        # Ensure directory exists
+        settings_dir = os.path.dirname(paths["settings"])
+        if settings_dir:
+            os.makedirs(settings_dir, exist_ok=True)
+        with open(paths["settings"], 'w') as f:
+            json.dump(settings, f, indent=4)
+        print(f"💾 Saved project settings to: {paths['settings']}")
 
     def load_elevations(project_name):
         paths = get_project_paths(project_name)
@@ -954,7 +975,8 @@ def main(page: ft.Page):
                         calculated_outputs=data["calculated_outputs"], 
                         doors=state["current_doors"],
                         custom_bay_widths=data.get("custom_bay_widths", []), 
-                        custom_bay_heights=data.get("custom_bay_heights", [])
+                        custom_bay_heights=data.get("custom_bay_heights", []),
+                        summary_settings_path=paths["settings"]
                     )
                     # Check if file was actually created
                     if os.path.exists(paths["excel"]):
@@ -1018,7 +1040,8 @@ def main(page: ft.Page):
                         bays_wide=0, bays_tall=0, opening_width=0, opening_height=0,
                         sqft_per_type=0, total_sqft=0, perimeter_ft=0, total_perimeter_ft=0,
                         calculated_outputs=[], doors=None, 
-                        delete_elevation_type=elev # Explicitly pass deleted name for cleanup if needed inside generator
+                        delete_elevation_type=elev, # Explicitly pass deleted name for cleanup if needed inside generator
+                        summary_settings_path=paths["settings"]
                     )
                 except Exception as ex:
                     print(f"Error regenerating report after delete: {ex}")
@@ -1040,6 +1063,25 @@ def main(page: ft.Page):
 
         def gen_full_report(e):
             try:
+                # Save summary settings before generating report
+                def get_pct(key):
+                    val = inputs.get(key, ft.TextField()).value
+                    try:
+                        return float(val) if val and val.strip() else 0.0
+                    except (ValueError, AttributeError):
+                        return 0.0
+                
+                settings = {
+                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
+                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
+                    "admin_management_pct": get_pct("admin_management_pct"),
+                    "engineering_pct": get_pct("engineering_pct"),
+                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
+                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
+                    "commissions_pct": get_pct("commissions_pct")
+                }
+                save_project_settings(state["current_project"], settings)
+                
                 paths = get_project_paths(state["current_project"])
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 out = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
@@ -1047,7 +1089,8 @@ def main(page: ft.Page):
                 
                 generate_excel_report(
                     out, paths["elevations"], paths["materials"],
-                    "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all"
+                    "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
+                    summary_settings_path=paths["settings"]
                 )
                 show_snack(f"Full Report Generated: {out}", "green")
             except Exception as ex:
@@ -1058,6 +1101,98 @@ def main(page: ft.Page):
                 show_snack(error_msg, "red")
 
         # --- UI Structure ---
+        
+        def save_summary_settings(e):
+            try:
+                def get_pct(key):
+                    field = inputs.get(key)
+                    if field is None:
+                        print(f"⚠️ Field '{key}' not found in inputs")
+                        return 0.0
+                    val = field.value if hasattr(field, 'value') else ""
+                    try:
+                        return float(val) if val and str(val).strip() else 0.0
+                    except (ValueError, AttributeError, TypeError):
+                        return 0.0
+                
+                settings = {
+                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
+                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
+                    "admin_management_pct": get_pct("admin_management_pct"),
+                    "engineering_pct": get_pct("engineering_pct"),
+                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
+                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
+                    "commissions_pct": get_pct("commissions_pct")
+                }
+                
+                print(f"💾 Saving summary settings: {settings}")
+                save_project_settings(state["current_project"], settings)
+                show_snack("Miscellaneous cost settings saved", "green")
+                print(f"✅ Settings saved successfully")
+                page.update()
+            except Exception as ex:
+                error_msg = f"Error saving settings: {str(ex)}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                show_snack(error_msg, "red")
+        
+        # Summary Section Percentages (Global Settings) - Better organized layout
+        summary_settings_container = ft.Column([
+            ft.Row([
+                ft.Text("MISCELLANEOUS COST SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                ft.ElevatedButton(
+                    "SAVE", 
+                    bgcolor=COLOR_ACCENT, 
+                    color="white", 
+                    on_click=save_summary_settings,
+                    height=40,
+                    width=120
+                )
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Text("Enter percentages for summary calculations (leave blank for 0%)", size=12, color=COLOR_TEXT_DIM, italic=True),
+            ft.Divider(height=1, color=COLOR_SURFACE),
+            ft.Container(height=20),  # Spacing
+            ft.Row([
+                ft.Column([
+                    create_input_field("Overhead Materials %", "overhead_materials_pct", numeric=True, expand=False),
+                    create_input_field("Admin and Management %", "admin_management_pct", numeric=True, expand=False),
+                    create_input_field("Packaging Materials %", "packaging_materials_pct", numeric=True, expand=False),
+                    create_input_field("Commissions %", "commissions_pct", numeric=True, expand=False)
+                ], spacing=15, expand=True),
+                ft.Container(width=30),  # Spacing between columns
+                ft.Column([
+                    create_input_field("Overhead Labor %", "overhead_labor_pct", numeric=True, expand=False),
+                    create_input_field("Engineering %", "engineering_pct", numeric=True, expand=False),
+                    create_input_field("Shipping and Transport %", "shipping_transport_pct", numeric=True, expand=False),
+                    ft.Container(height=48)  # Spacer to align with 4th field
+                ], spacing=15, expand=True)
+            ], spacing=0)
+        ], spacing=15, scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        # Load saved summary percentages after fields are created
+        project_settings = load_project_settings(state["current_project"])
+        if inputs.get("overhead_materials_pct"):
+            pct = project_settings.get("overhead_materials_pct", 0.0)
+            inputs["overhead_materials_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("overhead_labor_pct"):
+            pct = project_settings.get("overhead_labor_pct", 0.0)
+            inputs["overhead_labor_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("admin_management_pct"):
+            pct = project_settings.get("admin_management_pct", 0.0)
+            inputs["admin_management_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("engineering_pct"):
+            pct = project_settings.get("engineering_pct", 0.0)
+            inputs["engineering_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("packaging_materials_pct"):
+            pct = project_settings.get("packaging_materials_pct", 0.0)
+            inputs["packaging_materials_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("shipping_transport_pct"):
+            pct = project_settings.get("shipping_transport_pct", 0.0)
+            inputs["shipping_transport_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("commissions_pct"):
+            pct = project_settings.get("commissions_pct", 0.0)
+            inputs["commissions_pct"].value = str(pct) if pct > 0 else ""
         
         # Header
         header = ft.Row([
@@ -1173,17 +1308,37 @@ def main(page: ft.Page):
             door_list_col
         ], scroll=ft.ScrollMode.AUTO, expand=True)
 
+        # Create Tabs
+        tabs = ft.Tabs(
+            selected_index=0,
+            tabs=[
+                ft.Tab(
+                    text="Elevations",
+                    content=ft.Row([
+                        ft.Container(
+                            content=ft.Column([saved_dd, ft.Divider(color="transparent"), form_col]),
+                            expand=2, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
+                        ),
+                        ft.Container(
+                            content=door_col,
+                            expand=1, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
+                        )
+                    ], expand=True)
+                ),
+                ft.Tab(
+                    text="Miscellaneous Cost",
+                    content=ft.Container(
+                        content=summary_settings_container,
+                        padding=20,
+                        expand=True
+                    )
+                )
+            ],
+            expand=True
+        )
+        
         # Main Layout
-        main_content = ft.Row([
-            ft.Container(
-                content=ft.Column([saved_dd, ft.Divider(color="transparent"), form_col]),
-                expand=2, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
-            ),
-            ft.Container(
-                content=door_col,
-                expand=1, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
-            )
-        ], expand=True)
+        main_content = tabs
 
         # Initial visibility check
         # The view is returned but not yet added to page.views in route_change,

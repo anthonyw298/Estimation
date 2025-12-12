@@ -618,7 +618,7 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     return current_row + 1, section_material_impacts, section_totals
 
 
-def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb=None):
+def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb=None, summary_settings_path=None):
     """
     Reads elevation data, aggregates quantities and prices by part number across all elevations,
     and writes a clean summary section into the worksheet, grouped by profiles, accessories, doors, glass, and labor.
@@ -1226,7 +1226,85 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=gt_row+3, column=7, value=f"{reuse_pct_of_gt:.2f}%").font = Font(bold=True)
     ws.cell(row=gt_row+3, column=7).border = Border(right=Side(style='thin'), bottom=Side(style='thin'))
 
-    _autofit_columns(ws, 1, 10, start_row, gt_row + 4)
+    # Summary Section (Miscellaneous Cost) - Always show this section
+    summary_section_row = gt_row + 5
+    ws.cell(row=summary_section_row, column=6, value="MISCELLANEOUS COST").font = Font(bold=True, size=12)
+    summary_section_row += 1
+    
+    # Get summary percentages from project settings file
+    summary_pcts = {
+        "Overhead Materials": 0.0,
+        "Overhead Labor": 0.0,
+        "Admin and Management": 0.0,
+        "Engineering": 0.0,
+        "Packaging Materials": 0.0,
+        "Shipping and Transport": 0.0,
+        "Commissions": 0.0
+    }
+    
+    # Load percentages from settings file
+    if summary_settings_path and os.path.exists(summary_settings_path):
+        try:
+            with open(summary_settings_path, 'r') as f:
+                settings_data = json.load(f)
+                summary_pcts = {
+                    "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
+                    "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
+                    "Admin and Management": settings_data.get("admin_management_pct", 0.0),
+                    "Engineering": settings_data.get("engineering_pct", 0.0),
+                    "Packaging Materials": settings_data.get("packaging_materials_pct", 0.0),
+                    "Shipping and Transport": settings_data.get("shipping_transport_pct", 0.0),
+                    "Commissions": settings_data.get("commissions_pct", 0.0)
+                }
+                print(f"✅ Loaded summary percentages from {summary_settings_path}")
+                print(f"   Percentages: {summary_pcts}")
+        except Exception as e:
+            print(f"❌ Error loading summary percentages from settings: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        if summary_settings_path:
+            print(f"⚠️ Summary settings file doesn't exist: {summary_settings_path}")
+        else:
+            print(f"⚠️ Summary settings path not provided")
+    
+    # Calculate base amount: use discounted total only
+    base_amount = final_discounted_total
+    print(f"📊 Miscellaneous Cost section - Base amount (discounted total): ${base_amount:.2f}")
+    
+    # Add summary items (only show items with percentages > 0)
+    summary_total = 0.0
+    items_added = 0
+    for label, pct in summary_pcts.items():
+        if pct > 0:
+            amount = base_amount * (pct / 100.0)
+            summary_total += amount
+            items_added += 1
+            
+            ws.cell(row=summary_section_row, column=6, value=label)
+            ws.cell(row=summary_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            summary_section_row += 1
+            print(f"   {label}: {pct}% = ${amount:.2f}")
+    
+    # Add Summary Total if any percentages were set
+    if summary_total > 0:
+        # Separator line
+        ws.cell(row=summary_section_row, column=6).border = Border(top=Side(style='thin'))
+        ws.cell(row=summary_section_row, column=7).border = Border(top=Side(style='thin'))
+        summary_section_row += 1
+        
+        ws.cell(row=summary_section_row, column=6, value="MISCELLANEOUS COST TOTAL").font = Font(bold=True)
+        ws.cell(row=summary_section_row, column=7, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=summary_section_row, column=7).font = Font(bold=True)
+        summary_section_row += 1
+        print(f"✅ Miscellaneous Cost section added with {items_added} items, total: ${summary_total:.2f}")
+    else:
+        # Show a message if no percentages are set
+        ws.cell(row=summary_section_row, column=6, value="(No miscellaneous costs configured)").font = Font(italic=True, color="808080")
+        summary_section_row += 1
+        print(f"⚠️ No miscellaneous cost items to add (all percentages are 0)")
+
+    _autofit_columns(ws, 1, 10, start_row, summary_section_row)
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
@@ -1258,7 +1336,7 @@ def generate_excel_report(
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
     calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None
+    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None, summary_settings_path=None
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 9
@@ -1858,7 +1936,16 @@ def generate_excel_report(
     save_extra_materials(overall_current_extra_materials_state, private_extra_materials_path)
 
     summary_ws = wb.create_sheet(title="Summary")
-    create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb)
+    # Get summary settings path
+    if summary_settings_path:
+        summary_settings_path_abs = os.path.abspath(summary_settings_path)
+        if os.path.dirname(summary_settings_path_abs) == private_projects_dir and os.path.exists(summary_settings_path_abs):
+            private_summary_settings_path = summary_settings_path_abs
+        else:
+            private_summary_settings_path = os.path.join(private_projects_dir, os.path.basename(summary_settings_path))
+    else:
+        private_summary_settings_path = None
+    create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb, summary_settings_path=private_summary_settings_path)
     
     final_save_path = os.path.join(public_reports_dir, os.path.basename(excel_path)) if mode == "export_all" else private_excel_path
     
