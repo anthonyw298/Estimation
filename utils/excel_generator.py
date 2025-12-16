@@ -1085,6 +1085,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 "Description", "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
                 "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
             ]
+    
+    # Track category totals for markup calculations (initialize before loop)
+    category_totals = {
+        "PROFILES": {"discounted": 0.0, "residual": 0.0},
+        "ACCESSORIES": {"discounted": 0.0, "residual": 0.0},
+        "GASKETS": {"discounted": 0.0, "residual": 0.0},
+        "DOORS": {"discounted": 0.0, "residual": 0.0},
+        "GLASS": {"discounted": 0.0, "residual": 0.0},
+        "LABOR": {"discounted": 0.0, "residual": 0.0}
+    }
 
     for category, items in categories.items():
         if not items:
@@ -1131,6 +1141,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         grand_original_total += section_original_total
         grand_discounted_total += section_total_cost
         grand_residual_total += section_residual_total
+        
+        # Track category totals for markup calculations
+        if category in category_totals:
+            category_totals[category]["discounted"] = section_total_cost
+            category_totals[category]["residual"] = section_residual_total
 
         # Add Section Totals for Summary
         # Convert category to proper label (e.g., "PROFILES" -> "Profile Cost")
@@ -1157,7 +1172,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
         current_row += 2
-
+    
     # Grand Totals Block
     gt_row = current_row + 2
     
@@ -1348,8 +1363,155 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         print(f"   All percentages: {summary_pcts}")
     
     print(f"📝 Miscellaneous Cost section written to rows {gt_row + 5} to {summary_section_row}")
-
-    _autofit_columns(ws, 1, 10, start_row, summary_section_row)
+    
+    # Markups Section - After Miscellaneous Costs
+    markup_section_row = summary_section_row + 2
+    ws.cell(row=markup_section_row, column=6, value="MARKUPS").font = Font(bold=True, size=12)
+    markup_section_row += 1
+    
+    # Get markup percentages from project settings file (same file as miscellaneous)
+    markup_pcts = {
+        "Profit on Material": 0.0,
+        "Profit on Waste": 0.0,
+        "Profit on Glass Purchase": 0.0,
+        "Profit on Wages": 0.0,
+        "Planning / Technical Office": 0.0,
+        "Commission": 0.0
+    }
+    
+    # Load markup percentages from settings file (same path as miscellaneous)
+    # Try to load from the same paths we tried for miscellaneous settings
+    markup_settings_loaded = False
+    for path_to_try_markup in unique_paths:
+        if os.path.exists(path_to_try_markup):
+            try:
+                print(f"   🔍 Loading markup settings from: {path_to_try_markup}")
+                with open(path_to_try_markup, 'r') as f:
+                    settings_data = json.load(f)
+                    markup_pcts = {
+                        "Profit on Material": settings_data.get("profit_on_material_pct", 0.0),
+                        "Profit on Waste": settings_data.get("profit_on_waste_pct", 0.0),
+                        "Profit on Glass Purchase": settings_data.get("profit_on_glass_pct", 0.0),
+                        "Profit on Wages": settings_data.get("profit_on_wages_pct", 0.0),
+                        "Planning / Technical Office": settings_data.get("planning_technical_pct", 0.0),
+                        "Commission": settings_data.get("commission_pct", 0.0)
+                    }
+                    print(f"✅ Loaded markup percentages: {markup_pcts}")
+                    markup_settings_loaded = True
+                    break
+            except Exception as e:
+                print(f"   ❌ Error reading markup settings from {path_to_try_markup}: {e}")
+                continue
+    
+    if not markup_settings_loaded:
+        print(f"⚠️ Could not load markup settings from any path")
+    
+    # Calculate markups based on appropriate bases
+    markup_total = 0.0
+    items_added = 0
+    
+    # 1. Profit on Material: sum of profiles, accessories, gaskets, and doors (NOT fabrication or glass)
+    material_base = (category_totals["PROFILES"]["discounted"] + 
+                     category_totals["ACCESSORIES"]["discounted"] + 
+                     category_totals["GASKETS"]["discounted"] + 
+                     category_totals["DOORS"]["discounted"])
+    if markup_pcts["Profit on Material"] > 0 and material_base > 0:
+        amount = material_base * (markup_pcts["Profit on Material"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Profit on Material")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Profit on Material: {markup_pcts['Profit on Material']}% of ${material_base:.2f} = ${amount:.2f}")
+    
+    # 2. Profit on Waste: sum of residual discounted price
+    waste_base = grand_residual_total
+    if markup_pcts["Profit on Waste"] > 0 and waste_base > 0:
+        amount = waste_base * (markup_pcts["Profit on Waste"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Profit on Waste")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Profit on Waste: {markup_pcts['Profit on Waste']}% of ${waste_base:.2f} = ${amount:.2f}")
+    
+    # 3. Profit on Glass Purchase: sum of glass
+    glass_base = category_totals["GLASS"]["discounted"]
+    if markup_pcts["Profit on Glass Purchase"] > 0 and glass_base > 0:
+        amount = glass_base * (markup_pcts["Profit on Glass Purchase"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Profit on Glass Purchase")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Profit on Glass Purchase: {markup_pcts['Profit on Glass Purchase']}% of ${glass_base:.2f} = ${amount:.2f}")
+    
+    # 4. Profit on Wages: sum of fabrication (labor)
+    wages_base = category_totals["LABOR"]["discounted"]
+    if markup_pcts["Profit on Wages"] > 0 and wages_base > 0:
+        amount = wages_base * (markup_pcts["Profit on Wages"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Profit on Wages")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Profit on Wages: {markup_pcts['Profit on Wages']}% of ${wages_base:.2f} = ${amount:.2f}")
+    
+    # 5. Planning / Technical Office: discounted total (NOT including miscellaneous) * percentage
+    if markup_pcts["Planning / Technical Office"] > 0 and final_discounted_total > 0:
+        amount = final_discounted_total * (markup_pcts["Planning / Technical Office"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Planning / Technical Office")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Planning / Technical Office: {markup_pcts['Planning / Technical Office']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
+    
+    # 6. Commission: same as Planning/Technical Office (discounted total * percentage)
+    if markup_pcts["Commission"] > 0 and final_discounted_total > 0:
+        amount = final_discounted_total * (markup_pcts["Commission"] / 100.0)
+        markup_total += amount
+        items_added += 1
+        ws.cell(row=markup_section_row, column=6, value="Commission")
+        ws.cell(row=markup_section_row, column=7, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        markup_section_row += 1
+        print(f"   Commission: {markup_pcts['Commission']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
+    
+    # Add Markup Total if any percentages were set
+    if markup_total > 0:
+        # Separator line
+        ws.cell(row=markup_section_row, column=6).border = Border(top=Side(style='thin'))
+        ws.cell(row=markup_section_row, column=7).border = Border(top=Side(style='thin'))
+        markup_section_row += 1
+        
+        ws.cell(row=markup_section_row, column=6, value="MARKUP TOTAL").font = Font(bold=True)
+        ws.cell(row=markup_section_row, column=7, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=markup_section_row, column=7).font = Font(bold=True)
+        markup_section_row += 1
+        print(f"✅ Markup section added with {items_added} items, total: ${markup_total:.2f}")
+    else:
+        # Show a message if no markups are set
+        ws.cell(row=markup_section_row, column=6, value="(No markups configured)").font = Font(italic=True)
+        markup_section_row += 1
+        print(f"⚠️ No markup items to add (all percentages are 0)")
+    
+    # Final Total: Discounted Total + Miscellaneous + Markups
+    final_total_row = markup_section_row + 2
+    final_total_amount = final_discounted_total + summary_total + markup_total
+    
+    ws.cell(row=final_total_row, column=6, value="FINAL TOTAL DISCOUNTED COST").font = Font(bold=True, size=12)
+    ws.cell(row=final_total_row, column=6).alignment = Alignment(horizontal='right')
+    ws.cell(row=final_total_row, column=6).border = Border(left=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    ws.cell(row=final_total_row, column=7, value=final_total_amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=7).font = Font(bold=True, size=12)
+    ws.cell(row=final_total_row, column=7).border = Border(right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    print(f"📊 Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
+    print(f"📝 Markup section written to rows {summary_section_row + 2} to {markup_section_row}")
+    print(f"📝 Final total written to row {final_total_row}")
+    
+    _autofit_columns(ws, 1, 10, start_row, final_total_row)
     _clean_trailing_blank_rows(ws, 1)
 
     print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")

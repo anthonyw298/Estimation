@@ -1270,6 +1270,131 @@ def main(page: ft.Page):
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
+        def save_markup_settings(e):
+            try:
+                def get_pct(key):
+                    field = inputs.get(key)
+                    if field is None:
+                        print(f"⚠️ Field '{key}' not found in inputs")
+                        return 0.0
+                    val = field.value if hasattr(field, 'value') else ""
+                    if not val or not str(val).strip():
+                        return 0.0
+                    try:
+                        pct_val = float(str(val).strip())
+                        print(f"   {key}: '{val}' -> {pct_val}")
+                        return pct_val
+                    except (ValueError, AttributeError, TypeError) as err:
+                        print(f"   ⚠️ Could not convert {key} value '{val}': {err}")
+                        return 0.0
+                
+                settings = {
+                    "profit_on_material_pct": get_pct("profit_on_material_pct"),
+                    "profit_on_waste_pct": get_pct("profit_on_waste_pct"),
+                    "profit_on_glass_pct": get_pct("profit_on_glass_pct"),
+                    "profit_on_wages_pct": get_pct("profit_on_wages_pct"),
+                    "planning_technical_pct": get_pct("planning_technical_pct"),
+                    "commission_pct": get_pct("commission_pct")
+                }
+                
+                print(f"💾 Saving markup settings: {settings}")
+                paths = get_project_paths(state["current_project"])
+                
+                # Load existing settings and merge with markups
+                existing_settings = load_project_settings(state["current_project"])
+                existing_settings.update(settings)
+                
+                # Save settings with explicit file flush
+                save_project_settings(state["current_project"], existing_settings)
+                
+                # Verify file was written correctly
+                import time
+                time.sleep(0.2)  # Small delay to ensure file is written
+                
+                if os.path.exists(paths["settings"]):
+                    try:
+                        with open(paths["settings"], 'r') as f:
+                            saved_data = json.load(f)
+                            print(f"✅ Verified saved settings: {saved_data}")
+                    except Exception as verify_err:
+                        print(f"❌ Error verifying saved file: {verify_err}")
+                else:
+                    print(f"❌ Settings file NOT found at: {paths['settings']}")
+                    show_snack("Error: Settings file not created", "red")
+                    return
+                
+                # Check if any percentages are > 0
+                has_percentages = any(pct > 0 for pct in settings.values())
+                print(f"📊 Has non-zero markup percentages: {has_percentages}")
+                
+                # Regenerate the Excel report to show the updated markups
+                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                    try:
+                        print(f"🔄 Regenerating report with updated markup settings...")
+                        print(f"   Settings file path: {paths['settings']}")
+                        print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
+                        print(f"   Excel file path: {paths['excel']}")
+                        
+                        # Generate to a temporary location first, then copy to main project file
+                        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        os.makedirs("reports", exist_ok=True)
+                        temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
+                        
+                        generate_excel_report(
+                            temp_report_path, 
+                            paths["elevations"], 
+                            paths["materials"],
+                            "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
+                            None, False, None, None, mode="export_all",
+                            summary_settings_path=paths["settings"]
+                        )
+                        
+                        # Copy the generated report to the main project Excel file location
+                        import shutil
+                        if os.path.exists(temp_report_path):
+                            # Ensure the directory exists
+                            excel_dir = os.path.dirname(paths["excel"])
+                            if excel_dir:
+                                os.makedirs(excel_dir, exist_ok=True)
+                            
+                            # Copy to main project file
+                            shutil.copy2(temp_report_path, paths["excel"])
+                            print(f"✅ Copied updated report to main project file: {paths['excel']}")
+                            
+                            # Clean up temp file
+                            try:
+                                os.remove(temp_report_path)
+                            except:
+                                pass
+                        else:
+                            print(f"⚠️ Generated report file not found at: {temp_report_path}")
+                        
+                        print(f"✅ Report regenerated successfully with markup settings")
+                        if has_percentages:
+                            show_snack("Markup settings saved and report updated. Please close and reopen Excel to see changes.", "green")
+                        else:
+                            show_snack("Settings saved (all percentages are 0%)", "orange")
+                    except Exception as report_err:
+                        error_msg = f"Settings saved but report update failed: {str(report_err)}"
+                        print(f"❌ {error_msg}")
+                        import traceback
+                        traceback.print_exc()
+                        show_snack("Settings saved, but report update failed", "orange")
+                else:
+                    if has_percentages:
+                        show_snack("Markup settings saved", "green")
+                    else:
+                        show_snack("Settings saved (all percentages are 0%)", "orange")
+                
+                print(f"✅ Markup settings saved successfully")
+                page.update()
+            except Exception as ex:
+                error_msg = f"Error saving markup settings: {str(ex)}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                show_snack(error_msg, "red")
+        
         # Summary Section Percentages (Global Settings) - Better organized layout
         summary_settings_container = ft.Column([
             ft.Row([
@@ -1326,6 +1451,59 @@ def main(page: ft.Page):
         if inputs.get("commissions_pct"):
             pct = project_settings.get("commissions_pct", 0.0)
             inputs["commissions_pct"].value = str(pct) if pct > 0 else ""
+        
+        # Markups Section (Global Settings) - Similar layout to Miscellaneous Cost
+        markup_settings_container = ft.Column([
+            ft.Row([
+                ft.Text("MARKUP SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                ft.ElevatedButton(
+                    "SAVE", 
+                    bgcolor=COLOR_ACCENT, 
+                    color="white", 
+                    on_click=save_markup_settings,
+                    height=40,
+                    width=120
+                )
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Text("Enter percentages for markup calculations (leave blank for 0%)", size=12, color=COLOR_TEXT_DIM, italic=True),
+            ft.Divider(height=1, color=COLOR_SURFACE),
+            ft.Container(height=20),  # Spacing
+            ft.Row([
+                ft.Column([
+                    create_input_field("Profit on Material %", "profit_on_material_pct", numeric=True, expand=False),
+                    create_input_field("Profit on Glass Purchase %", "profit_on_glass_pct", numeric=True, expand=False),
+                    create_input_field("Planning / Technical Office %", "planning_technical_pct", numeric=True, expand=False),
+                    ft.Container(height=48)  # Spacer
+                ], spacing=15, expand=True),
+                ft.Container(width=30),  # Spacing between columns
+                ft.Column([
+                    create_input_field("Profit on Waste %", "profit_on_waste_pct", numeric=True, expand=False),
+                    create_input_field("Profit on Wages %", "profit_on_wages_pct", numeric=True, expand=False),
+                    create_input_field("Commission %", "commission_pct", numeric=True, expand=False),
+                    ft.Container(height=48)  # Spacer
+                ], spacing=15, expand=True)
+            ], spacing=0)
+        ], spacing=15, scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        # Load saved markup percentages after fields are created
+        if inputs.get("profit_on_material_pct"):
+            pct = project_settings.get("profit_on_material_pct", 0.0)
+            inputs["profit_on_material_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("profit_on_waste_pct"):
+            pct = project_settings.get("profit_on_waste_pct", 0.0)
+            inputs["profit_on_waste_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("profit_on_glass_pct"):
+            pct = project_settings.get("profit_on_glass_pct", 0.0)
+            inputs["profit_on_glass_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("profit_on_wages_pct"):
+            pct = project_settings.get("profit_on_wages_pct", 0.0)
+            inputs["profit_on_wages_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("planning_technical_pct"):
+            pct = project_settings.get("planning_technical_pct", 0.0)
+            inputs["planning_technical_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("commission_pct"):
+            pct = project_settings.get("commission_pct", 0.0)
+            inputs["commission_pct"].value = str(pct) if pct > 0 else ""
         
         # Header
         header = ft.Row([
@@ -1462,6 +1640,14 @@ def main(page: ft.Page):
                     text="Miscellaneous Cost",
                     content=ft.Container(
                         content=summary_settings_container,
+                        padding=20,
+                        expand=True
+                    )
+                ),
+                ft.Tab(
+                    text="Markups",
+                    content=ft.Container(
+                        content=markup_settings_container,
                         padding=20,
                         expand=True
                     )
