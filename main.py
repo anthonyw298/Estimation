@@ -795,6 +795,9 @@ def main(page: ft.Page):
                     except (ValueError, AttributeError, TypeError):
                         return 0.0
                 
+                # Load existing settings first to preserve markups
+                existing_settings = load_project_settings(state["current_project"])
+                
                 misc_settings = {
                     "overhead_materials_pct": get_pct("overhead_materials_pct"),
                     "overhead_labor_pct": get_pct("overhead_labor_pct"),
@@ -804,8 +807,11 @@ def main(page: ft.Page):
                     "shipping_transport_pct": get_pct("shipping_transport_pct"),
                     "commissions_pct": get_pct("commissions_pct")
                 }
+                # Merge with existing settings to preserve markups
+                existing_settings.update(misc_settings)
+                
                 paths = get_project_paths(state["current_project"])
-                save_project_settings(state["current_project"], misc_settings)
+                save_project_settings(state["current_project"], existing_settings)
                 print(f"💾 Auto-saved miscellaneous cost settings before report generation: {misc_settings}")
                 print(f"   Settings file location: {paths['settings']}")
                 # Verify file was created and wait a moment for file system
