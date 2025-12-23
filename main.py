@@ -1401,8 +1401,12 @@ def main(page: ft.Page):
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
-        # Summary Section Percentages (Global Settings) - Better organized layout
-        summary_settings_container = ft.Column([
+        # Combined Summary Section (Miscellaneous Cost + Markups)
+        # Load saved settings first
+        project_settings = load_project_settings(state["current_project"])
+        
+        # Miscellaneous Cost Section
+        misc_section = ft.Column([
             ft.Row([
                 ft.Text("MISCELLANEOUS COST SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
                 ft.ElevatedButton(
@@ -1432,34 +1436,10 @@ def main(page: ft.Page):
                     ft.Container(height=48)  # Spacer to align with 4th field
                 ], spacing=15, expand=True)
             ], spacing=0)
-        ], spacing=15, scroll=ft.ScrollMode.AUTO, expand=True)
+        ], spacing=15)
         
-        # Load saved summary percentages after fields are created
-        project_settings = load_project_settings(state["current_project"])
-        if inputs.get("overhead_materials_pct"):
-            pct = project_settings.get("overhead_materials_pct", 0.0)
-            inputs["overhead_materials_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("overhead_labor_pct"):
-            pct = project_settings.get("overhead_labor_pct", 0.0)
-            inputs["overhead_labor_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("admin_management_pct"):
-            pct = project_settings.get("admin_management_pct", 0.0)
-            inputs["admin_management_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("engineering_pct"):
-            pct = project_settings.get("engineering_pct", 0.0)
-            inputs["engineering_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("packaging_materials_pct"):
-            pct = project_settings.get("packaging_materials_pct", 0.0)
-            inputs["packaging_materials_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("shipping_transport_pct"):
-            pct = project_settings.get("shipping_transport_pct", 0.0)
-            inputs["shipping_transport_pct"].value = str(pct) if pct > 0 else ""
-        if inputs.get("commissions_pct"):
-            pct = project_settings.get("commissions_pct", 0.0)
-            inputs["commissions_pct"].value = str(pct) if pct > 0 else ""
-        
-        # Markups Section (Global Settings) - Similar layout to Miscellaneous Cost
-        markup_settings_container = ft.Column([
+        # Markups Section
+        markup_section = ft.Column([
             ft.Row([
                 ft.Text("MARKUP SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
                 ft.ElevatedButton(
@@ -1489,7 +1469,37 @@ def main(page: ft.Page):
                     ft.Container(height=48)  # Spacer
                 ], spacing=15, expand=True)
             ], spacing=0)
-        ], spacing=15, scroll=ft.ScrollMode.AUTO, expand=True)
+        ], spacing=15)
+        
+        # Combined Summary Container (scrollable)
+        summary_settings_container = ft.Column([
+            misc_section,
+            ft.Container(height=30),  # Spacing between sections
+            markup_section
+        ], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        # Load saved summary percentages after fields are created
+        if inputs.get("overhead_materials_pct"):
+            pct = project_settings.get("overhead_materials_pct", 0.0)
+            inputs["overhead_materials_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("overhead_labor_pct"):
+            pct = project_settings.get("overhead_labor_pct", 0.0)
+            inputs["overhead_labor_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("admin_management_pct"):
+            pct = project_settings.get("admin_management_pct", 0.0)
+            inputs["admin_management_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("engineering_pct"):
+            pct = project_settings.get("engineering_pct", 0.0)
+            inputs["engineering_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("packaging_materials_pct"):
+            pct = project_settings.get("packaging_materials_pct", 0.0)
+            inputs["packaging_materials_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("shipping_transport_pct"):
+            pct = project_settings.get("shipping_transport_pct", 0.0)
+            inputs["shipping_transport_pct"].value = str(pct) if pct > 0 else ""
+        if inputs.get("commissions_pct"):
+            pct = project_settings.get("commissions_pct", 0.0)
+            inputs["commissions_pct"].value = str(pct) if pct > 0 else ""
         
         # Load saved markup percentages after fields are created
         if inputs.get("profit_on_material_pct"):
@@ -1643,17 +1653,9 @@ def main(page: ft.Page):
                     ], expand=True)
                 ),
                 ft.Tab(
-                    text="Miscellaneous Cost",
+                    text="Summary",
                     content=ft.Container(
                         content=summary_settings_container,
-                        padding=20,
-                        expand=True
-                    )
-                ),
-                ft.Tab(
-                    text="Markups",
-                    content=ft.Container(
-                        content=markup_settings_container,
                         padding=20,
                         expand=True
                     )
