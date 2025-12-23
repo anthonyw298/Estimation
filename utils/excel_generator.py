@@ -644,6 +644,17 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         print("ℹ️ No data found, summary cleared if existed.")
         return
 
+    # --- Elevation summary defaults (can be overridden later when settings are loaded) ---
+    elevation_summary_settings = {
+        "show_elevation_names": False,
+        "show_elevation_quantity": False,
+        "show_elevation_dimensions": False,
+        "show_elevation_sqft": False,
+        "show_elevation_perimeter": False,
+    }
+    elevation_summary_cols = []
+    category_start_col = 1  # Profiles section still starts at column 1 by default
+
     # Step 1: Calculate full_running_grand_total for multiplier
     full_running_grand_total = 0.0
     for elev_key, elev in data.items():
@@ -1100,11 +1111,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         if not items:
             continue
         headers = get_headers_for_category(category, items)
-        header_cell = ws.cell(row=current_row, column=1, value=category)
+        header_cell = ws.cell(row=current_row, column=category_start_col, value=category)
         header_cell.font = Font(bold=True, size=12)
         # header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
         current_row += 1
-        for col, header in enumerate(headers, start=1):
+        for col, header in enumerate(headers, start=category_start_col):
             header_cell = ws.cell(row=current_row, column=col, value=header)
             header_cell.font = Font(bold=True)
             header_cell.border = Border(bottom=Side(style='thin'))
@@ -1126,16 +1137,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 if not description_value or description_value == '':
                     # Fallback to display if description is missing
                     description_value = item.get('display', '')
-                ws.cell(row=current_row, column=1, value=description_value)
-                ws.cell(row=current_row, column=2, value=item['display'])
-                ws.cell(row=current_row, column=3, value=item['quantity_req_ft'])
-                ws.cell(row=current_row, column=4, value=item['qty_stick_req'])
-                ws.cell(row=current_row, column=5, value=item['quantity_display'])
-                ws.cell(row=current_row, column=6, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=7, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=8, value=item['reusable_qty_display'])
-                ws.cell(row=current_row, column=9, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
-                ws.cell(row=current_row, column=10, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=category_start_col, value=description_value)
+                ws.cell(row=current_row, column=category_start_col + 1, value=item['display'])
+                ws.cell(row=current_row, column=category_start_col + 2, value=item['quantity_req_ft'])
+                ws.cell(row=current_row, column=category_start_col + 3, value=item['qty_stick_req'])
+                ws.cell(row=current_row, column=category_start_col + 4, value=item['quantity_display'])
+                ws.cell(row=current_row, column=category_start_col + 5, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=category_start_col + 6, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=current_row, column=category_start_col + 7, value=item['reusable_qty_display'])
+                ws.cell(row=current_row, column=category_start_col + 8, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
+                ws.cell(row=current_row, column=category_start_col + 9, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 current_row += 1
         
         grand_original_total += section_original_total
@@ -1159,16 +1170,16 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         }
         category_label = category_mapping.get(category.upper(), category.title())
         total_label = f"Total {category_label} Cost"
-        ws.cell(row=current_row, column=5, value=total_label).font = Font(bold=True)
-        ws.cell(row=current_row, column=6, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=6).font = Font(bold=True)
-        ws.cell(row=current_row, column=7, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=7).font = Font(bold=True)
-        ws.cell(row=current_row, column=10, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=10).font = Font(bold=True)
+        ws.cell(row=current_row, column=category_start_col + 4, value=total_label).font = Font(bold=True)
+        ws.cell(row=current_row, column=category_start_col + 5, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=category_start_col + 5).font = Font(bold=True)
+        ws.cell(row=current_row, column=category_start_col + 6, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=category_start_col + 6).font = Font(bold=True)
+        ws.cell(row=current_row, column=category_start_col + 9, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=category_start_col + 9).font = Font(bold=True)
         
         # Add top border for totals row
-        for col in range(1, 11):
+        for col in range(category_start_col, category_start_col + 10):
             ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
 
         current_row += 2
@@ -1178,12 +1189,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # ============================================================================
     gt_row = current_row + 2
     
-    # Calculate discounted total from column G
+    # Calculate discounted total from column G (adjusted for elevation summary offset)
+    discounted_total_col = category_start_col + 6  # Column G was 7, now shifted
     sum_from_column_g = 0.0
     try:
         for row in range(1, gt_row):
-            label_cell = ws.cell(row=row, column=5)
-            value_cell = ws.cell(row=row, column=7)
+            label_cell = ws.cell(row=row, column=category_start_col + 4)  # Column E was 5, now shifted
+            value_cell = ws.cell(row=row, column=discounted_total_col)
             if label_cell.value and isinstance(label_cell.value, str):
                 if "Total" in label_cell.value and "Cost" in label_cell.value:
                     if value_cell.value is not None:
@@ -1204,49 +1216,52 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
     
     # ============================================================================
-    # COST OVERVIEW BOX - Spans columns 1-3, clean bordered section
+    # COST OVERVIEW BOX - Spans columns (shifted right if elevation summary exists)
     # ============================================================================
-    overview_start_row = gt_row + 2
+    # Add a bit of vertical spacing after the elevation summary / categories
+    # so the "TOTAL" cost box doesn't visually overlap the elevation list.
+    overview_start_row = gt_row + 4
+    overview_start_col = category_start_col
     
     # Header row with background
-    ws.cell(row=overview_start_row, column=1, value="COST OVERVIEW").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=overview_start_row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=overview_start_row, column=2).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=2).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=overview_start_row, column=3).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=overview_start_row, column=overview_start_col, value="COST OVERVIEW").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=overview_start_row, column=overview_start_col).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws.cell(row=overview_start_row, column=overview_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=overview_start_row, column=overview_start_col + 1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws.cell(row=overview_start_row, column=overview_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=overview_start_row, column=overview_start_col + 2).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws.cell(row=overview_start_row, column=overview_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     
     # List Price row
-    ws.cell(row=overview_start_row+1, column=1, value="List Price Total:")
-    ws.cell(row=overview_start_row+1, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+1, column=3, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+1, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+1, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=overview_start_row+1, column=overview_start_col, value="List Price Total:")
+    ws.cell(row=overview_start_row+1, column=overview_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=overview_start_row+1, column=overview_start_col + 2, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row+1, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=overview_start_row+1, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Discounted Total row
-    ws.cell(row=overview_start_row+2, column=1, value="Discounted Total:")
-    ws.cell(row=overview_start_row+2, column=1).font = Font(bold=True)
-    ws.cell(row=overview_start_row+2, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+2, column=3, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+2, column=3).font = Font(bold=True)
-    ws.cell(row=overview_start_row+2, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+2, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=overview_start_row+2, column=overview_start_col, value="Discounted Total:")
+    ws.cell(row=overview_start_row+2, column=overview_start_col).font = Font(bold=True)
+    ws.cell(row=overview_start_row+2, column=overview_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=overview_start_row+2, column=overview_start_col + 2, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).font = Font(bold=True)
+    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Residual/Waste Cost row
-    ws.cell(row=overview_start_row+3, column=1, value="Residual/Waste Cost:")
-    ws.cell(row=overview_start_row+3, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+3, column=3, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+3, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+3, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=overview_start_row+3, column=overview_start_col, value="Residual/Waste Cost:")
+    ws.cell(row=overview_start_row+3, column=overview_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=overview_start_row+3, column=overview_start_col + 2, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row+3, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=overview_start_row+3, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Waste Percentage row
-    ws.cell(row=overview_start_row+4, column=1, value="Waste Percentage:")
-    ws.cell(row=overview_start_row+4, column=1).border = Border(left=Side(style='medium'), bottom=Side(style='medium'))
-    ws.cell(row=overview_start_row+4, column=2).border = Border(bottom=Side(style='medium'))
-    ws.cell(row=overview_start_row+4, column=3, value=f"{reuse_pct_of_gt:.2f}%")
-    ws.cell(row=overview_start_row+4, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+4, column=3).border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
+    ws.cell(row=overview_start_row+4, column=overview_start_col, value="Waste Percentage:")
+    ws.cell(row=overview_start_row+4, column=overview_start_col).border = Border(left=Side(style='medium'), bottom=Side(style='medium'))
+    ws.cell(row=overview_start_row+4, column=overview_start_col + 1).border = Border(bottom=Side(style='medium'))
+    ws.cell(row=overview_start_row+4, column=overview_start_col + 2, value=f"{reuse_pct_of_gt:.2f}%")
+    ws.cell(row=overview_start_row+4, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=overview_start_row+4, column=overview_start_col + 2).border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
     
     overview_end_row = overview_start_row + 4
 
@@ -1258,14 +1273,14 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     section_start_row = overview_end_row + 2
     misc_start_row = section_start_row
     
-    # MISCELLANEOUS COST Header (columns 1-3)
-    ws.cell(row=section_start_row, column=1, value="MISCELLANEOUS COSTS").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=section_start_row, column=1).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-    ws.cell(row=section_start_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=section_start_row, column=2).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-    ws.cell(row=section_start_row, column=2).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=section_start_row, column=3).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-    ws.cell(row=section_start_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    # MISCELLANEOUS COST Header (shifted right if elevation summary exists)
+    ws.cell(row=section_start_row, column=category_start_col, value="MISCELLANEOUS COSTS").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=section_start_row, column=category_start_col).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
+    ws.cell(row=section_start_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=section_start_row, column=category_start_col + 1).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
+    ws.cell(row=section_start_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=section_start_row, column=category_start_col + 2).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
+    ws.cell(row=section_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     summary_section_row = section_start_row + 1
     
     # Get summary percentages from project settings file
@@ -1304,7 +1319,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     if summary_settings_path:
         settings_paths_to_try.append(os.path.join(elev_dir, os.path.basename(summary_settings_path)))
     
-    # Remove duplicates while preserving order
+    # Remove duplicates while preserving order (rebuild unique_paths here)
     seen = set()
     unique_paths = []
     for path in settings_paths_to_try:
@@ -1319,6 +1334,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 print(f"   ✅ Found file, trying to read: {path_to_try}")
                 with open(path_to_try, 'r') as f:
                     settings_data = json.load(f)
+                    # Miscellaneous percentages
                     summary_pcts = {
                         "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
                         "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
@@ -1330,6 +1346,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     }
                     print(f"✅ Loaded summary percentages from {path_to_try}")
                     print(f"   Percentages: {summary_pcts}")
+                    # Elevation summary display flags
+                    elevation_summary_settings["show_elevation_names"] = settings_data.get("show_elevation_names", False)
+                    elevation_summary_settings["show_elevation_quantity"] = settings_data.get("show_elevation_quantity", False)
+                    elevation_summary_settings["show_elevation_dimensions"] = settings_data.get("show_elevation_dimensions", False)
+                    elevation_summary_settings["show_elevation_sqft"] = settings_data.get("show_elevation_sqft", False)
+                    elevation_summary_settings["show_elevation_perimeter"] = settings_data.get("show_elevation_perimeter", False)
                     settings_loaded = True
                     break
             except Exception as e:
@@ -1345,7 +1367,142 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             print(f"   {exists}: {path_to_try}")
         if not summary_settings_path:
             print(f"   ⚠️ No summary settings path was provided to create_summary_sheet")
+
+    # Build elevation summary column definitions based on flags
+    elevation_summary_cols = []
+    if elevation_summary_settings["show_elevation_names"]:
+        elevation_summary_cols.append(("Elevation Name", 1))
+    if elevation_summary_settings["show_elevation_quantity"]:
+        # Include units in header so summary numbers stay numeric but units are clear
+        elevation_summary_cols.append(("Quantity (EA)", len(elevation_summary_cols) + 1))
+    if elevation_summary_settings["show_elevation_dimensions"]:
+        elevation_summary_cols.append(("Dimensions", len(elevation_summary_cols) + 1))
+    if elevation_summary_settings["show_elevation_sqft"]:
+        elevation_summary_cols.append(("SQFT Total (SQFT)", len(elevation_summary_cols) + 1))
+    if elevation_summary_settings["show_elevation_perimeter"]:
+        elevation_summary_cols.append(("Perimeter FT Total (FT)", len(elevation_summary_cols) + 1))
     
+    # ============================================================================
+    # ELEVATION SUMMARY COLUMNS (if enabled) - Write before categories
+    # ============================================================================
+    # If elevation summary columns are enabled, write them as their own section
+    elevation_summary_start_row = current_row
+    if elevation_summary_cols:
+        # Colors to match existing section headers (PROJECT TOTAL / GRAND TOTAL style)
+        header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+        header_font = Font(bold=True, size=12, color="FFFFFF")
+        subheader_fill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
+
+        # Add a clear section title spanning the used columns so it stands out visually
+        first_col = elevation_summary_cols[0][1]
+        last_col = elevation_summary_cols[-1][1]
+        title_cell = ws.cell(row=current_row, column=first_col, value="ELEVATION SUMMARY")
+        title_cell.font = header_font
+        title_cell.fill = header_fill
+        # Apply fill across merged range
+        for col in range(first_col, last_col + 1):
+            cell = ws.cell(row=current_row, column=col)
+            cell.fill = header_fill
+        ws.merge_cells(
+            start_row=current_row,
+            start_column=first_col,
+            end_row=current_row,
+            end_column=last_col,
+        )
+        current_row += 1
+
+        # Header row directly under the title
+        for _, (header_name, col_num) in enumerate(elevation_summary_cols):
+            header_cell = ws.cell(row=current_row, column=col_num, value=header_name)
+            header_cell.font = Font(bold=True, size=11)
+            header_cell.fill = subheader_fill
+            header_cell.border = Border(bottom=Side(style='thin'))
+        current_row += 1
+
+        # Totals accumulators
+        total_qty = 0.0
+        total_sqft = 0.0
+        total_perimeter = 0.0
+
+        # Data rows
+        for elev_key, elev in data.items():
+            col_idx = 0
+            if elevation_summary_settings["show_elevation_names"]:
+                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=elev_key)
+                col_idx += 1
+            if elevation_summary_settings["show_elevation_quantity"]:
+                qty = elev.get("total_count", 0) or 0
+                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=qty)
+                total_qty += qty
+                col_idx += 1
+            if elevation_summary_settings["show_elevation_dimensions"]:
+                width = elev.get("opening_width_inches", 0) or 0
+                height = elev.get("opening_height_inches", 0) or 0
+                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=f"{width}\" x {height}\"")
+                col_idx += 1
+            if elevation_summary_settings["show_elevation_sqft"]:
+                sqft = elev.get("total_sqft", 0) or 0
+                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=sqft)
+                total_sqft += sqft
+                col_idx += 1
+            if elevation_summary_settings["show_elevation_perimeter"]:
+                perimeter = elev.get("total_perimeter_ft", 0) or 0
+                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=perimeter)
+                total_perimeter += perimeter
+                col_idx += 1
+            current_row += 1
+
+        # Totals row (styled band across all used columns)
+        total_row = current_row
+        col_idx = 0
+
+        # Apply a light banded fill across the whole totals row
+        for _, (_, col_num) in enumerate(elevation_summary_cols):
+            totals_cell = ws.cell(row=total_row, column=col_num)
+            totals_cell.fill = subheader_fill
+
+        if elevation_summary_settings["show_elevation_names"]:
+            total_label_cell = ws.cell(row=total_row, column=elevation_summary_cols[col_idx][1], value="TOTAL")
+            total_label_cell.font = Font(bold=True)
+            col_idx += 1
+        # Debug: print totals to console
+        print(f"📊 ELEVATION SUMMARY TOTALS: Qty={total_qty}, SQFT={total_sqft}, Perimeter={total_perimeter}")
+        
+        if elevation_summary_settings["show_elevation_quantity"]:
+            # Write the accumulated total directly
+            qty_col_index = elevation_summary_cols[col_idx][1]
+            qty_value = int(total_qty) if total_qty == int(total_qty) else total_qty
+            ws.cell(row=total_row, column=qty_col_index, value=qty_value)
+            ws.cell(row=total_row, column=qty_col_index).font = Font(bold=True)
+            ws.cell(row=total_row, column=qty_col_index).alignment = Alignment(horizontal="right")
+            print(f"   Writing Qty total {qty_value} to row {total_row}, col {qty_col_index}")
+            col_idx += 1
+        if elevation_summary_settings["show_elevation_dimensions"]:
+            # No total for dimensions; leave blank cell
+            col_idx += 1
+        if elevation_summary_settings["show_elevation_sqft"]:
+            sqft_col_index = elevation_summary_cols[col_idx][1]
+            sqft_value = int(total_sqft) if total_sqft == int(total_sqft) else round(total_sqft, 2)
+            ws.cell(row=total_row, column=sqft_col_index, value=sqft_value)
+            ws.cell(row=total_row, column=sqft_col_index).font = Font(bold=True)
+            ws.cell(row=total_row, column=sqft_col_index).alignment = Alignment(horizontal="right")
+            print(f"   Writing SQFT total {sqft_value} to row {total_row}, col {sqft_col_index}")
+            col_idx += 1
+        if elevation_summary_settings["show_elevation_perimeter"]:
+            perim_col_index = elevation_summary_cols[col_idx][1]
+            perim_value = int(total_perimeter) if total_perimeter == int(total_perimeter) else round(total_perimeter, 2)
+            ws.cell(row=total_row, column=perim_col_index, value=perim_value)
+            ws.cell(row=total_row, column=perim_col_index).font = Font(bold=True)
+            ws.cell(row=total_row, column=perim_col_index).alignment = Alignment(horizontal="right")
+            print(f"   Writing Perimeter total {perim_value} to row {total_row}, col {perim_col_index}")
+
+        # Add a thin top border across the used columns to separate totals from data
+        for _, (_, col_num) in enumerate(elevation_summary_cols):
+            cell = ws.cell(row=total_row, column=col_num)
+            cell.border = Border(top=Side(style='thin'))
+
+        current_row += 2  # Spacing after elevation summary section
+
     # Calculate base amount: use discounted total only
     base_amount = final_discounted_total
     print(f"📊 Miscellaneous Cost section - Base amount (discounted total): ${base_amount:.2f}")
@@ -1450,35 +1607,35 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         markup_items_list.append(("Commission", amount))
         print(f"   Commission: {markup_pcts['Commission']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
     
-    # ========== STEP 3: Write MISCELLANEOUS items (columns 1-3) ==========
+    # ========== STEP 3: Write MISCELLANEOUS items (shifted right if elevation summary exists) ==========
     misc_items_start_row = summary_section_row
     
     for i, (label, amount) in enumerate(misc_items_list):
         row = misc_items_start_row + i
-        ws.cell(row=row, column=1, value=label)
-        ws.cell(row=row, column=1).border = Border(left=Side(style='medium'))
-        ws.cell(row=row, column=3, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=row, column=3).alignment = Alignment(horizontal='right')
-        ws.cell(row=row, column=3).border = Border(right=Side(style='medium'))
+        ws.cell(row=row, column=category_start_col, value=label)
+        ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
+        ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+        ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Add "(None configured)" if no items
     if len(misc_items_list) == 0:
-        ws.cell(row=misc_items_start_row, column=1, value="(None configured)").font = Font(italic=True)
-        ws.cell(row=misc_items_start_row, column=1).border = Border(left=Side(style='medium'))
-        ws.cell(row=misc_items_start_row, column=3).border = Border(right=Side(style='medium'))
+        ws.cell(row=misc_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
+        ws.cell(row=misc_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
+        ws.cell(row=misc_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
         misc_items_end_row = misc_items_start_row
     else:
         misc_items_end_row = misc_items_start_row + len(misc_items_list) - 1
     
     # Miscellaneous SUBTOTAL
     misc_subtotal_row = misc_items_end_row + 1
-    ws.cell(row=misc_subtotal_row, column=1, value="SUBTOTAL").font = Font(bold=True)
-    ws.cell(row=misc_subtotal_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=misc_subtotal_row, column=2).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=misc_subtotal_row, column=3, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=misc_subtotal_row, column=3).font = Font(bold=True)
-    ws.cell(row=misc_subtotal_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=misc_subtotal_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=misc_subtotal_row, column=category_start_col, value="SUBTOTAL").font = Font(bold=True)
+    ws.cell(row=misc_subtotal_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=misc_subtotal_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=misc_subtotal_row, column=category_start_col + 2, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=misc_subtotal_row, column=category_start_col + 2).font = Font(bold=True)
+    ws.cell(row=misc_subtotal_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=misc_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     misc_end_row = misc_subtotal_row
     print(f"✅ Miscellaneous Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
@@ -1486,43 +1643,43 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # ========== STEP 4: Write MARKUPS HEADER (below Miscellaneous) ==========
     markup_start_row = misc_end_row + 2
     
-    ws.cell(row=markup_start_row, column=1, value="MARKUPS / PROFIT").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=markup_start_row, column=1).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-    ws.cell(row=markup_start_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=markup_start_row, column=2).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-    ws.cell(row=markup_start_row, column=2).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=markup_start_row, column=3).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-    ws.cell(row=markup_start_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=markup_start_row, column=category_start_col, value="MARKUPS / PROFIT").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=markup_start_row, column=category_start_col).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
+    ws.cell(row=markup_start_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=markup_start_row, column=category_start_col + 1).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
+    ws.cell(row=markup_start_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=markup_start_row, column=category_start_col + 2).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
+    ws.cell(row=markup_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     
-    # ========== STEP 5: Write MARKUP items (columns 1-3) ==========
+    # ========== STEP 5: Write MARKUP items (shifted right if elevation summary exists) ==========
     markup_items_start_row = markup_start_row + 1
     
     for i, (label, amount) in enumerate(markup_items_list):
         row = markup_items_start_row + i
-        ws.cell(row=row, column=1, value=label)
-        ws.cell(row=row, column=1).border = Border(left=Side(style='medium'))
-        ws.cell(row=row, column=3, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=row, column=3).alignment = Alignment(horizontal='right')
-        ws.cell(row=row, column=3).border = Border(right=Side(style='medium'))
+        ws.cell(row=row, column=category_start_col, value=label)
+        ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
+        ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+        ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Add "(None configured)" if no items
     if len(markup_items_list) == 0:
-        ws.cell(row=markup_items_start_row, column=1, value="(None configured)").font = Font(italic=True)
-        ws.cell(row=markup_items_start_row, column=1).border = Border(left=Side(style='medium'))
-        ws.cell(row=markup_items_start_row, column=3).border = Border(right=Side(style='medium'))
+        ws.cell(row=markup_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
+        ws.cell(row=markup_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
+        ws.cell(row=markup_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
         markup_items_end_row = markup_items_start_row
     else:
         markup_items_end_row = markup_items_start_row + len(markup_items_list) - 1
     
     # Markup SUBTOTAL
     markup_subtotal_row = markup_items_end_row + 1
-    ws.cell(row=markup_subtotal_row, column=1, value="SUBTOTAL").font = Font(bold=True)
-    ws.cell(row=markup_subtotal_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=markup_subtotal_row, column=2).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=markup_subtotal_row, column=3, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=markup_subtotal_row, column=3).font = Font(bold=True)
-    ws.cell(row=markup_subtotal_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=markup_subtotal_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=markup_subtotal_row, column=category_start_col, value="SUBTOTAL").font = Font(bold=True)
+    ws.cell(row=markup_subtotal_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=markup_subtotal_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=markup_subtotal_row, column=category_start_col + 2, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=markup_subtotal_row, column=category_start_col + 2).font = Font(bold=True)
+    ws.cell(row=markup_subtotal_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=markup_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     markup_end_row = markup_subtotal_row
     print(f"✅ Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
@@ -1534,57 +1691,57 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     final_total_row = markup_end_row + 2
     final_total_amount = final_discounted_total + summary_total + markup_total
     
-    # Header row with dark background (columns 1-3)
-    ws.cell(row=final_total_row, column=1, value="PROJECT TOTAL").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=1).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=final_total_row, column=2).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=2).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=final_total_row, column=3).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    # Header row with dark background (shifted right if elevation summary exists)
+    ws.cell(row=final_total_row, column=category_start_col, value="PROJECT TOTAL").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
+    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     
     # Light fill for alternating rows
     light_fill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
     
     # Discounted Total row
     final_total_row += 1
-    ws.cell(row=final_total_row, column=1, value="Discounted Total:")
-    ws.cell(row=final_total_row, column=1).fill = light_fill
-    ws.cell(row=final_total_row, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=final_total_row, column=2).fill = light_fill
-    ws.cell(row=final_total_row, column=3, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=3).fill = light_fill
-    ws.cell(row=final_total_row, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col, value="Discounted Total:")
+    ws.cell(row=final_total_row, column=category_start_col).fill = light_fill
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col + 1).fill = light_fill
+    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Miscellaneous Total row
     final_total_row += 1
-    ws.cell(row=final_total_row, column=1, value="+ Miscellaneous:")
-    ws.cell(row=final_total_row, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=final_total_row, column=3, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col, value="+ Miscellaneous:")
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col + 2, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Markup Total row
     final_total_row += 1
-    ws.cell(row=final_total_row, column=1, value="+ Markups:")
-    ws.cell(row=final_total_row, column=1).border = Border(left=Side(style='medium'))
-    ws.cell(row=final_total_row, column=3, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=3).border = Border(right=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col + 2, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Grand Total row (bold, highlighted with dark background)
     final_total_row += 1
-    ws.cell(row=final_total_row, column=1, value="GRAND TOTAL:").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=1).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=1).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=final_total_row, column=2).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=2).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=final_total_row, column=3, value=final_total_amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=3).font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=3).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=3).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=3).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col, value="GRAND TOTAL:").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_total_amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     print(f"📊 Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
     print(f"📝 Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")

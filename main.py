@@ -1401,6 +1401,61 @@ def main(page: ft.Page):
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
+        def save_elevation_summary_settings(e):
+            try:
+                settings = {
+                    "show_elevation_names": inputs.get("show_elevation_names", ft.Checkbox()).value if inputs.get("show_elevation_names") else False,
+                    "show_elevation_quantity": inputs.get("show_elevation_quantity", ft.Checkbox()).value if inputs.get("show_elevation_quantity") else False,
+                    "show_elevation_dimensions": inputs.get("show_elevation_dimensions", ft.Checkbox()).value if inputs.get("show_elevation_dimensions") else False,
+                    "show_elevation_sqft": inputs.get("show_elevation_sqft", ft.Checkbox()).value if inputs.get("show_elevation_sqft") else False,
+                    "show_elevation_perimeter": inputs.get("show_elevation_perimeter", ft.Checkbox()).value if inputs.get("show_elevation_perimeter") else False
+                }
+                
+                existing_settings = load_project_settings(state["current_project"])
+                existing_settings.update(settings)
+                save_project_settings(state["current_project"], existing_settings)
+                
+                # Regenerate report if elevations exist
+                paths = get_project_paths(state["current_project"])
+                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                    try:
+                        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        os.makedirs("reports", exist_ok=True)
+                        temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
+                        
+                        generate_excel_report(
+                            temp_report_path, 
+                            paths["elevations"], 
+                            paths["materials"],
+                            "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
+                            None, False, None, None, mode="export_all",
+                            summary_settings_path=paths["settings"]
+                        )
+                        
+                        import shutil
+                        if os.path.exists(temp_report_path):
+                            excel_dir = os.path.dirname(paths["excel"])
+                            if excel_dir:
+                                os.makedirs(excel_dir, exist_ok=True)
+                            shutil.copy2(temp_report_path, paths["excel"])
+                            try:
+                                os.remove(temp_report_path)
+                            except:
+                                pass
+                        show_snack("Elevation summary settings saved and report updated", "green")
+                    except Exception as report_err:
+                        show_snack("Settings saved, but report update failed", "orange")
+                else:
+                    show_snack("Elevation summary settings saved", "green")
+                
+                page.update()
+            except Exception as ex:
+                error_msg = f"Error saving settings: {str(ex)}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                show_snack(error_msg, "red")
+        
         # Combined Summary Section (Miscellaneous Cost + Markups)
         # Load saved settings first
         project_settings = load_project_settings(state["current_project"])
@@ -1471,11 +1526,63 @@ def main(page: ft.Page):
             ], spacing=0)
         ], spacing=15)
         
+        # Elevation Summary Display Options Section
+        elevation_name_cb = ft.Checkbox(label="Elevation Names", value=False, fill_color=COLOR_ACCENT)
+        elevation_quantity_cb = ft.Checkbox(label="Quantity", value=False, fill_color=COLOR_ACCENT)
+        elevation_dimensions_cb = ft.Checkbox(label="Dimensions", value=False, fill_color=COLOR_ACCENT)
+        elevation_sqft_cb = ft.Checkbox(label="SQFT Total", value=False, fill_color=COLOR_ACCENT)
+        elevation_perimeter_cb = ft.Checkbox(label="Perimeter FT Total", value=False, fill_color=COLOR_ACCENT)
+        
+        inputs['show_elevation_names'] = elevation_name_cb
+        inputs['show_elevation_quantity'] = elevation_quantity_cb
+        inputs['show_elevation_dimensions'] = elevation_dimensions_cb
+        inputs['show_elevation_sqft'] = elevation_sqft_cb
+        inputs['show_elevation_perimeter'] = elevation_perimeter_cb
+        
+        elevation_summary_section = ft.Column([
+            ft.Row([
+                ft.Text("ELEVATION SUMMARY DISPLAY", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                ft.ElevatedButton(
+                    "SAVE", 
+                    bgcolor=COLOR_ACCENT, 
+                    color="white", 
+                    on_click=save_elevation_summary_settings,
+                    height=40,
+                    width=120
+                )
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Text("Select which columns to display in the summary report", size=12, color=COLOR_TEXT_DIM, italic=True),
+            ft.Divider(height=1, color=COLOR_SURFACE),
+            ft.Container(height=20),  # Spacing
+            ft.Row([
+                ft.Column([
+                    elevation_name_cb,
+                    elevation_quantity_cb,
+                    elevation_dimensions_cb
+                ], spacing=10, expand=True),
+                ft.Container(width=30),  # Spacing between columns
+                ft.Column([
+                    elevation_sqft_cb,
+                    elevation_perimeter_cb,
+                    ft.Container(height=48)  # Spacer
+                ], spacing=10, expand=True)
+            ], spacing=0)
+        ], spacing=15)
+        
+        # Load saved elevation summary display settings
+        inputs["show_elevation_names"].value = project_settings.get("show_elevation_names", False)
+        inputs["show_elevation_quantity"].value = project_settings.get("show_elevation_quantity", False)
+        inputs["show_elevation_dimensions"].value = project_settings.get("show_elevation_dimensions", False)
+        inputs["show_elevation_sqft"].value = project_settings.get("show_elevation_sqft", False)
+        inputs["show_elevation_perimeter"].value = project_settings.get("show_elevation_perimeter", False)
+        
         # Combined Summary Container (scrollable)
         summary_settings_container = ft.Column([
             misc_section,
             ft.Container(height=30),  # Spacing between sections
-            markup_section
+            markup_section,
+            ft.Container(height=30),  # Spacing between sections
+            elevation_summary_section
         ], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
         
         # Load saved summary percentages after fields are created
