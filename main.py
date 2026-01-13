@@ -120,6 +120,10 @@ def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_heigh
     title = f"Bay Distribution ({bays_wide}W x {bays_tall}H)"
     draw.text((diagram_width // 2, 15), title, fill='#0073E6', anchor='mm', font=font_large)
     
+    # Add C/L Dimensions note
+    cl_note = "C/L Dimensions"
+    draw.text((diagram_width // 2, 30), cl_note, fill='#B3B3B3', anchor='mm', font=font_small)
+    
     # Draw bays
     current_y = start_y
     bay_num = 1

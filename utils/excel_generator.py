@@ -1827,23 +1827,6 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     print(f"✅ Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
     
     # ============================================================================
-    # PIE CHART - Cost Distribution (placed next to Cost Overview, now with all values)
-    # ============================================================================
-    # Add pie chart showing full cost breakdown: Materials, Miscellaneous, Markups, Residual
-    pie_chart_col = overview_start_col + 4  # Place directly next to cost overview box
-    pie_chart_row = overview_start_row - 1  # Align with cost overview header
-    
-    # Calculate active material cost (total minus residual to avoid double-counting)
-    active_material_cost = max(0, final_discounted_total - reuse_total)
-    
-    try:
-        _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
-        print(f"✅ Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
-        print(f"   Active Materials: ${active_material_cost:.2f}, Misc: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
-    except Exception as e:
-        print(f"⚠️ Could not add pie chart: {e}")
-    
-    # ============================================================================
     # FINAL TOTAL - Below markup section with spacing
     # ============================================================================
     
@@ -1901,6 +1884,24 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
     ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
     ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    
+    # ============================================================================
+    # PIE CHART - Cost Distribution (placed at specific location)
+    # ============================================================================
+    # Add pie chart showing full cost breakdown: Materials, Miscellaneous, Markups, Residual
+    # Place it at row 40, column G (column 7)
+    pie_chart_col = 7  # Column G
+    pie_chart_row = 40  # Row 40
+    
+    # Calculate active material cost (total minus residual to avoid double-counting)
+    active_material_cost = max(0, final_discounted_total - reuse_total)
+    
+    try:
+        _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
+        print(f"✅ Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
+        print(f"   Active Materials: ${active_material_cost:.2f}, Misc: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
+    except Exception as e:
+        print(f"⚠️ Could not add pie chart: {e}")
     
     print(f"📊 Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
     print(f"📝 Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")
