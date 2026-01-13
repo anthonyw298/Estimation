@@ -47,6 +47,146 @@ def _clean_trailing_blank_rows(ws, start_row):
             rows_deleted += 1
         else: current_row += 1
 
+def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost):
+    """
+    Creates a pie chart showing cost breakdown: Materials, Miscellaneous, Markups, and Residual.
+    Returns a PIL Image object that can be inserted into Excel.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+    except ImportError:
+        print("PIL/Pillow not available, skipping pie chart generation")
+        return None
+    
+    # Calculate grand total
+    grand_total = material_cost + misc_cost + markup_cost + residual_cost
+    
+    if grand_total <= 0:
+        return None
+    
+    # Calculate percentages
+    material_pct = (material_cost / grand_total * 100) if grand_total > 0 else 0
+    misc_pct = (misc_cost / grand_total * 100) if grand_total > 0 else 0
+    markup_pct = (markup_cost / grand_total * 100) if grand_total > 0 else 0
+    residual_pct = (residual_cost / grand_total * 100) if grand_total > 0 else 0
+    
+    # Chart dimensions
+    chart_width = 420
+    chart_height = 400
+    center_x = chart_width // 2
+    center_y = 160
+    radius = 90
+    
+    # Create image with white background
+    img = Image.new('RGB', (chart_width, chart_height), color='white')
+    draw = ImageDraw.Draw(img)
+    
+    # Try to load fonts
+    try:
+        font_title = ImageFont.truetype("arial.ttf", 14)
+        font_label = ImageFont.truetype("arial.ttf", 10)
+        font_small = ImageFont.truetype("arial.ttf", 9)
+    except:
+        try:
+            font_title = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 14)
+            font_label = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 10)
+            font_small = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 9)
+        except:
+            font_title = ImageFont.load_default()
+            font_label = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+    
+    # Draw title
+    draw.text((center_x, 15), "Project Cost Breakdown", fill='#333333', anchor='mm', font=font_title)
+    
+    # Colors for each segment
+    material_color = '#4472C4'  # Blue for materials
+    misc_color = '#548235'      # Green for miscellaneous
+    markup_color = '#7030A0'    # Purple for markups/profit
+    residual_color = '#ED7D31'  # Orange for residual/waste
+    
+    # Build segments list (only include non-zero values)
+    segments = []
+    if material_cost > 0:
+        segments.append(('Active Materials', material_cost, material_pct, material_color))
+    if misc_cost > 0:
+        segments.append(('Miscellaneous', misc_cost, misc_pct, misc_color))
+    if markup_cost > 0:
+        segments.append(('Profit/Markups', markup_cost, markup_pct, markup_color))
+    if residual_cost > 0:
+        segments.append(('Residual/Waste', residual_cost, residual_pct, residual_color))
+    
+    # Draw pie chart
+    start_angle = -90
+    for name, cost, pct, color in segments:
+        if pct > 0:
+            sweep_angle = (pct / 100) * 360
+            draw.pieslice(
+                [center_x - radius, center_y - radius, center_x + radius, center_y + radius],
+                start=start_angle,
+                end=start_angle + sweep_angle,
+                fill=color,
+                outline='white'
+            )
+            start_angle += sweep_angle
+    
+    # Draw legend at bottom
+    legend_y = 270
+    legend_box_size = 12
+    legend_spacing = 22
+    
+    legend_items = [
+        ('Active Materials', material_cost, material_pct, material_color),
+        ('Miscellaneous', misc_cost, misc_pct, misc_color),
+        ('Profit/Markups', markup_cost, markup_pct, markup_color),
+        ('Residual/Waste', residual_cost, residual_pct, residual_color)
+    ]
+    
+    for i, (name, cost, pct, color) in enumerate(legend_items):
+        y_pos = legend_y + (i * legend_spacing)
+        draw.rectangle([30, y_pos, 30 + legend_box_size, y_pos + legend_box_size], fill=color, outline='#333333')
+        draw.text((50 + legend_box_size, y_pos + legend_box_size // 2), 
+                  f"{name}: ${cost:,.2f} ({pct:.1f}%)", 
+                  fill='#333333', anchor='lm', font=font_label)
+    
+    # Grand total at bottom
+    draw.text((center_x, chart_height - 15), f"Grand Total: ${grand_total:,.2f}", fill='#333333', anchor='mm', font=font_small)
+    
+    return img
+
+def _add_pie_chart_to_excel(ws, start_row, start_col, material_cost, misc_cost, markup_cost, residual_cost):
+    """Adds a cost distribution pie chart to the Excel worksheet."""
+    try:
+        from openpyxl.drawing.image import Image as OpenpyxlImage
+        import io
+        
+        # Create the pie chart
+        chart_img = _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
+        
+        if chart_img:
+            # Save to bytes
+            img_bytes = io.BytesIO()
+            chart_img.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+            
+            # Add to Excel
+            img = OpenpyxlImage(img_bytes)
+            # Scale image
+            img.width = 380
+            img.height = 360
+            col_letter = get_column_letter(start_col)
+            img.anchor = f'{col_letter}{start_row}'
+            ws.add_image(img)
+            
+            # Return estimated row height for spacing
+            estimated_rows = max(22, int(img.height / 15))
+            return start_row + estimated_rows + 2
+    except Exception as e:
+        print(f"Error creating pie chart: {e}")
+    
+    return start_row + 2
+
 def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
     """
     Creates a visual blueprint diagram of the bay distribution.
@@ -1264,6 +1404,8 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=overview_start_row+4, column=overview_start_col + 2).border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
     
     overview_end_row = overview_start_row + 4
+    
+    # PIE CHART will be added after miscellaneous and markup totals are calculated
 
     # ============================================================================
     # MISCELLANEOUS COST - Stacked vertically below Cost Overview
@@ -1683,6 +1825,23 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     
     markup_end_row = markup_subtotal_row
     print(f"✅ Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
+    
+    # ============================================================================
+    # PIE CHART - Cost Distribution (placed next to Cost Overview, now with all values)
+    # ============================================================================
+    # Add pie chart showing full cost breakdown: Materials, Miscellaneous, Markups, Residual
+    pie_chart_col = overview_start_col + 4  # Place directly next to cost overview box
+    pie_chart_row = overview_start_row - 1  # Align with cost overview header
+    
+    # Calculate active material cost (total minus residual to avoid double-counting)
+    active_material_cost = max(0, final_discounted_total - reuse_total)
+    
+    try:
+        _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
+        print(f"✅ Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
+        print(f"   Active Materials: ${active_material_cost:.2f}, Misc: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
+    except Exception as e:
+        print(f"⚠️ Could not add pie chart: {e}")
     
     # ============================================================================
     # FINAL TOTAL - Below markup section with spacing

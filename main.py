@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import datetime
+import base64
+import io
 
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
@@ -49,6 +51,121 @@ COLOR_TEXT = "#FFFFFF"     # White text for readability on black
 COLOR_TEXT_DIM = "#B3B3B3" # Light grey for secondary text
 COLOR_INPUT_BG = "#2A2A2A" # Dark grey input background
 COLOR_ACCENT_LIGHT = "#D3D3D3"  # Light grey (matching logo side surfaces)
+
+def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
+    """
+    Creates a bay distribution diagram and returns it as a base64 string for Flet display.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        print("PIL/Pillow not available, skipping diagram generation")
+        return None
+    
+    if bays_wide <= 0 or bays_tall <= 0 or opening_width <= 0 or opening_height <= 0:
+        return None
+    
+    # Diagram dimensions
+    diagram_width = 450
+    diagram_height = 350
+    margin = 40
+    
+    # Calculate bay dimensions
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths = custom_bay_widths
+    else:
+        bay_widths = [opening_width / bays_wide] * bays_wide
+    
+    if custom_bay_heights and len(custom_bay_heights) == bays_tall:
+        bay_heights = custom_bay_heights
+    else:
+        bay_heights = [opening_height / bays_tall] * bays_tall
+    
+    if not bay_widths or not bay_heights:
+        return None
+    
+    # Create image with dark background to match app theme
+    img = Image.new('RGB', (diagram_width, diagram_height), color='#1A1A1A')
+    draw = ImageDraw.Draw(img)
+    
+    # Calculate scaling to fit in diagram
+    max_display_width = diagram_width - 2 * margin
+    max_display_height = diagram_height - 2 * margin - 60
+    
+    total_width = sum(bay_widths)
+    total_height = sum(bay_heights)
+    scale_x = max_display_width / total_width if total_width > 0 else 1
+    scale_y = max_display_height / total_height if total_height > 0 else 1
+    scale = min(scale_x, scale_y)
+    
+    # Calculate starting position (centered)
+    scaled_total_width = total_width * scale
+    scaled_total_height = total_height * scale
+    start_x = margin + (max_display_width - scaled_total_width) / 2
+    start_y = margin + 35
+    
+    # Try to load fonts
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 14)
+        font_small = ImageFont.truetype("arial.ttf", 10)
+    except:
+        try:
+            font_large = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 14)
+            font_small = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 10)
+        except:
+            font_large = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+    
+    # Draw title
+    title = f"Bay Distribution ({bays_wide}W x {bays_tall}H)"
+    draw.text((diagram_width // 2, 15), title, fill='#0073E6', anchor='mm', font=font_large)
+    
+    # Draw bays
+    current_y = start_y
+    bay_num = 1
+    for row in range(bays_tall):
+        current_x = start_x
+        for col in range(bays_wide):
+            bay_w = bay_widths[col] * scale
+            bay_h = bay_heights[row] * scale
+            
+            # Draw bay rectangle with blue border
+            draw.rectangle(
+                [current_x, current_y, current_x + bay_w, current_y + bay_h],
+                outline='#0073E6',
+                width=2
+            )
+            
+            # Draw fill with semi-transparent effect
+            draw.rectangle(
+                [current_x + 2, current_y + 2, current_x + bay_w - 2, current_y + bay_h - 2],
+                fill='#2A2A2A'
+            )
+            
+            # Bay center
+            bay_center_x = current_x + bay_w / 2
+            bay_center_y = current_y + bay_h / 2
+            
+            # Draw bay number
+            draw.text((bay_center_x, bay_center_y - 8), f"B{bay_num}", fill='#FFFFFF', anchor='mm', font=font_small)
+            
+            # Draw dimensions
+            dim_text = f"{bay_widths[col]:.1f}\" x {bay_heights[row]:.1f}\""
+            draw.text((bay_center_x, bay_center_y + 8), dim_text, fill='#B3B3B3', anchor='mm', font=font_small)
+            
+            current_x += bay_w
+            bay_num += 1
+        current_y += bay_h
+    
+    # Draw overall dimensions
+    dim_text = f"Total: {opening_width:.1f}\" W x {opening_height:.1f}\" H"
+    draw.text((diagram_width // 2, diagram_height - 25), dim_text, fill='#FFFFFF', anchor='mm', font=font_small)
+    
+    # Convert to base64
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    return base64.b64encode(img_bytes.getvalue()).decode('utf-8')
 
 def main(page: ft.Page):
     page.title = "United Glass Estimation"
@@ -400,6 +517,7 @@ def main(page: ft.Page):
             inputs["bays_tall"].parent.visible = is_yes45
             if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45
             if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45
+            if inputs.get("bay_diagram_container"): inputs["bay_diagram_container"].visible = is_yes45
             
             if is_yes45:
                 update_dynamic_bay_inputs(None)
@@ -586,6 +704,66 @@ def main(page: ft.Page):
                 )
 
             inputs["dynamic_h_fields"] = new_h_fields
+            
+            # Add Generate Bay Preview button if we have bays configured
+            if bw > 0 and bh > 0:
+                def generate_bay_preview(e):
+                    try:
+                        opening_w = float(inputs["width"].value) if inputs["width"].value else 0
+                        opening_h = float(inputs["height"].value) if inputs["height"].value else 0
+                        
+                        if opening_w <= 0 or opening_h <= 0:
+                            show_snack("Please set valid Opening Width and Height first", "red")
+                            return
+                        
+                        # Gather custom widths
+                        custom_w = []
+                        for f in inputs.get("dynamic_w_fields", []):
+                            try:
+                                if f.value:
+                                    custom_w.append(float(f.value))
+                            except:
+                                pass
+                        
+                        # Gather custom heights
+                        custom_h = []
+                        for f in inputs.get("dynamic_h_fields", []):
+                            try:
+                                if f.value:
+                                    custom_h.append(float(f.value))
+                            except:
+                                pass
+                        
+                        # Generate diagram
+                        diagram_b64 = create_bay_diagram_base64(
+                            bw, bh, opening_w, opening_h,
+                            custom_bay_widths=custom_w if len(custom_w) == bw else None,
+                            custom_bay_heights=custom_h if len(custom_h) == bh else None
+                        )
+                        
+                        if diagram_b64 and inputs.get("bay_diagram_image"):
+                            inputs["bay_diagram_image"].src_base64 = diagram_b64
+                            inputs["bay_diagram_image"].visible = True
+                            if inputs.get("bay_diagram_container"):
+                                inputs["bay_diagram_container"].visible = True
+                            page.update()
+                            show_snack("Bay diagram preview generated!", "green")
+                        else:
+                            show_snack("Could not generate bay diagram", "orange")
+                    except Exception as ex:
+                        show_snack(f"Error generating preview: {str(ex)}", "red")
+                
+                inputs["custom_h_col"].controls.append(ft.Container(height=10))
+                inputs["custom_h_col"].controls.append(
+                    ft.ElevatedButton(
+                        "GENERATE BAY PREVIEW",
+                        icon=ft.Icons.PREVIEW,
+                        on_click=generate_bay_preview,
+                        bgcolor="#4CAF50",
+                        color="white"
+                    )
+                )
+            
             if page.views:
                 page.update()
 
@@ -674,6 +852,13 @@ def main(page: ft.Page):
                 inputs["discounted_cost_per_elev_checkbox"].value = False
             if inputs.get("cost_per_elev_container"):
                 inputs["cost_per_elev_container"].visible = False
+            
+            # Hide bay diagram preview
+            if inputs.get("bay_diagram_container"):
+                inputs["bay_diagram_container"].visible = False
+            if inputs.get("bay_diagram_image"):
+                inputs["bay_diagram_image"].visible = False
+                inputs["bay_diagram_image"].src_base64 = ""
             
             state["current_doors"] = []
             render_doors()
@@ -1713,6 +1898,25 @@ def main(page: ft.Page):
                 content=inputs.setdefault("custom_h_col", ft.Column([], spacing=10)),
                 visible=False
             )),
+            
+            # Bay Diagram Preview Container
+            assign_ref("bay_diagram_container", ft.Container(
+                content=ft.Column([
+                    ft.Text("BAY DIAGRAM PREVIEW", size=12, weight="bold", color=COLOR_TEXT_DIM),
+                    inputs.setdefault("bay_diagram_image", ft.Image(
+                        src_base64="",
+                        width=450,
+                        height=350,
+                        fit=ft.ImageFit.CONTAIN,
+                        visible=False
+                    ))
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                visible=False,
+                margin=ft.margin.only(top=15),
+                padding=10,
+                bgcolor=COLOR_SURFACE,
+                border_radius=10
+            )),
 
             ft.Container(
                 content=ft.Row([
@@ -1789,6 +1993,7 @@ def main(page: ft.Page):
              
         if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45_init
         if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45_init
+        if inputs.get("bay_diagram_container"): inputs["bay_diagram_container"].visible = is_yes45_init
         
         if is_yes45_init:
             # Manually populate dynamic inputs without triggering page.update
