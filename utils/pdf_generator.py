@@ -176,7 +176,19 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     
     # Load Excel workbook
     wb = load_workbook(excel_path, data_only=True)
-    ws = wb.active
+    
+    # Identify all sheets: elevation sheets and Summary sheet
+    all_sheets = wb.sheetnames
+    elevation_sheets = [s for s in all_sheets if s.upper() != 'SUMMARY']
+    summary_sheet_name = None
+    if 'Summary' in all_sheets:
+        summary_sheet_name = 'Summary'
+    elif 'SUMMARY' in all_sheets:
+        summary_sheet_name = 'SUMMARY'
+    
+    print(f"📋 Found {len(elevation_sheets)} elevation sheet(s): {elevation_sheets}")
+    if summary_sheet_name:
+        print(f"📋 Found Summary sheet: {summary_sheet_name}")
     
     # Create PDF document
     doc = SimpleDocTemplate(
@@ -240,286 +252,158 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     story.append(Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", normal_style))
     story.append(Spacer(1, 0.3*inch))
     
-    # Extract images
-    excel_images = extract_images_from_excel(ws)
+    # Helper function to process a single elevation sheet
+    def process_elevation_sheet(ws, sheet_name, story, section_style, normal_style):
+        """Process a single elevation sheet."""
+        excel_images = extract_images_from_excel(ws)
+        bay_diagrams = []
+        
+        max_row = ws.max_row
+        max_col = ws.max_column
+        
+        print(f"📄 Processing sheet '{sheet_name}': {max_row} rows x {max_col} columns")
+        
+        # Add elevation sheet title
+        story.append(Paragraph(f"<b>{sheet_name}</b>", section_style))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # STEP 1: Process System Input (Column A-B, Rows 1-15)
+        print("📊 Processing System Input (Columns A-B, Rows 1-15)")
+        input_table = []
+        for row_idx in range(1, 16):  # Rows 1-15
+            label = format_cell_value(ws.cell(row=row_idx, column=1).value)
+            value = format_cell_value(ws.cell(row=row_idx, column=2).value)
+            if label or value:
+                input_table.append([label, value])
+        
+        if input_table:
+            story.append(Paragraph("<b>System Input</b>", section_style))
+            story.append(Spacer(1, 0.1*inch))
+            story.extend(create_table(input_table, ['Item', 'Value'], normal_style))
+        
+        # STEP 2: Process sections starting at Column E (Profiles, Accessories, etc.)
+        print("📊 Processing sections from Column E")
+        
+        # Find where sections start (look for section headers in column E)
+        sections_found = []
+        fabrication_row = None
+        
+        for row_idx in range(1, max_row + 1):
+            cell_e = ws.cell(row=row_idx, column=5)  # Column E
+            cell_value = cell_e.value
+            
+            # Skip if this is clearly a table header row (not a section header)
+            if cell_value:
+                # Read the row to check if it's a table header
+                row_data = []
+                for col_idx in range(5, min(max_col + 1, 15)):
+                    row_data.append(format_cell_value(ws.cell(row=row_idx, column=col_idx).value))
+                if is_table_header_row(row_data):
+                    continue  # Skip table headers, they're not section headers
+            
+            if cell_value and is_section_header(cell_value, cell_e):
+                section_name = str(cell_value)
+                sections_found.append((row_idx, section_name))
+                if 'FABRICATION' in section_name.upper():
+                    fabrication_row = row_idx
+        
+        # Process each section from Column E
+        current_table = []
+        current_headers = None
+        last_header_row = None
+        
+        for section_idx, (start_row, section_name) in enumerate(sections_found):
+            # Determine end row (next section or end of sheet)
+            if section_idx + 1 < len(sections_found):
+                end_row = sections_found[section_idx + 1][0] - 1
+            else:
+                end_row = max_row
+            
+            print(f"📄 Processing section: {section_name} (rows {start_row}-{end_row})")
+            
+            # Add section header
+            story.append(Paragraph(f"<b>{section_name}</b>", section_style))
+            story.append(Spacer(1, 0.1*inch))
+            
+            # Process rows in this section
+            for row_idx in range(start_row, end_row + 1):
+                # Check for images
+                if row_idx in excel_images:
+                    img_data = excel_images[row_idx]
+                    # Bay diagrams are usually in elevation sections
+                    if 'BAY' in str(img_data) or row_idx < (start_row + end_row) / 2:
+                        bay_diagrams.append((row_idx, img_data))
+                    continue
+                
+                # Read row from Column E onwards
+                row_data = []
+                row_cells = []
+                for col_idx in range(5, min(max_col + 1, 15)):  # Start at column E (5)
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    value = format_cell_value(cell.value, cell)
+                    row_data.append(value)
+                    row_cells.append(cell)
+                
+                if not any([str(v).strip() for v in row_data if v]):
+                    if current_table and current_headers:
+                        story.extend(create_table(current_table, current_headers, normal_style))
+                        current_table = []
+                        current_headers = None
+                    continue
+                
+                # Check for table header
+                if is_table_header_row(row_data):
+                    if current_table and current_headers:
+                        story.extend(create_table(current_table, current_headers, normal_style))
+                        current_table = []
+                    new_headers = [h.strip() for h in row_data if h and str(h).strip()]
+                    if new_headers != current_headers:
+                        current_headers = new_headers
+                        last_header_row = row_idx
+                    continue
+                
+                # Skip if this row was already used as a header
+                if row_idx == last_header_row:
+                    continue
+                
+                # Add data row
+                if current_headers:
+                    clean_row = row_data[:len(current_headers)] if len(row_data) >= len(current_headers) else row_data
+                    while len(clean_row) < len(current_headers):
+                        clean_row.append("")
+                    if len([v for v in clean_row if v and str(v).strip()]) >= 1:
+                        current_table.append(clean_row)
+            
+            # Add table for this section
+            if current_table and current_headers:
+                story.extend(create_table(current_table, current_headers, normal_style))
+                current_table = []
+                current_headers = None
+        
+        # Add bay diagrams after sections
+        for row_idx, img_data in bay_diagrams:
+            try:
+                if isinstance(img_data, bytes):
+                    img_bytes = io.BytesIO(img_data)
+                    img = Image(img_bytes, width=5*inch, height=3.75*inch)
+                    img.hAlign = 'CENTER'
+                    story.append(img)
+                    story.append(Spacer(1, 0.2*inch))
+            except:
+                pass
+        
+        story.append(Spacer(1, 0.3*inch))  # Space between elevation sheets
+    
+    # Process all elevation sheets
     bay_diagrams = []
     pie_chart = None
     
-    max_row = ws.max_row
-    max_col = ws.max_column
+    for sheet_name in elevation_sheets:
+        ws = wb[sheet_name]
+        process_elevation_sheet(ws, sheet_name, story, section_style, normal_style)
     
-    print(f"📄 Processing Excel: {max_row} rows x {max_col} columns")
-    
-    # STEP 1: Process System Input (Column A-B, Rows 1-15)
-    print("📊 Processing System Input (Columns A-B, Rows 1-15)")
-    input_table = []
-    for row_idx in range(1, 16):  # Rows 1-15
-        label = format_cell_value(ws.cell(row=row_idx, column=1).value)
-        value = format_cell_value(ws.cell(row=row_idx, column=2).value)
-        if label or value:
-            input_table.append([label, value])
-    
-    if input_table:
-        story.append(Paragraph("<b>System Input</b>", section_style))
-        story.append(Spacer(1, 0.1*inch))
-        story.extend(create_table(input_table, ['Item', 'Value'], normal_style))
-    
-    # STEP 2: Process sections starting at Column E (Profiles, Accessories, etc.)
-    print("📊 Processing sections from Column E")
-    
-    # Find where sections start (look for section headers in column E)
-    sections_found = []
-    fabrication_row = None
-    
-    for row_idx in range(1, max_row + 1):
-        cell_e = ws.cell(row=row_idx, column=5)  # Column E
-        cell_value = cell_e.value
-        
-        # Skip if this is clearly a table header row (not a section header)
-        if cell_value:
-            # Read the row to check if it's a table header
-            row_data = []
-            for col_idx in range(5, min(max_col + 1, 15)):
-                row_data.append(format_cell_value(ws.cell(row=row_idx, column=col_idx).value))
-            if is_table_header_row(row_data):
-                continue  # Skip table headers, they're not section headers
-        
-        if cell_value and is_section_header(cell_value, cell_e):
-            section_name = str(cell_value)
-            sections_found.append((row_idx, section_name))
-            if 'FABRICATION' in section_name.upper():
-                fabrication_row = row_idx
-    
-    # Find where summary starts (look for section starting at Column A, row 1 after fabrication)
-    summary_start_row = None
-    if fabrication_row:
-        # Look for next section starting at column A
-        for row_idx in range(fabrication_row + 1, max_row + 1):
-            cell_a = ws.cell(row=row_idx, column=1)
-            if cell_a.value and is_section_header(cell_a.value, cell_a):
-                summary_start_row = row_idx
-                break
-    
-    # Process each section from Column E
-    current_section = None
-    current_table = []
-    current_headers = None
-    last_header_row = None  # Track to avoid processing header row as data
-    
-    for section_idx, (start_row, section_name) in enumerate(sections_found):
-        # Determine end row (next section or summary start)
-        if section_idx + 1 < len(sections_found):
-            end_row = sections_found[section_idx + 1][0] - 1
-        elif summary_start_row:
-            end_row = summary_start_row - 1
-        else:
-            end_row = max_row
-        
-        print(f"📄 Processing section: {section_name} (rows {start_row}-{end_row})")
-        
-        # Add section header
-        story.append(Paragraph(f"<b>{section_name}</b>", section_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Process rows in this section
-        for row_idx in range(start_row, end_row + 1):
-            # Check for images
-            if row_idx in excel_images:
-                img_data = excel_images[row_idx]
-                # Bay diagrams are usually in elevation sections
-                if 'BAY' in str(img_data) or row_idx < (start_row + end_row) / 2:
-                    bay_diagrams.append((row_idx, img_data))
-                continue
-            
-            # Read row from Column E onwards (read more columns to ensure we get all cost data)
-            row_data = []
-            row_cells = []
-            # Read up to column 15 (O) to ensure we capture all cost columns including Total List Cost, Discounted Total, etc.
-            for col_idx in range(5, min(max_col + 1, 15)):  # Start at column E (5)
-                cell = ws.cell(row=row_idx, column=col_idx)
-                value = format_cell_value(cell.value, cell)
-                row_data.append(value)
-                row_cells.append(cell)
-            
-            if not any([str(v).strip() for v in row_data if v]):
-                if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
-                    current_table = []
-                    current_headers = None
-                continue
-            
-            # Check for table header
-            if is_table_header_row(row_data):
-                if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
-                    current_table = []
-                # Only update headers if they're different (avoid duplicates)
-                new_headers = [h.strip() for h in row_data if h and str(h).strip()]
-                if new_headers != current_headers:
-                    current_headers = new_headers
-                    last_header_row = row_idx
-                continue
-            
-            # Skip if this row was already used as a header
-            if row_idx == last_header_row:
-                continue
-            
-            # Add data row
-            if current_headers:
-                clean_row = row_data[:len(current_headers)] if len(row_data) >= len(current_headers) else row_data
-                while len(clean_row) < len(current_headers):
-                    clean_row.append("")
-                if len([v for v in clean_row if v and str(v).strip()]) >= 1:
-                    current_table.append(clean_row)
-        
-        # Add table for this section
-        if current_table and current_headers:
-            story.extend(create_table(current_table, current_headers, normal_style))
-            current_table = []
-            current_headers = None
-        
-        # If this is Fabrication, add Total after it
-        if 'FABRICATION' in section_name.upper() and fabrication_row:
-            # Look for Total row after fabrication
-            for row_idx in range(end_row + 1, min(end_row + 10, max_row + 1)):
-                cell_e = ws.cell(row=row_idx, column=5)
-                if cell_e.value and 'TOTAL' in str(cell_e.value).upper():
-                    # Read total row
-                    total_row = []
-                    for col_idx in range(5, min(max_col + 1, 15)):
-                        total_row.append(format_cell_value(ws.cell(row=row_idx, column=col_idx).value))
-                    if any([v for v in total_row if v]):
-                        story.extend(create_table([total_row], current_headers or ['Item', 'Value'], normal_style))
-                    break
-    
-    # Add bay diagrams after their sections
-    for row_idx, img_data in bay_diagrams:
-        try:
-            if isinstance(img_data, bytes):
-                img_bytes = io.BytesIO(img_data)
-                img = Image(img_bytes, width=5*inch, height=3.75*inch)
-                img.hAlign = 'CENTER'
-                story.append(img)
-                story.append(Spacer(1, 0.2*inch))
-        except:
-            pass
-    
-    # STEP 3: Process Summary section (starts at Column A, after sections)
-    if summary_start_row:
-        print(f"📊 Processing Summary section (starts at row {summary_start_row}, Column A)")
-        
-        # Find Labor row in summary
-        labor_row = None
-        for row_idx in range(summary_start_row, max_row + 1):
-            cell_a = ws.cell(row=row_idx, column=1)
-            if cell_a.value and 'LABOR' in str(cell_a.value).upper():
-                labor_row = row_idx
-                break
-        
-        current_section = None
-        current_table = []
-        current_headers = None
-        last_header_row = None  # Track to avoid processing header row as data
-        
-        for row_idx in range(summary_start_row, max_row + 1):
-            # Check for pie chart
-            if row_idx in excel_images:
-                if pie_chart is None:
-                    pie_chart = (row_idx, excel_images[row_idx])
-                continue
-            
-            # Read row from Column A onwards
-            row_data = []
-            row_cells = []
-            for col_idx in range(1, min(max_col + 1, 15)):  # Start at column A
-                cell = ws.cell(row=row_idx, column=col_idx)
-                value = format_cell_value(cell.value, cell)
-                row_data.append(value)
-                row_cells.append(cell)
-            
-            if not any([str(v).strip() for v in row_data if v]):
-                if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
-                    current_table = []
-                    current_headers = None
-                continue
-            
-            # Check for section header
-            first_cell = row_cells[0] if row_cells else None
-            first_value = row_data[0] if row_data else None
-            
-            if first_value and is_section_header(first_value, first_cell):
-                if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
-                    current_table = []
-                    current_headers = None
-                
-                current_section = str(first_value)
-                story.append(Paragraph(f"<b>{current_section}</b>", section_style))
-                story.append(Spacer(1, 0.1*inch))
-                
-                # If this is Labor, Cost Overview comes after
-                if 'LABOR' in current_section.upper() and labor_row:
-                    # Find Cost Overview after Labor
-                    for check_row in range(labor_row + 1, min(labor_row + 20, max_row + 1)):
-                        check_cell = ws.cell(check_row, column=1)
-                        if check_cell.value and 'COST OVERVIEW' in str(check_cell.value).upper():
-                            # Process Cost Overview section
-                            story.append(Paragraph("<b>COST OVERVIEW</b>", section_style))
-                            story.append(Spacer(1, 0.1*inch))
-                            # Read Cost Overview rows
-                            for co_row in range(check_row, min(check_row + 10, max_row + 1)):
-                                co_data = []
-                                for col_idx in range(1, min(max_col + 1, 15)):
-                                    co_data.append(format_cell_value(ws.cell(co_row, column=col_idx).value))
-                                if any([v for v in co_data if v]):
-                                    if not current_headers:
-                                        current_headers = ['Item', 'Value']
-                                    if len(co_data) >= 2:
-                                        current_table.append([co_data[0], co_data[1] if len(co_data) > 1 else ""])
-                            break
-                continue
-            
-            # Check for table header - avoid duplicates
-            if is_table_header_row(row_data):
-                if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
-                    current_table = []
-                new_headers = [h.strip() for h in row_data if h and str(h).strip()]
-                if new_headers != current_headers:
-                    current_headers = new_headers
-                    last_header_row = row_idx
-                continue
-            
-            # Skip if this row was already used as header
-            if row_idx == last_header_row:
-                continue
-            
-            # Add data row
-            if current_headers:
-                clean_row = row_data[:len(current_headers)] if len(row_data) >= len(current_headers) else row_data
-                while len(clean_row) < len(current_headers):
-                    clean_row.append("")
-                if len([v for v in clean_row if v and str(v).strip()]) >= 1:
-                    current_table.append(clean_row)
-            elif len([v for v in row_data if v]) >= 2:
-                if not current_headers:
-                    current_headers = ['Item', 'Value']
-                if len(row_data) >= 2:
-                    current_table.append([row_data[0], row_data[1] if len(row_data) > 1 else ""])
-        
-        # Add last table
-        if current_table and current_headers:
-            story.extend(create_table(current_table, current_headers, normal_style))
-    
-    # Process Summary sheet separately if it exists
-    summary_sheet_name = None
-    if 'Summary' in wb.sheetnames:
-        summary_sheet_name = 'Summary'
-    elif 'SUMMARY' in wb.sheetnames:
-        summary_sheet_name = 'SUMMARY'
-    
-    if summary_sheet_name and ws.title.upper() != 'SUMMARY':
+    # STEP 3: Process Summary sheet separately if it exists
+    if summary_sheet_name:
         ws_summary = wb[summary_sheet_name]
         print(f"📄 Processing Summary sheet separately: {summary_sheet_name}")
         story.append(PageBreak())
