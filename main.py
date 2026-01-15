@@ -11,6 +11,20 @@ from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_door_info
 
+# PDF export (optional - will fail gracefully if reportlab not installed)
+try:
+    from utils.pdf_generator import export_project_to_pdf, REPORTLAB_AVAILABLE
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+    print("⚠️ PDF export not available (reportlab not installed)")
+
+# Email functionality (optional)
+try:
+    from utils.email_sender import send_estimate_email, get_email_settings, save_email_settings, EMAIL_AVAILABLE
+except ImportError:
+    EMAIL_AVAILABLE = False
+    print("⚠️ Email functionality not available")
+
 # --- Constants & Config ---
 PROJECTS_DIR = ".files"
 MASTER_PROJECT_LIST_FILE = os.path.join(PROJECTS_DIR, "projects_list.json")
@@ -1337,6 +1351,271 @@ def main(page: ft.Page):
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
+        
+        def export_to_pdf(e):
+            """Export current project to PDF"""
+            try:
+                if not REPORTLAB_AVAILABLE:
+                    show_snack("PDF export requires reportlab. Install with: pip install reportlab", "red")
+                    return
+                
+                if not state.get("current_project"):
+                    show_snack("Please select a project first", "red")
+                    return
+                
+                # Find the most recent Excel report or generate one
+                paths = get_project_paths(state["current_project"])
+                excel_path = paths.get("excel")
+                
+                # If no report exists, generate one first
+                if not excel_path or not os.path.exists(excel_path):
+                    show_snack("Generating report first...", "blue")
+                    # Generate report
+                    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    excel_path = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
+                    os.makedirs("reports", exist_ok=True)
+                    
+                    # Save settings first
+                    def get_pct(key):
+                        val = inputs.get(key, ft.TextField()).value
+                        try:
+                            return float(val) if val and val.strip() else 0.0
+                        except (ValueError, AttributeError):
+                            return 0.0
+                    
+                    settings = {
+                        "overhead_materials_pct": get_pct("overhead_materials_pct"),
+                        "overhead_labor_pct": get_pct("overhead_labor_pct"),
+                        "admin_management_pct": get_pct("admin_management_pct"),
+                        "engineering_pct": get_pct("engineering_pct"),
+                        "packaging_materials_pct": get_pct("packaging_materials_pct"),
+                        "shipping_transport_pct": get_pct("shipping_transport_pct"),
+                        "commissions_pct": get_pct("commissions_pct")
+                    }
+                    save_project_settings(state["current_project"], settings)
+                    
+                    generate_excel_report(
+                        excel_path, paths["elevations"], paths["materials"],
+                        "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
+                        summary_settings_path=paths["settings"]
+                    )
+                
+                # Export to PDF
+                pdf_path = export_project_to_pdf(
+                    state["current_project"],
+                    excel_path=excel_path,
+                    include_logo=True
+                )
+                
+                if os.path.exists(pdf_path):
+                    show_snack(f"PDF exported successfully: {pdf_path}", "green")
+                    # Open the PDF (Windows)
+                    try:
+                        os.startfile(pdf_path)
+                    except:
+                        pass
+                else:
+                    show_snack("PDF export failed", "red")
+                    
+            except Exception as ex:
+                error_msg = f"PDF export error: {str(ex)}"
+                print(f"❌ {error_msg}")
+                import traceback
+                traceback.print_exc()
+                show_snack(error_msg, "red")
+        
+        def show_email_dialog(e):
+            """Show email configuration and send dialog"""
+            if not EMAIL_AVAILABLE:
+                show_snack("Email functionality not available", "red")
+                return
+            
+            if not REPORTLAB_AVAILABLE:
+                show_snack("Please generate PDF first. PDF export requires reportlab.", "red")
+                return
+            
+            # Get current email settings
+            email_settings = get_email_settings()
+            
+            # Create dialog
+            recipient_email_field = ft.TextField(
+                label="Recipient Email",
+                hint_text="customer@example.com",
+                width=400
+            )
+            
+            recipient_name_field = ft.TextField(
+                label="Recipient Name (Optional)",
+                hint_text="Customer Name",
+                width=400
+            )
+            
+            subject_field = ft.TextField(
+                label="Subject (Optional)",
+                hint_text="Project Estimate",
+                width=400,
+                value=f"Project Estimate - {state.get('current_project', 'Project')}"
+            )
+            
+            body_field = ft.TextField(
+                label="Message (Optional)",
+                hint_text="Email message body",
+                width=400,
+                multiline=True,
+                min_lines=5
+            )
+            
+            # Email settings fields
+            smtp_server_field = ft.TextField(
+                label="SMTP Server",
+                value=email_settings.get("smtp_server", ""),
+                hint_text="smtp.gmail.com",
+                width=400
+            )
+            
+            smtp_port_field = ft.TextField(
+                label="SMTP Port",
+                value=str(email_settings.get("smtp_port", 587)),
+                hint_text="587",
+                width=400
+            )
+            
+            sender_email_field = ft.TextField(
+                label="Your Email",
+                value=email_settings.get("sender_email", ""),
+                hint_text="your.email@example.com",
+                width=400
+            )
+            
+            sender_password_field = ft.TextField(
+                label="Email Password/App Password",
+                value=email_settings.get("sender_password", ""),
+                password=True,
+                can_reveal_password=True,
+                width=400
+            )
+            
+            sender_name_field = ft.TextField(
+                label="Your Name (Optional)",
+                value=email_settings.get("sender_name", ""),
+                hint_text="Your Company Name",
+                width=400
+            )
+            
+            settings_expansion = ft.ExpansionTile(
+                title=ft.Text("Email Settings (Configure once)"),
+                subtitle=ft.Text("SMTP server configuration"),
+                children=[
+                    smtp_server_field,
+                    smtp_port_field,
+                    sender_email_field,
+                    sender_password_field,
+                    sender_name_field,
+                    ft.Text("Note: For Gmail, use an App Password instead of your regular password.", 
+                           size=10, color=ft.colors.GREY)
+                ]
+            )
+            
+            def send_email(e):
+                try:
+                    # Save email settings
+                    new_settings = {
+                        "smtp_server": smtp_server_field.value,
+                        "smtp_port": int(smtp_port_field.value) if smtp_port_field.value else 587,
+                        "sender_email": sender_email_field.value,
+                        "sender_password": sender_password_field.value,
+                        "sender_name": sender_name_field.value
+                    }
+                    save_email_settings(new_settings)
+                    
+                    # Generate PDF if needed
+                    paths = get_project_paths(state["current_project"])
+                    excel_path = paths.get("excel")
+                    
+                    if not excel_path or not os.path.exists(excel_path):
+                        show_snack("Generating report first...", "blue")
+                        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        excel_path = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
+                        os.makedirs("reports", exist_ok=True)
+                        
+                        def get_pct(key):
+                            val = inputs.get(key, ft.TextField()).value
+                            try:
+                                return float(val) if val and val.strip() else 0.0
+                            except (ValueError, AttributeError):
+                                return 0.0
+                        
+                        settings = {
+                            "overhead_materials_pct": get_pct("overhead_materials_pct"),
+                            "overhead_labor_pct": get_pct("overhead_labor_pct"),
+                            "admin_management_pct": get_pct("admin_management_pct"),
+                            "engineering_pct": get_pct("engineering_pct"),
+                            "packaging_materials_pct": get_pct("packaging_materials_pct"),
+                            "shipping_transport_pct": get_pct("shipping_transport_pct"),
+                            "commissions_pct": get_pct("commissions_pct")
+                        }
+                        save_project_settings(state["current_project"], settings)
+                        
+                        generate_excel_report(
+                            excel_path, paths["elevations"], paths["materials"],
+                            "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
+                            summary_settings_path=paths["settings"]
+                        )
+                    
+                    # Generate PDF
+                    pdf_path = export_project_to_pdf(
+                        state["current_project"],
+                        excel_path=excel_path,
+                        include_logo=True
+                    )
+                    
+                    # Send email
+                    send_estimate_email(
+                        pdf_path=pdf_path,
+                        recipient_email=recipient_email_field.value,
+                        recipient_name=recipient_name_field.value,
+                        subject=subject_field.value,
+                        body=body_field.value
+                    )
+                    
+                    dialog.open = False
+                    page.update()
+                    show_snack(f"Email sent successfully to {recipient_email_field.value}", "green")
+                    
+                except Exception as ex:
+                    error_msg = f"Email error: {str(ex)}"
+                    print(f"❌ {error_msg}")
+                    import traceback
+                    traceback.print_exc()
+                    show_snack(error_msg, "red")
+            
+            dialog = ft.AlertDialog(
+                title=ft.Text("Send Estimate via Email"),
+                content=ft.Container(
+                    content=ft.Column(
+                        [
+                            recipient_email_field,
+                            recipient_name_field,
+                            subject_field,
+                            body_field,
+                            settings_expansion
+                        ],
+                        scroll=ft.ScrollMode.AUTO,
+                        height=500,
+                        width=450
+                    ),
+                    width=450
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: setattr(dialog, 'open', False) or page.update()),
+                    ft.ElevatedButton("Send Email", on_click=send_email, bgcolor=COLOR_ACCENT, color="white")
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+            )
+            
+            page.dialog = dialog
+            dialog.open = True
+            page.update()
 
         # --- UI Structure ---
         
@@ -1822,7 +2101,25 @@ def main(page: ft.Page):
             ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: page.go("/"), icon_color=COLOR_TEXT),
             ft.Text(state["current_project"].upper(), size=20, weight="bold", color=COLOR_TEXT),
             ft.Container(expand=True),
-            ft.ElevatedButton("GENERATE REPORT", bgcolor=COLOR_ACCENT, color="white", on_click=gen_full_report)
+            ft.Row([
+                ft.ElevatedButton(
+                    "EXPORT PDF",
+                    icon=ft.Icons.PICTURE_AS_PDF,
+                    bgcolor="#D32F2F",
+                    color="white",
+                    on_click=export_to_pdf,
+                    tooltip="Export report as branded PDF with company logo"
+                ) if REPORTLAB_AVAILABLE else ft.Container(),
+                ft.ElevatedButton(
+                    "SEND EMAIL",
+                    icon=ft.Icons.EMAIL,
+                    bgcolor="#388E3C",
+                    color="white",
+                    on_click=show_email_dialog,
+                    tooltip="Send estimate via email"
+                ) if EMAIL_AVAILABLE else ft.Container(),
+                ft.ElevatedButton("GENERATE REPORT", bgcolor=COLOR_ACCENT, color="white", on_click=gen_full_report)
+            ], spacing=10)
         ], height=60, alignment=ft.MainAxisAlignment.START)
 
         # Left Col: Elevation Form
