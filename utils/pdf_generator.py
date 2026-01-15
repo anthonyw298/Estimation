@@ -87,29 +87,66 @@ def is_section_header(cell_value, cell=None):
     
     cell_str = str(cell_value).strip().upper()
     
-    # Exclude common column headers that should never be section headers
-    excluded_keywords = ['DESCRIPTION', 'PART NUMBER', 'TOTAL QUANTITY', 'QUANTITY', 
-                        'TOTAL LIST COST', 'DISCOUNTED', 'ITEM', 'VALUE', 'AMOUNT']
-    if any(excluded in cell_str for excluded in excluded_keywords) and len(cell_str.split()) <= 3:
-        return False
-    
     is_bold = cell and cell.font and cell.font.bold
     is_colored = cell and cell.fill and cell.fill.start_color and cell.fill.start_color.rgb != 'FFFFFFFF'
     
+    # Exclude items that should NEVER be section headers (these are regular data rows)
+    excluded_data_items = [
+        'OVERHEAD MATERIALS', 'OVERHEAD LABOR', 'OVERHEAD', 
+        'ADMIN AND MANAGEMENT', 'ENGINEERING', 'PACKAGING MATERIALS',
+        'SHIPPING AND TRANSPORT', 'COMMISSIONS', 'COMMISSION',
+        'PROFIT ON MATERIAL', 'PROFIT ON WASTE', 'PROFIT ON GLASS PURCHASE',
+        'PROFIT ON WAGES', 'PLANNING / TECHNICAL OFFICE', 'PLANNING/TECHNICAL OFFICE',
+        'JOINTS FABRICATION LABOR', 'FABRICATION LABOR',
+        'LIST PRICE TOTAL', 'DISCOUNTED TOTAL', 'RESIDUAL/WASTE COST',
+        'WASTE PERCENTAGE', 'MISCELLANEOUS', 'MARKUPS',
+        'GLASS AREA', 'GLASS AREA (ADJUSTED)'
+    ]
+    
+    # If it's one of these excluded items, it's NOT a section header (even if bold)
+    for excluded in excluded_data_items:
+        if excluded in cell_str or cell_str.startswith(excluded):
+            return False
+    
+    # Special section headers that should always be treated as headers (must have colored background)
+    special_section_headers = ['GRAND TOTAL', 'COST OVERVIEW', 'MISCELLANEOUS COSTS', 
+                               'MARKUPS / PROFIT', 'MARKUPS/PROFIT', 'PROJECT TOTAL']
+    
+    # Check if this is a special section header with bold + colored styling
+    for special in special_section_headers:
+        if special in cell_str and is_bold and is_colored:
+            return True
+    
+    # Exclude common column headers and totals that should never be section headers
+    excluded_keywords = ['DESCRIPTION', 'PART NUMBER', 'TOTAL QUANTITY', 'QUANTITY', 
+                        'TOTAL LIST COST', 'DISCOUNTED', 'ITEM', 'VALUE', 'AMOUNT',
+                        'SUBTOTAL', 'RESIDUAL/WASTE', 'RESIDUAL',
+                        'WASTE PERCENTAGE', 'WASTE COST']
+    # Check for exact matches or if excluded keyword is the main content of the cell
+    for excluded in excluded_keywords:
+        if excluded in cell_str and len(cell_str.split()) <= 3:
+            return False
+        # Also check if cell_str starts with excluded keyword
+        if cell_str.startswith(excluded):
+            return False
+    
     section_keywords = [
         'PROFILES', 'ACCESSORIES', 'GASKETS', 'GLASS', 'LABOR', 'DOORS',
-        'MISCELLANEOUS', 'MARKUPS', 'PROFIT', 'COST OVERVIEW', 'PROJECT TOTAL',
+        'COST OVERVIEW', 'PROJECT TOTAL',
         'ELEVATION SUMMARY', 'FABRICATION', 'COST/ELEVATION', 'SUMMARY',
         'SYSTEM INPUT', 'BAY DISTRIBUTION'
     ]
     
-    # Only treat as section header if it matches a section keyword OR is bold+colored AND not a simple column header
-    if any(kw in cell_str for kw in section_keywords) and len(str(cell_value)) < 60:
+    # Only treat as section header if it matches a section keyword AND has colored background
+    # This prevents items like "MISCELLANEOUS" or "MARKUPS" from being detected as headers
+    if any(kw in cell_str for kw in section_keywords) and len(str(cell_value)) < 60 and is_colored:
         return True
     
-    # Bold and colored cells are section headers only if they're not simple column headers
-    if is_bold and is_colored and len(cell_str.split()) <= 2 and not any(excluded in cell_str for excluded in excluded_keywords):
-        return True
+    # Bold and colored cells are section headers only if they're not excluded items
+    if is_bold and is_colored and len(cell_str.split()) <= 2:
+        # Double-check it's not an excluded data item
+        if not any(excluded in cell_str for excluded in excluded_data_items):
+            return True
     
     return False
 
@@ -294,9 +331,10 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                     bay_diagrams.append((row_idx, img_data))
                 continue
             
-            # Read row from Column E onwards
+            # Read row from Column E onwards (read more columns to ensure we get all cost data)
             row_data = []
             row_cells = []
+            # Read up to column 15 (O) to ensure we capture all cost columns including Total List Cost, Discounted Total, etc.
             for col_idx in range(5, min(max_col + 1, 15)):  # Start at column E (5)
                 cell = ws.cell(row=row_idx, column=col_idx)
                 value = format_cell_value(cell.value, cell)
@@ -510,7 +548,8 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             row_data = []
             row_cells = []
             row_bold_flags = []  # Track which cells are bold
-            for col_idx in range(1, min(max_col_summary + 1, 15)):
+            # Read more columns to ensure we get column C (index 2) for MISCELLANEOUS COSTS
+            for col_idx in range(1, min(max_col_summary + 1, 10)):
                 cell = ws_summary.cell(row=row_idx, column=col_idx)
                 value = format_cell_value(cell.value, cell)
                 is_bold = cell.font and cell.font.bold if cell.font else False
@@ -538,6 +577,21 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 story.append(Paragraph(f"<b>{first_value}</b>", section_style))
                 story.append(Spacer(1, 0.1*inch))
                 
+                # Special handling for GRAND TOTAL - value is in same row (column C)
+                cell_str = str(first_value).strip().upper()
+                if 'GRAND TOTAL' in cell_str:
+                    # Check if value is in column C of same row
+                    if len(row_data) > 2 and row_data[2] and str(row_data[2]).strip():
+                        grand_total_value = row_data[2]
+                        grand_total_bold = row_bold_flags[2] if len(row_bold_flags) > 2 else False
+                        # Display as a simple Item/Value table with just one row
+                        grand_table = [[(first_value, True), (grand_total_value, grand_total_bold)]]
+                        story.extend(create_table(grand_table, ['Item', 'Value'], normal_style))
+                        current_table = []
+                        current_headers = None
+                        last_header_row = None
+                        continue
+                
                 # For summary sections (COST OVERVIEW, MISCELLANEOUS, etc.), set up Item/Value headers
                 # Check if next row is a table header, if not, default to Item/Value
                 if row_idx + 1 <= max_row_summary:
@@ -550,7 +604,14 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                         last_header_row = None
                 continue
             
-            if is_table_header_row(row_data):
+            # For Summary sheet, only treat as table header if we're NOT in an Item/Value section
+            # Item/Value sections (COST OVERVIEW, MISCELLANEOUS, etc.) already have headers set
+            # and should continue until the next section header
+            is_item_value_section = (current_headers and len(current_headers) == 2 and 
+                                     current_headers[0].upper() == 'ITEM' and 
+                                     current_headers[1].upper() == 'VALUE')
+            
+            if is_table_header_row(row_data) and not is_item_value_section:
                 if current_table and current_headers:
                     story.extend(create_table(current_table, current_headers, normal_style))
                     current_table = []
@@ -569,20 +630,65 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 # For Item/Value format, handle values that might be in column C instead of B
                 if len(current_headers) == 2 and current_headers[0].upper() == 'ITEM' and current_headers[1].upper() == 'VALUE':
                     label = row_data[0] if len(row_data) > 0 else ""
-                    label_bold = row_bold_flags[0] if len(row_bold_flags) > 0 else False
+                    # Check actual cell for bold (column 1 = column A)
+                    try:
+                        label_cell = ws_summary.cell(row=row_idx, column=1)
+                        label_bold = bool(label_cell.font and label_cell.font.bold) if label_cell.font else False
+                    except:
+                        label_bold = False
+                    
                     value = ""
                     value_bold = False
-                    value_col_idx = -1
-                    # Try column C first (index 2), then column B (index 1)
+                    value_excel_col = -1
+                    # Try column C (3) first (MISCELLANEOUS COSTS stores values in column C)
+                    # Check row_data first (simpler, already formatted)
                     if len(row_data) > 2 and row_data[2] and str(row_data[2]).strip():
                         value = row_data[2]
-                        value_col_idx = 2
-                    elif len(row_data) > 1 and row_data[1] and str(row_data[1]).strip():
-                        value = row_data[1]
-                        value_col_idx = 1
-                    if value_col_idx >= 0 and len(row_bold_flags) > value_col_idx:
-                        value_bold = row_bold_flags[value_col_idx]
-                    if label and str(label).strip():  # Add if we have label (value can be empty for some rows)
+                        value_excel_col = 3
+                        # Get bold flag from row_bold_flags if available
+                        if len(row_bold_flags) > 2:
+                            value_bold = row_bold_flags[2]
+                    # If not in row_data, try reading from row_cells directly
+                    elif len(row_cells) > 2:
+                        cell_c = row_cells[2]
+                        if cell_c and cell_c.value is not None:
+                            val_str = format_cell_value(cell_c.value, cell_c)
+                            if val_str and str(val_str).strip():
+                                value = val_str
+                                value_excel_col = 3
+                                value_bold = bool(cell_c.font and cell_c.font.bold) if cell_c.font else False
+                    # If not found in C, try column B (2) as fallback
+                    if not value:
+                        if len(row_data) > 1 and row_data[1] and str(row_data[1]).strip():
+                            value = row_data[1]
+                            value_excel_col = 2
+                            if len(row_bold_flags) > 1:
+                                value_bold = row_bold_flags[1]
+                        elif len(row_cells) > 1:
+                            cell_b = row_cells[1]
+                            if cell_b and cell_b.value is not None:
+                                val_str = format_cell_value(cell_b.value, cell_b)
+                                if val_str and str(val_str).strip():
+                                    value = val_str
+                                    value_excel_col = 2
+                                    value_bold = bool(cell_b.font and cell_b.font.bold) if cell_b.font else False
+                    
+                    # Get bold flag from the actual cell we found the value in
+                    if value_excel_col > 0:
+                        try:
+                            value_cell = ws_summary.cell(row=row_idx, column=value_excel_col)
+                            value_bold = bool(value_cell.font and value_cell.font.bold) if value_cell.font else False
+                        except:
+                            # Try to get bold from row_cells if we found the value there
+                            col_idx = value_excel_col - 1  # Convert to 0-based
+                            if col_idx < len(row_bold_flags):
+                                value_bold = row_bold_flags[col_idx]
+                            else:
+                                value_bold = False
+                    
+                    # Always add row if we have a label (even if value is empty, it's still a valid row)
+                    # This ensures all rows in a section are captured (e.g., all 7 MISCELLANEOUS items, all 4 COST OVERVIEW rows)
+                    if label and str(label).strip():  
                         current_table.append([(label, label_bold), (value, value_bold)])
                 else:
                     # For other header formats, use standard logic with bold formatting
@@ -590,7 +696,13 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                     for col_idx in range(len(current_headers)):
                         if col_idx < len(row_data):
                             value = row_data[col_idx]
-                            is_bold = row_bold_flags[col_idx] if col_idx < len(row_bold_flags) else False
+                            # Check actual Excel cell for bold (col_idx + 1 because Excel columns are 1-indexed)
+                            excel_col = col_idx + 1
+                            try:
+                                cell = ws_summary.cell(row=row_idx, column=excel_col)
+                                is_bold = bool(cell.font and cell.font.bold) if cell.font else False
+                            except:
+                                is_bold = False
                             formatted_row.append((value, is_bold))
                         else:
                             formatted_row.append(("", False))
@@ -599,22 +711,57 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             elif len([v for v in row_data if v]) >= 1:
                 # For Item/Value format, find the value - it might be in column C (index 2) instead of B (index 1)
                 label = row_data[0] if len(row_data) > 0 else ""
-                label_bold = row_bold_flags[0] if len(row_bold_flags) > 0 else False
+                # Check actual cell for bold (column 1 = column A)
+                label_cell = ws_summary.cell(row=row_idx, column=1)
+                label_bold = label_cell.font and label_cell.font.bold if label_cell.font else False
+                
                 value = ""
                 value_bold = False
-                value_col_idx = -1
+                value_excel_col = -1
                 
-                # Try column C first (index 2), then column B (index 1)
+                # Try column C (3) first (MISCELLANEOUS COSTS stores values in column C)
+                # Check row_data first (simpler, already formatted)
                 if len(row_data) > 2 and row_data[2] and str(row_data[2]).strip():
                     value = row_data[2]
-                    value_col_idx = 2
-                elif len(row_data) > 1 and row_data[1] and str(row_data[1]).strip():
-                    value = row_data[1]
-                    value_col_idx = 1
-                if value_col_idx >= 0 and len(row_bold_flags) > value_col_idx:
-                    value_bold = row_bold_flags[value_col_idx]
+                    value_excel_col = 3
+                    # Get bold flag from row_bold_flags if available
+                    if len(row_bold_flags) > 2:
+                        value_bold = row_bold_flags[2]
+                # If not in row_data, try reading from row_cells directly
+                elif len(row_cells) > 2:
+                    cell_c = row_cells[2]
+                    if cell_c and cell_c.value is not None:
+                        val_str = format_cell_value(cell_c.value, cell_c)
+                        if val_str and str(val_str).strip():
+                            value = val_str
+                            value_excel_col = 3
+                            value_bold = bool(cell_c.font and cell_c.font.bold) if cell_c.font else False
+                # If not found in C, try column B (2) as fallback
+                if not value:
+                    if len(row_data) > 1 and row_data[1] and str(row_data[1]).strip():
+                        value = row_data[1]
+                        value_excel_col = 2
+                        if len(row_bold_flags) > 1:
+                            value_bold = row_bold_flags[1]
+                    elif len(row_cells) > 1:
+                        cell_b = row_cells[1]
+                        if cell_b and cell_b.value is not None:
+                            val_str = format_cell_value(cell_b.value, cell_b)
+                            if val_str and str(val_str).strip():
+                                value = val_str
+                                value_excel_col = 2
+                                value_bold = bool(cell_b.font and cell_b.font.bold) if cell_b.font else False
                 
-                # Only add row if we have label
+                # Fallback: check actual cell for bold if we found a value
+                if value_excel_col > 0 and not value_bold:
+                    try:
+                        value_cell = ws_summary.cell(row=row_idx, column=value_excel_col)
+                        value_bold = bool(value_cell.font and value_cell.font.bold) if value_cell.font else False
+                    except:
+                        pass
+                
+                # Always add row if we have a label (even if value is empty)
+                # This ensures all rows in a section are captured until next section header
                 if label and str(label).strip():
                     # Only create Item/Value headers if we don't already have headers set
                     if not current_headers:
@@ -692,12 +839,16 @@ def create_table(table_data, headers, normal_style):
                 if isinstance(cell, tuple) and len(cell) == 2:
                     cell_value, is_bold = cell
                 
-                if cell_value and str(cell_value).strip():
-                    # Apply bold formatting if needed
-                    if is_bold:
-                        formatted.append(Paragraph(f"<b>{str(cell_value)}</b>", normal_style))
+                if cell_value is not None:
+                    cell_str = str(cell_value).strip()
+                    if cell_str:
+                        # Apply bold formatting if needed
+                        if is_bold:
+                            formatted.append(Paragraph(f"<b>{cell_str}</b>", normal_style))
+                        else:
+                            formatted.append(Paragraph(cell_str, normal_style))
                     else:
-                        formatted.append(Paragraph(str(cell_value), normal_style))
+                        formatted.append("")
                 else:
                     formatted.append("")
         while len(formatted) < len(headers):
