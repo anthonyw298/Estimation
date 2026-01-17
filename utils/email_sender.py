@@ -132,3 +132,4 @@ Best regards,
     except Exception as e:
         raise Exception(f"Unexpected error sending email: {e}")
 
+
