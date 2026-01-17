@@ -10,6 +10,7 @@ import io
 from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_door_info
+from utils.waste_calculator import calculate_waste_statistics, get_waste_percentage_color
 
 # PDF export (optional - will fail gracefully if reportlab not installed)
 try:
@@ -1255,6 +1256,13 @@ def main(page: ft.Page):
                 
                 # Force update the dropdown control
                 inputs["saved_elev"].update()
+                
+                # Refresh waste calculator to reflect updated elevation data
+                try:
+                    refresh_waste_calculator()
+                except Exception as ex:
+                    print(f"⚠️ Error refreshing waste calculator: {ex}")
+                
                 page.update()
 
             except Exception as ex:
@@ -1300,6 +1308,13 @@ def main(page: ft.Page):
                 # Force switch to CREATE mode after deletion by clearing inputs
                 clear_workspace()
                 # Since clear_workspace resets the button text, we just need to confirm
+                
+                # Refresh waste calculator to reflect deleted elevation data
+                try:
+                    refresh_waste_calculator()
+                except Exception as ex:
+                    print(f"⚠️ Error refreshing waste calculator: {ex}")
+                
                 show_snack("Elevation Deleted", "red")
                 # Force update the dropdown control
                 inputs["saved_elev"].update()
@@ -1845,14 +1860,286 @@ def main(page: ft.Page):
         inputs["show_elevation_sqft"].value = project_settings.get("show_elevation_sqft", False)
         inputs["show_elevation_perimeter"].value = project_settings.get("show_elevation_perimeter", False)
         
+        # Waste Calculator Section
+        def refresh_waste_calculator():
+            """Refresh waste calculator display with current project data."""
+            if not state.get("current_project"):
+                waste_stats = {
+                    "total_waste_cost": 0.0,
+                    "total_material_cost": 0.0,
+                    "overall_waste_percentage": 0.0,
+                    "material_breakdown": [],
+                    "suggestions": []
+                }
+            else:
+                paths = get_project_paths(state["current_project"])
+                print(f"📊 Waste Calculator: Calculating for project '{state['current_project']}'")
+                print(f"   Elevations path: {paths['elevations']}")
+                print(f"   Materials path: {paths['materials']}")
+                print(f"   Excel path: {paths['excel']}")
+                waste_stats = calculate_waste_statistics(
+                    paths["elevations"],
+                    paths["materials"],
+                    excel_path=paths.get("excel")  # Pass Excel path to read directly from Summary sheet
+                )
+                print(f"   Result: {len(waste_stats['material_breakdown'])} materials, {waste_stats['overall_waste_percentage']:.2f}% waste")
+            
+            # Update waste percentage display
+            waste_pct = waste_stats["overall_waste_percentage"]
+            waste_percentage_text.value = f"{waste_pct:.2f}%"
+            waste_percentage_text.color = get_waste_percentage_color(waste_pct)
+            
+            # Update progress bar
+            waste_progress.value = min(waste_pct / 100.0, 1.0)
+            waste_progress.color = get_waste_percentage_color(waste_pct)
+            
+            # Update cost display
+            total_waste_cost_text.value = f"${waste_stats['total_waste_cost']:.2f}"
+            total_material_cost_text.value = f"${waste_stats['total_material_cost']:.2f}"
+            
+            # Update material breakdown table
+            breakdown_rows = []
+            for material in waste_stats["material_breakdown"]:
+                breakdown_rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(material["description"], size=11)),
+                            ft.DataCell(ft.Text(f"{material['waste_percentage']:.1f}%", size=11, 
+                                              color=get_waste_percentage_color(material["waste_percentage"]))),
+                            ft.DataCell(ft.Text(f"${material['waste_cost']:.2f}", size=11)),
+                            ft.DataCell(ft.Text(f"{material['waste_quantity']:.2f} {material['unit']}", size=11))
+                        ]
+                    )
+                )
+            
+            if not breakdown_rows:
+                breakdown_rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text("No waste data available", italic=True, size=11, color=COLOR_TEXT_DIM)),
+                            ft.DataCell(ft.Text("")),
+                            ft.DataCell(ft.Text("")),
+                            ft.DataCell(ft.Text(""))
+                        ]
+                    )
+                )
+            
+            waste_breakdown_table.rows = breakdown_rows
+            
+            # Update suggestions
+            suggestions_list.controls = []
+            for suggestion in waste_stats["suggestions"]:
+                priority_color = {
+                    "high": "#F44336",  # Red
+                    "medium": "#FFC107",  # Yellow
+                    "low": "#4CAF50"  # Green
+                }.get(suggestion["priority"], COLOR_TEXT)
+                
+                suggestions_list.controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Container(
+                                width=8,
+                                height=8,
+                                bgcolor=priority_color,
+                                border_radius=4,
+                                margin=ft.margin.only(right=10, top=6)
+                            ),
+                            ft.Text(suggestion["message"], size=11, color=COLOR_TEXT, expand=True)
+                        ]),
+                        padding=10,
+                        bgcolor=COLOR_INPUT_BG,
+                        border_radius=5,
+                        margin=ft.margin.only(bottom=8)
+                    )
+                )
+            
+            if not suggestions_list.controls:
+                suggestions_list.controls.append(
+                    ft.Container(
+                        content=ft.Text("No suggestions available", italic=True, size=11, color=COLOR_TEXT_DIM),
+                        padding=10
+                    )
+                )
+            
+            page.update()
+        
+        # Waste calculator UI components
+        waste_percentage_text = ft.Text("0.00%", size=24, weight="bold", color=COLOR_ACCENT)
+        waste_progress = ft.ProgressBar(value=0.0, width=400, height=20, color=COLOR_ACCENT)
+        total_waste_cost_text = ft.Text("$0.00", size=16, color=COLOR_TEXT)
+        total_material_cost_text = ft.Text("$0.00", size=16, color=COLOR_TEXT)
+        
+        waste_breakdown_table = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Material", size=11, weight="bold", color=COLOR_ACCENT)),
+                ft.DataColumn(ft.Text("Waste %", size=11, weight="bold", color=COLOR_ACCENT)),
+                ft.DataColumn(ft.Text("Waste Cost", size=11, weight="bold", color=COLOR_ACCENT)),
+                ft.DataColumn(ft.Text("Waste Qty", size=11, weight="bold", color=COLOR_ACCENT))
+            ],
+            rows=[],
+            heading_row_color=COLOR_SURFACE,
+            data_row_color={i: COLOR_INPUT_BG for i in range(100)},
+            border=ft.Border(
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+            )
+        )
+        
+        suggestions_list = ft.Column([], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        waste_calculator_section = ft.Column([
+            ft.Row([
+                ft.Text("WASTE CALCULATOR", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                ft.ElevatedButton(
+                    "REFRESH",
+                    bgcolor=COLOR_ACCENT,
+                    color="white",
+                    on_click=lambda e: refresh_waste_calculator(),
+                    height=40,
+                    width=120
+                )
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Text("Visual waste analysis and optimization suggestions", size=12, color=COLOR_TEXT_DIM, italic=True),
+            ft.Divider(height=1, color=COLOR_SURFACE),
+            ft.Container(height=20),
+            
+            # Visual waste percentage impact
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.ANALYTICS, color=COLOR_ACCENT, size=20),
+                        ft.Text("Overall Waste Percentage", size=14, weight="bold", color=COLOR_TEXT, expand=True)
+                    ]),
+                    ft.Container(height=15),
+                    ft.Row([
+                        waste_percentage_text,
+                        ft.Container(width=20),
+                        ft.Container(
+                            content=waste_progress,
+                            expand=True
+                        )
+                    ], alignment=ft.MainAxisAlignment.START),
+                    ft.Container(height=20),
+                    ft.Row([
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text("Total Waste Cost", size=11, color=COLOR_TEXT_DIM, weight="bold"),
+                                total_waste_cost_text
+                            ], spacing=5),
+                            padding=15,
+                            bgcolor=COLOR_INPUT_BG,
+                            border_radius=8,
+                            expand=True
+                        ),
+                        ft.Container(width=15),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text("Total Material Cost", size=11, color=COLOR_TEXT_DIM, weight="bold"),
+                                total_material_cost_text
+                            ], spacing=5),
+                            padding=15,
+                            bgcolor=COLOR_INPUT_BG,
+                            border_radius=8,
+                            expand=True
+                        )
+                    ])
+                ]),
+                padding=25,
+                bgcolor=COLOR_SURFACE,
+                border=ft.Border(
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                ),
+                border_radius=12,
+                margin=ft.margin.only(bottom=20)
+            ),
+            
+            # Waste breakdown by material type
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.TABLE_CHART, color=COLOR_ACCENT, size=20),
+                        ft.Text("Waste Breakdown by Material Type", size=14, weight="bold", color=COLOR_TEXT, expand=True)
+                    ]),
+                    ft.Container(height=15),
+                    ft.Container(
+                        content=ft.Column([
+                            waste_breakdown_table
+                        ], scroll=ft.ScrollMode.AUTO, expand=True),
+                        height=300,
+                        border=ft.Border(
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                        ),
+                        border_radius=8,
+                        padding=5
+                    )
+                ]),
+                padding=25,
+                bgcolor=COLOR_SURFACE,
+                border=ft.Border(
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                ),
+                border_radius=12,
+                margin=ft.margin.only(bottom=20)
+            ),
+            
+            # Optimization suggestions
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.LIGHTBULB, color=COLOR_ACCENT, size=20),
+                        ft.Text("Optimization Suggestions", size=14, weight="bold", color=COLOR_TEXT, expand=True)
+                    ]),
+                    ft.Container(height=15),
+                    ft.Container(
+                        content=suggestions_list,
+                        height=200,
+                        border=ft.Border(
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                            ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                        ),
+                        border_radius=8,
+                        padding=5
+                    )
+                ]),
+                padding=25,
+                bgcolor=COLOR_SURFACE,
+                border=ft.Border(
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                    ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                ),
+                border_radius=12
+            )
+        ], spacing=15)
+        
         # Combined Summary Container (scrollable)
         summary_settings_container = ft.Column([
             misc_section,
             ft.Container(height=30),  # Spacing between sections
             markup_section,
             ft.Container(height=30),  # Spacing between sections
-            elevation_summary_section
+            elevation_summary_section,
+            ft.Container(height=30),  # Spacing between sections
+            waste_calculator_section
         ], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        # Initialize waste calculator when project is loaded
+        refresh_waste_calculator()
         
         # Load saved summary percentages after fields are created
         if inputs.get("overhead_materials_pct"):
