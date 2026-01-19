@@ -4,6 +4,7 @@ Provides visual waste percentage impact, waste breakdown by material type, and o
 """
 import os
 import json
+import math
 from typing import Dict, List, Tuple, Optional
 from data.parts_data import parts_data
 from utils.pricing import parse_length_to_feet, get_unit_price_by_part, load_extra_materials
@@ -327,8 +328,13 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         overall_waste_percentage = (total_waste_cost / total_material_cost * 100) if total_material_cost > 0 else 0.0
         print(f"⚠️ Waste Calculator: Excel not available, calculated waste: {overall_waste_percentage:.2f}%")
     
-    # Generate optimization suggestions
-    suggestions = generate_optimization_suggestions(material_breakdown, overall_waste_percentage)
+    # Generate optimization suggestions with elevation context
+    suggestions = generate_optimization_suggestions(
+        material_breakdown, 
+        overall_waste_percentage, 
+        elevations_data=elevations_data,
+        extra_materials=extra_materials
+    )
     
     return {
         "total_waste_cost": total_waste_cost,
@@ -338,58 +344,611 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         "suggestions": suggestions
     }
 
-def generate_optimization_suggestions(material_breakdown: List[Dict], overall_waste_percentage: float) -> List[str]:
+def _generate_bay_width_suggestion(material: Dict, elevations_data: Dict, stock_length_ft: float, part_number: str) -> Optional[Dict]:
+    """Generate specific bay width optimization suggestions for horizontal parts."""
+    if not elevations_data:
+        return None
+    
+    # Find elevations using this material
+    elevs_with_material = []
+    for elev_name, elev_data in elevations_data.items():
+        finish = elev_data.get('finish', '').lower()
+        if material.get('finish', '').lower() != finish:
+            continue
+        
+        # Check if this elevation uses the part
+        for output in elev_data.get('calculated_outputs', []):
+            if output.get('part_number', '').strip() == part_number:
+                bays_wide = elev_data.get('bays_wide', 0)
+                custom_bay_widths = elev_data.get('custom_bay_widths', [])
+                opening_width = elev_data.get('opening_width_inches', 0)
+                
+                if bays_wide > 0 and opening_width > 0:
+                    elevs_with_material.append({
+                        'name': elev_name,
+                        'bays_wide': bays_wide,
+                        'custom_bay_widths': custom_bay_widths,
+                        'opening_width': opening_width,
+                        'quantity': output.get('quantity', [])
+                    })
+                break
+    
+    if not elevs_with_material:
+        return None
+    
+    # Analyze bay widths for optimization opportunities
+    top_elev = elevs_with_material[0]
+    waste_qty = material.get('waste_quantity', 0)
+    waste_pct = material.get('waste_percentage', 0)
+    waste_cost = material.get('waste_cost', 0)
+    finish_text = f" ({material.get('finish', '').capitalize()})" if material.get('finish') else ""
+    
+    if top_elev['custom_bay_widths'] and len(top_elev['custom_bay_widths']) == top_elev['bays_wide']:
+        # Has custom bay widths - analyze for optimization
+        bay_widths_inches = top_elev['custom_bay_widths']
+        bay_widths_ft = [w / 12.0 for w in bay_widths_inches]
+        total_width_ft = sum(bay_widths_ft)
+        
+        # Check if adjusting bay widths could reduce waste
+        avg_waste_per_bay = waste_qty / len(bay_widths_ft) if bay_widths_ft else 0
+        
+        if waste_pct > 20 and avg_waste_per_bay > 0.5:
+            # Suggest specific bay width adjustments
+            suggestion = {
+                "priority": "high" if waste_pct > 30 else "medium",
+                "category": "Bay Width Optimization",
+                "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Current bay widths: {', '.join([f'{w:.1f}\"' for w in bay_widths_inches[:5]])}. Average waste per bay: {avg_waste_per_bay:.2f}ft. Consider adjusting bay widths to better utilize {stock_length_ft:.0f}ft stock lengths. For example, try distributing widths more evenly or adjusting individual bays by ±2-3\" to reduce leftover pieces.",
+                "estimated_savings": waste_cost * 0.25
+            }
+            return suggestion
+    
+    return None
+
+def _generate_height_suggestion(material: Dict, elevations_data: Dict, stock_length_ft: float, part_number: str) -> Optional[Dict]:
+    """Generate specific height optimization suggestions for vertical parts."""
+    if not elevations_data:
+        return None
+    
+    # Find elevations using this material
+    elevs_with_material = []
+    for elev_name, elev_data in elevations_data.items():
+        finish = elev_data.get('finish', '').lower()
+        if material.get('finish', '').lower() != finish:
+            continue
+        
+        for output in elev_data.get('calculated_outputs', []):
+            if output.get('part_number', '').strip() == part_number:
+                opening_height = elev_data.get('opening_height_inches', 0)
+                bays_tall = elev_data.get('bays_tall', 0)
+                
+                if opening_height > 0:
+                    elevs_with_material.append({
+                        'name': elev_name,
+                        'opening_height': opening_height,
+                        'bays_tall': bays_tall
+                    })
+                break
+    
+    if not elevs_with_material:
+        return None
+    
+    top_elev = elevs_with_material[0]
+    waste_pct = material.get('waste_percentage', 0)
+    waste_cost = material.get('waste_cost', 0)
+    finish_text = f" ({material.get('finish', '').capitalize()})" if material.get('finish') else ""
+    height_ft = top_elev['opening_height'] / 12.0
+    
+    if waste_pct > 20 and height_ft > 0:
+        return {
+            "priority": "high" if waste_pct > 30 else "medium",
+            "category": "Height Optimization",
+            "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Opening height is {top_elev['opening_height']:.1f}\" ({height_ft:.2f}ft). With {stock_length_ft:.0f}ft stock lengths, consider adjusting the opening height or bay height configuration to better utilize full stock lengths and reduce waste.",
+            "estimated_savings": waste_cost * 0.2
+        }
+    
+    return None
+
+def _calculate_optimal_cuts_for_leftover(leftover_ft: float, stock_length_ft: float = 24.0, min_cut_ft: float = 0.5) -> List[Dict]:
     """
-    Generate optimization suggestions based on waste statistics.
+    Calculate specific cut dimensions that would FIT INSIDE a leftover piece.
+    Returns list of dimension combinations that would use the leftover efficiently.
+    For example: If leftover is 23.75ft, suggest "23.5ft (282\")" or "12ft + 11.5ft = 23.5ft"
+    """
+    optimal_cuts = []
+    
+    if leftover_ft < min_cut_ft:
+        return optimal_cuts
+    
+    leftover_inches = leftover_ft * 12
+    tolerance = 0.5 * 12  # 0.5ft tolerance in inches
+    
+    # Generate cut combinations that would fit inside the leftover
+    # Try various combinations: single cut, two cuts, three cuts, etc.
+    
+    # Single cut - use most of the leftover
+    single_cut_ft = leftover_ft - 0.05  # Leave 0.05ft margin
+    if single_cut_ft >= min_cut_ft:
+        optimal_cuts.append({
+            'cuts': [single_cut_ft],
+            'cuts_inches': [single_cut_ft * 12],
+            'total_ft': single_cut_ft,
+            'total_inches': single_cut_ft * 12,
+            'waste': leftover_ft - single_cut_ft,
+            'utilization': (single_cut_ft / leftover_ft) * 100,
+            'description': f'Single cut of {single_cut_ft:.2f}ft ({single_cut_ft*12:.1f}")'
+        })
+    
+    # Two cuts that sum close to leftover - dynamic calculation
+    # Try various ratios dynamically
+    for ratio in [0.5, 0.55, 0.6, 0.65, 0.7]:  # Various split ratios
+        cut1_ft = leftover_ft * ratio - 0.02
+        cut2_ft = leftover_ft * (1 - ratio) - 0.02
+        
+        # Round to nearest 0.5 inch for practicality
+        cut1_ft = round(cut1_ft * 24) / 24
+        cut2_ft = round(cut2_ft * 24) / 24
+        
+        # Recalculate total after rounding
+        total = cut1_ft + cut2_ft
+        waste = leftover_ft - total
+        
+        if cut1_ft >= min_cut_ft and cut2_ft >= min_cut_ft and waste >= 0 and waste < 0.5:
+            optimal_cuts.append({
+                'cuts': [cut1_ft, cut2_ft],
+                'cuts_inches': [cut1_ft * 12, cut2_ft * 12],
+                'total_ft': total,
+                'total_inches': total * 12,
+                'waste': waste,
+                'utilization': (total / leftover_ft) * 100,
+                'description': f'Two cuts: {cut1_ft:.2f}ft ({cut1_ft*12:.1f}") + {cut2_ft:.2f}ft ({cut2_ft*12:.1f}") = {total:.2f}ft'
+            })
+    
+    # Three cuts - dynamic calculation
+    if leftover_ft >= 3 * min_cut_ft:
+        for num_equal in [2, 3]:  # 2 equal + 1 different, or 3 equal
+            if num_equal == 3:
+                cut_size = (leftover_ft - 0.04) / 3
+                cut_size = round(cut_size * 24) / 24
+                cuts_3 = [cut_size, cut_size, leftover_ft - 2*cut_size - 0.02]
+            else:
+                # 2 equal + 1 different
+                equal_size = (leftover_ft - 0.04) / 2.5
+                equal_size = round(equal_size * 24) / 24
+                diff_size = leftover_ft - 2*equal_size - 0.02
+                cuts_3 = [equal_size, equal_size, diff_size]
+            
+            # Validate all cuts
+            if all(c >= min_cut_ft for c in cuts_3):
+                total = sum(cuts_3)
+                waste = leftover_ft - total
+                
+                if waste >= 0 and waste < 0.5:
+                    optimal_cuts.append({
+                        'cuts': cuts_3,
+                        'cuts_inches': [c * 12 for c in cuts_3],
+                        'total_ft': total,
+                        'total_inches': total * 12,
+                        'waste': waste,
+                        'utilization': (total / leftover_ft) * 100,
+                        'description': f'Three cuts: {" + ".join([f"{c:.2f}ft ({c*12:.1f}\")" for c in cuts_3])} = {total:.2f}ft'
+                    })
+    
+    # Four cuts - dynamic calculation
+    if leftover_ft >= 4 * min_cut_ft:
+        for num_equal in [2, 4]:  # 2 equal pairs or 4 equal
+            if num_equal == 4:
+                cut_size = (leftover_ft - 0.06) / 4
+                cut_size = round(cut_size * 24) / 24
+                cuts_4 = [cut_size] * 3 + [leftover_ft - 3*cut_size - 0.02]
+            else:
+                # 2 pairs of equal sizes
+                pair1_size = (leftover_ft - 0.06) / 2.1
+                pair1_size = round(pair1_size * 24) / 24
+                pair2_size = (leftover_ft - 2*pair1_size - 0.02) / 2
+                pair2_size = round(pair2_size * 24) / 24
+                cuts_4 = [pair1_size, pair1_size, pair2_size, leftover_ft - 2*pair1_size - pair2_size - 0.02]
+            
+            if all(c >= min_cut_ft for c in cuts_4):
+                total = sum(cuts_4)
+                waste = leftover_ft - total
+                
+                if waste >= 0 and waste < 0.5:
+                    optimal_cuts.append({
+                        'cuts': cuts_4,
+                        'cuts_inches': [c * 12 for c in cuts_4],
+                        'total_ft': total,
+                        'total_inches': total * 12,
+                        'waste': waste,
+                        'utilization': (total / leftover_ft) * 100,
+                        'description': f'Four cuts: {" + ".join([f"{c:.2f}ft ({c*12:.1f}\")" for c in cuts_4[:2]])} + ... = {total:.2f}ft'
+                    })
+    
+    # Sort by utilization (best first) and limit to top 5
+    optimal_cuts.sort(key=lambda x: x['utilization'], reverse=True)
+    return optimal_cuts[:5]
+
+def _find_leftover_reuse_opportunities(extra_materials: Dict, elevations_data: Dict) -> List[Dict]:
+    """
+    Analyze leftover pieces and suggest optimal dimension combinations that would utilize them.
+    Returns list of specific cut suggestions based on leftover dimensions.
+    """
+    reuse_suggestions = []
+    
+    if not extra_materials:
+        return reuse_suggestions
+    
+    finish_codes = ['clear', 'bronze', 'grey', 'black', 'white']
+    
+    # Analyze each leftover material
+    for material_key, material_data in extra_materials.items():
+        length_pieces = material_data.get('length_pieces', [])
+        if not length_pieces:
+            # Check quantity for accessories
+            quantity = material_data.get('quantity', 0)
+            if quantity > 0:
+                # Accessories - suggest reuse in future projects
+                parts = material_key.split('-')
+                if len(parts) >= 3 and parts[-1].lower() in finish_codes:
+                    part_number = '-'.join(parts[:-1])
+                    finish = parts[-1].lower()
+                else:
+                    part_number = material_key
+                    finish = ""
+                
+                part_info = parts_data.get(part_number, {})
+                description = part_info.get('Description', part_number)
+                finish_text = f" ({finish.capitalize()})" if finish else ""
+                
+                if quantity > 20:  # Significant leftover quantity
+                    reuse_suggestions.append({
+                        'priority': 'medium',
+                        'category': 'Leftover Reuse',
+                        'message': f"You have {int(quantity)} leftover pieces of {description}{finish_text} (PN: {part_number}). Plan future projects to utilize these pieces to avoid purchasing new stock.",
+                        'estimated_savings': quantity * 0.5,  # Rough estimate
+                        'leftover_ft': quantity,
+                        'part_number': part_number
+                    })
+            continue
+        
+        # Parse part number and finish from key
+        parts = material_key.split('-')
+        if len(parts) >= 3:
+            if parts[-1].lower() in finish_codes:
+                part_number = '-'.join(parts[:-1])
+                finish = parts[-1].lower()
+            else:
+                part_number = material_key
+                finish = ""
+        elif len(parts) == 2:
+            if parts[1].lower() in finish_codes:
+                part_number = parts[0]
+                finish = parts[1].lower()
+            else:
+                part_number = material_key
+                finish = ""
+        else:
+            part_number = material_key
+            finish = ""
+        
+        part_info = parts_data.get(part_number, {})
+        description = part_info.get('Description', part_number)
+        stock_length_ft = parse_length_to_feet(part_info.get('Length', '')) or 24.0
+        
+        # Get unit price for savings calculation
+        unit_price, _ = get_unit_price_by_part(part_number, finish=finish)
+        if not unit_price:
+            continue
+        
+        # Sum up all leftover pieces for this material
+        total_leftover_ft = sum(length_pieces)
+        finish_text = f" ({finish.capitalize()})" if finish else ""
+        
+        # Calculate specific cuts that would FIT INSIDE each leftover piece
+        for leftover_ft in sorted(length_pieces, reverse=True):
+            if leftover_ft < 1.0:  # Skip very small pieces
+                continue
+            
+            # Calculate specific cut dimensions that would fit inside this leftover
+            optimal_cuts = _calculate_optimal_cuts_for_leftover(leftover_ft, stock_length_ft)
+            
+            if optimal_cuts:
+                # Get best pattern (highest utilization)
+                best_pattern = optimal_cuts[0]
+                
+                savings = leftover_ft * unit_price * 0.6
+                
+                # Determine if this is a horizontal (bay width) or vertical part
+                is_horizontal = part_number in ["BE9-2513", "BE9-2514", "BE9-2515", "E9-2519"]
+                is_vertical = part_number in ["E9-2512", "BE9-2511"]
+                
+                dimension_type = "bay widths" if is_horizontal else "bay heights" if is_vertical else "cut lengths"
+                
+                # Build message with specific dimension examples that FIT INSIDE the leftover
+                if len(best_pattern['cuts']) == 1:
+                    # Single cut
+                    cut_inches = best_pattern['cuts_inches'][0]
+                    message = f"You have a {leftover_ft:.2f}ft ({leftover_ft*12:.1f}\") leftover piece of {description}{finish_text} (PN: {part_number}). Use this leftover by setting {dimension_type} to {cut_inches:.1f}\" ({best_pattern['cuts'][0]:.2f}ft). This would use {best_pattern['utilization']:.1f}% of the leftover with only {best_pattern['waste']*12:.1f}\" waste."
+                
+                elif len(best_pattern['cuts']) == 2:
+                    # Two cuts
+                    cut1_inches, cut2_inches = best_pattern['cuts_inches']
+                    total_inches = best_pattern['total_inches']
+                    message = f"You have a {leftover_ft:.2f}ft ({leftover_ft*12:.1f}\") leftover piece of {description}{finish_text} (PN: {part_number}). Use this leftover by setting {dimension_type} to {cut1_inches:.1f}\" + {cut2_inches:.1f}\" = {total_inches:.1f}\" ({best_pattern['total_ft']:.2f}ft total). This would use {best_pattern['utilization']:.1f}% of the leftover with only {best_pattern['waste']*12:.1f}\" waste."
+                
+                else:
+                    # Multiple cuts
+                    cuts_inches_str = " + ".join([f"{c:.1f}\"" for c in best_pattern['cuts_inches']])
+                    total_inches = best_pattern['total_inches']
+                    message = f"You have a {leftover_ft:.2f}ft ({leftover_ft*12:.1f}\") leftover piece of {description}{finish_text} (PN: {part_number}). Use this leftover by setting {dimension_type} to {cuts_inches_str} = {total_inches:.1f}\" ({best_pattern['total_ft']:.2f}ft total). This would use {best_pattern['utilization']:.1f}% of the leftover with only {best_pattern['waste']*12:.1f}\" waste."
+                
+                # Add savings info
+                message += f" This saves ${savings:.2f} by avoiding a new {stock_length_ft:.0f}ft stock purchase."
+                
+                reuse_suggestions.append({
+                    'priority': 'high' if leftover_ft > 10 else 'medium',
+                    'category': 'Leftover Reuse - Specific Dimensions',
+                    'message': message,
+                    'estimated_savings': savings,
+                    'leftover_ft': leftover_ft,
+                    'part_number': part_number,
+                    'optimal_pattern': best_pattern
+                })
+    
+    return reuse_suggestions
+
+def generate_optimization_suggestions(
+    material_breakdown: List[Dict], 
+    overall_waste_percentage: float,
+    elevations_data: Optional[Dict] = None,
+    extra_materials: Optional[Dict] = None
+) -> List[Dict]:
+    """
+    Generate specific, actionable optimization suggestions based on waste statistics and project data.
     """
     suggestions = []
     
-    # High overall waste percentage
+    # Sort materials by waste cost for prioritization
+    sorted_materials = sorted(material_breakdown, key=lambda x: x.get('waste_cost', 0), reverse=True)
+    
+    # NEW: Analyze leftover pieces for specific reuse opportunities (highest priority)
+    if extra_materials and elevations_data:
+        leftover_suggestions = _find_leftover_reuse_opportunities(extra_materials, elevations_data)
+        if leftover_suggestions:
+            # Sort by estimated savings
+            leftover_suggestions.sort(key=lambda x: x.get('estimated_savings', 0), reverse=True)
+            suggestions.extend(leftover_suggestions[:5])  # Top 5 leftover reuse suggestions
+    
+    # 1. High overall waste percentage with specific recommendations
     if overall_waste_percentage > 15:
+        # Find specific materials causing high waste
+        top_3_materials = sorted_materials[:3]
+        material_list = ", ".join([f"{m['description']} ({m['waste_percentage']:.1f}%)" for m in top_3_materials])
+        
         suggestions.append({
             "priority": "high",
-            "message": f"Overall waste percentage is {overall_waste_percentage:.1f}%, which is high. Consider consolidating orders across multiple elevations to reduce waste."
+            "category": "Overall Waste Reduction",
+            "message": f"Overall waste is {overall_waste_percentage:.1f}%, significantly above the 10% target. Top contributors: {material_list}. Focus optimization efforts on these materials first, then consolidate orders across elevations to reduce total waste.",
+            "estimated_savings": overall_waste_percentage * 100  # Rough estimate: $100 per percentage point
         })
     elif overall_waste_percentage > 10:
         suggestions.append({
             "priority": "medium",
-            "message": f"Overall waste percentage is {overall_waste_percentage:.1f}%. There's room for optimization by better material planning."
+            "category": "Overall Waste Reduction",
+            "message": f"Overall waste is {overall_waste_percentage:.1f}%, slightly above the 10% target. Review top waste materials and consider order consolidation or bay configuration adjustments.",
+            "estimated_savings": (overall_waste_percentage - 10) * 50  # Rough estimate
         })
     
-    # High waste by material
-    high_waste_materials = [m for m in material_breakdown if m['waste_percentage'] > 20]
-    if high_waste_materials:
-        top_material = high_waste_materials[0]
-        suggestions.append({
-            "priority": "high" if top_material['waste_percentage'] > 30 else "medium",
-            "message": f"{top_material['description']} has {top_material['waste_percentage']:.1f}% waste (${top_material['waste_cost']:.2f}). Consider adjusting cut lengths or combining with other projects."
-        })
+    # 2. Specific material waste analysis with actionable suggestions
+    for material in sorted_materials[:5]:  # Analyze top 5 waste materials
+        waste_pct = material.get('waste_percentage', 0)
+        waste_cost = material.get('waste_cost', 0)
+        waste_qty = material.get('waste_quantity', 0)
+        part_number = material.get('part_number', '')
+        description = material.get('description', 'Unknown')
+        finish = material.get('finish', '')
+        total_qty = material.get('total_quantity', 0)
+        unit = material.get('unit', 'ft')
+        
+        # Skip if already covered by high overall waste
+        if waste_pct > 20 and waste_cost > 100:
+            # Get part info for stock length
+            part_info = parts_data.get(part_number, {})
+            stock_length_ft = parse_length_to_feet(part_info.get('Length', '')) or 24.0
+            
+            # Calculate specific optimization opportunities
+            avg_waste_per_stock = (waste_qty / (total_qty + waste_qty)) * stock_length_ft if (total_qty + waste_qty) > 0 else 0
+            
+            # Generate specific suggestion based on material type
+            if part_number in ["BE9-2513", "BE9-2514", "BE9-2515", "E9-2519"] and elevations_data:
+                # These are horizontal bay-width parts - suggest bay width adjustments
+                suggestion = _generate_bay_width_suggestion(
+                    material, elevations_data, stock_length_ft, part_number
+                )
+                if suggestion:
+                    suggestions.append(suggestion)
+                    continue  # Skip generic suggestion
+            elif part_number in ["E9-2512", "BE9-2511"] and elevations_data:
+                # Vertical parts - suggest height adjustments
+                suggestion = _generate_height_suggestion(
+                    material, elevations_data, stock_length_ft, part_number
+                )
+                if suggestion:
+                    suggestions.append(suggestion)
+                    continue  # Skip generic suggestion
+            
+            # Generic profile optimization if no specific suggestion generated
+            if avg_waste_per_stock > stock_length_ft * 0.2:  # More than 20% waste per stock
+                finish_text = f" ({finish.capitalize()})" if finish else ""
+                potential_savings = waste_cost * 0.3  # Estimate 30% reduction possible
+                
+                suggestions.append({
+                    "priority": "high" if waste_pct > 30 else "medium",
+                    "category": "Cutting Strategy",
+                    "message": f"{description}{finish_text} (PN: {part_number}) has {waste_pct:.1f}% waste generating ${waste_cost:.2f} in waste cost. With {waste_qty:.2f} {unit} of waste from {total_qty:.2f} {unit} used, average waste is {avg_waste_per_stock:.2f}ft per {stock_length_ft:.0f}ft stock length. Consider combining cuts across elevations or adjusting bay configurations to better utilize full stock lengths.",
+                    "estimated_savings": potential_savings
+                })
     
-    # High cost waste materials
-    high_cost_waste = [m for m in material_breakdown if m['waste_cost'] > 500]
+    # 3. High cost waste materials with specific actions
+    high_cost_waste = [m for m in sorted_materials if m.get('waste_cost', 0) > 500]
     if high_cost_waste:
-        top_cost = high_cost_waste[0]
-        suggestions.append({
-            "priority": "high",
-            "message": f"{top_cost['description']} waste cost is ${top_cost['waste_cost']:.2f}. Explore alternative cutting strategies to minimize this waste."
-        })
+        for material in high_cost_waste[:3]:  # Top 3 high-cost waste materials
+            waste_cost = material.get('waste_cost', 0)
+            if waste_cost > 500:
+                finish_text = f" ({material.get('finish', '').capitalize()})" if material.get('finish') else ""
+                
+                suggestions.append({
+                    "priority": "high",
+                    "category": "Cost Impact",
+                    "message": f"{material.get('description', 'Unknown')}{finish_text} waste cost is ${waste_cost:.2f}, representing {waste_cost / (overall_waste_percentage * 10 + 1) * 100:.1f}% of total waste. This is a high-priority optimization target. Review cut patterns, consider consolidating with future projects, or adjust configurations to minimize this specific material waste.",
+                    "estimated_savings": waste_cost * 0.25  # Estimate 25% reduction
+                })
     
-    # Multiple small waste pieces
-    small_waste_count = len([m for m in material_breakdown if 0 < m['waste_quantity'] < 2 and m['waste_percentage'] > 5])
-    if small_waste_count > 3:
+    # 4. Multiple small leftover pieces - suggest consolidation
+    small_waste_materials = [m for m in material_breakdown 
+                            if 0 < m.get('waste_quantity', 0) < 2 and m.get('waste_percentage', 0) > 5]
+    if len(small_waste_materials) > 3:
+        total_small_waste_cost = sum(m.get('waste_cost', 0) for m in small_waste_materials)
+        part_numbers = [m.get('part_number', '') for m in small_waste_materials[:5]]
+        
         suggestions.append({
             "priority": "medium",
-            "message": f"Multiple materials have small leftover pieces. Consider using custom bay widths/heights to better utilize full stock lengths."
+            "category": "Leftover Consolidation",
+            "message": f"Found {len(small_waste_materials)} materials with small leftover pieces (< 2{small_waste_materials[0].get('unit', 'ft')}), totaling ${total_small_waste_cost:.2f} in waste. Materials: {', '.join(part_numbers[:3])}. These small pieces may be usable in future projects. Consider maintaining a leftover inventory or adjusting future project configurations to utilize these pieces.",
+            "estimated_savings": total_small_waste_cost * 0.5  # Could save 50% by reusing
         })
+    
+    # 5. Stock length optimization for profiles
+    profile_materials = [m for m in sorted_materials if m.get('unit') == 'ft' and m.get('waste_percentage', 0) > 15]
+    for material in profile_materials[:3]:
+        part_number = material.get('part_number', '')
+        part_info = parts_data.get(part_number, {})
+        stock_length_ft = parse_length_to_feet(part_info.get('Length', '')) or 24.0
+        total_needed = material.get('total_quantity', 0) + material.get('waste_quantity', 0)
+        
+        if stock_length_ft > 0 and total_needed > stock_length_ft * 2:
+            # Calculate optimal stock usage
+            current_stocks = math.ceil(total_needed / stock_length_ft)
+            waste_per_stock = material.get('waste_quantity', 0) / max(1, current_stocks)
+            
+            if waste_per_stock > stock_length_ft * 0.15:  # More than 15% waste per stock
+                finish_text = f" ({material.get('finish', '').capitalize()})" if material.get('finish') else ""
+                
+                suggestions.append({
+                    "priority": "medium",
+                    "category": "Stock Length Optimization",
+                    "message": f"{material.get('description', 'Unknown')}{finish_text} averages {waste_per_stock:.2f}ft waste per {stock_length_ft:.0f}ft stock length ({waste_per_stock/stock_length_ft*100:.1f}% per stick). Total of {total_needed:.1f}ft needed across {current_stocks} stock(s). Consider adjusting bay configurations to create cut lengths that better fill {stock_length_ft:.0f}ft stocks, or combine with other elevations/projects using the same material.",
+                    "estimated_savings": material.get('waste_cost', 0) * 0.2
+                })
+    
+    # 6. Finish-specific consolidation suggestions
+    if elevations_data:
+        finish_breakdown = {}
+        for elev_name, elev_data in elevations_data.items():
+            finish = elev_data.get('finish', '').lower()
+            if finish:
+                if finish not in finish_breakdown:
+                    finish_breakdown[finish] = []
+                finish_breakdown[finish].append(elev_name)
+        
+        # Check for same finish with waste
+        for finish, elev_names in finish_breakdown.items():
+            if len(elev_names) > 1:
+                finish_waste = [m for m in sorted_materials 
+                              if m.get('finish', '').lower() == finish and m.get('waste_cost', 0) > 100]
+                if finish_waste:
+                    total_finish_waste = sum(m.get('waste_cost', 0) for m in finish_waste)
+                    suggestions.append({
+                        "priority": "medium",
+                        "category": "Finish Consolidation",
+                        "message": f"Multiple elevations use {finish.capitalize()} finish ({', '.join(elev_names[:3])}). Total waste cost for {finish.capitalize()} materials is ${total_finish_waste:.2f}. Consider consolidating orders for all {finish.capitalize()} materials across these elevations to better optimize cut lengths and reduce overall waste.",
+                        "estimated_savings": total_finish_waste * 0.15
+                    })
+    
+    # 7. Cross-elevation optimization
+    if elevations_data and len(elevations_data) > 1:
+        # Check if same materials are used in multiple elevations
+        material_usage = {}
+        for elev_name, elev_data in elevations_data.items():
+            for output in elev_data.get('calculated_outputs', []):
+                part = output.get('part_number', '').strip()
+                finish = elev_data.get('finish', '').lower()
+                key = f"{part}-{finish}" if finish else part
+                if part and part != "N/A":
+                    if key not in material_usage:
+                        material_usage[key] = []
+                    material_usage[key].append(elev_name)
+        
+        # Find materials used in multiple elevations with waste
+        multi_elev_materials = {k: v for k, v in material_usage.items() if len(v) > 1}
+        if multi_elev_materials:
+            # Check if any of these have waste
+            finish_codes = ['clear', 'bronze', 'grey', 'black', 'white']
+            for key, elev_names in list(multi_elev_materials.items())[:3]:
+                # Parse key to extract part number and finish
+                # Handle keys like "BE9-2513-clear" or "PM-1006-SS" or "E1-0199"
+                if '-' in key:
+                    parts = key.split('-')
+                    # Check if last part is a finish code
+                    if parts[-1].lower() in finish_codes:
+                        part = '-'.join(parts[:-1])
+                        finish = parts[-1].lower()
+                    else:
+                        # No finish code, entire key is part number
+                        part = key
+                        finish = ''
+                else:
+                    part = key
+                    finish = ''
+                
+                material = next((m for m in sorted_materials 
+                               if m.get('part_number') == part and m.get('finish', '').lower() == finish.lower()), None)
+                if material and material.get('waste_cost', 0) > 200:
+                    suggestions.append({
+                        "priority": "medium",
+                        "category": "Cross-Elevation Optimization",
+                        "message": f"{material.get('description', 'Unknown')} is used in {len(elev_names)} elevations ({', '.join(elev_names[:3])}) with ${material.get('waste_cost', 0):.2f} waste cost. Consider planning all {material.get('part_number', '')} cuts across these elevations together to optimize stock usage and reduce waste through better cut sequencing.",
+                        "estimated_savings": material.get('waste_cost', 0) * 0.2
+                    })
     
     # No high-priority suggestions
     if not suggestions:
         suggestions.append({
             "priority": "low",
-            "message": "Waste levels are acceptable. Continue current optimization practices."
+            "category": "General",
+            "message": f"Waste levels are acceptable at {overall_waste_percentage:.1f}%. Continue current optimization practices. Monitor waste trends to identify optimization opportunities early.",
+            "estimated_savings": None
         })
     
-    return suggestions
+    # Remove duplicates and limit suggestions
+    unique_suggestions = []
+    seen_messages = set()
+    seen_leftovers = set()  # Track leftover pieces already suggested
+    
+    for suggestion in suggestions:
+        msg_key = suggestion.get('message', '')[:100]  # First 100 chars as key
+        
+        # For leftover reuse suggestions, also check if we've already suggested this leftover
+        if suggestion.get('category') == 'Leftover Reuse':
+            leftover_key = f"{suggestion.get('part_number', '')}-{suggestion.get('leftover_ft', 0):.2f}"
+            if leftover_key in seen_leftovers:
+                continue
+            seen_leftovers.add(leftover_key)
+        
+        if msg_key not in seen_messages:
+            seen_messages.add(msg_key)
+            unique_suggestions.append(suggestion)
+    
+    # Sort by priority (high first), then estimated savings (highest first)
+    # Prioritize leftover reuse suggestions
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    unique_suggestions.sort(key=lambda x: (
+        -1 if x.get('category') == 'Leftover Reuse' else 0,  # Leftover reuse first
+        priority_order.get(x.get('priority', 'low'), 2),
+        -(x.get('estimated_savings') or 0)
+    ))
+    
+    # Return top suggestions, prioritizing leftover reuse
+    return unique_suggestions[:10]
 
 def get_waste_percentage_color(waste_percentage: float) -> str:
     """
@@ -401,4 +960,3 @@ def get_waste_percentage_color(waste_percentage: float) -> str:
         return "#FFC107"  # Yellow/Orange
     else:
         return "#F44336"  # Red
-
