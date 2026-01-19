@@ -186,9 +186,9 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     elif 'SUMMARY' in all_sheets:
         summary_sheet_name = 'SUMMARY'
     
-    print(f"📋 Found {len(elevation_sheets)} elevation sheet(s): {elevation_sheets}")
+    print(f"[INFO] Found {len(elevation_sheets)} elevation sheet(s): {elevation_sheets}")
     if summary_sheet_name:
-        print(f"📋 Found Summary sheet: {summary_sheet_name}")
+        print(f"[INFO] Found Summary sheet: {summary_sheet_name}")
     
     # Create PDF document
     doc = SimpleDocTemplate(
@@ -261,14 +261,14 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
         max_row = ws.max_row
         max_col = ws.max_column
         
-        print(f"📄 Processing sheet '{sheet_name}': {max_row} rows x {max_col} columns")
+        print(f"[INFO] Processing sheet '{sheet_name}': {max_row} rows x {max_col} columns")
         
         # Add elevation sheet title
         story.append(Paragraph(f"<b>{sheet_name}</b>", section_style))
         story.append(Spacer(1, 0.2*inch))
         
         # STEP 1: Process System Input (Column A-B, Rows 1-15)
-        print("📊 Processing System Input (Columns A-B, Rows 1-15)")
+        print("[INFO] Processing System Input (Columns A-B, Rows 1-15)")
         input_table = []
         for row_idx in range(1, 16):  # Rows 1-15
             label = format_cell_value(ws.cell(row=row_idx, column=1).value)
@@ -282,7 +282,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             story.extend(create_table(input_table, ['Item', 'Value'], normal_style))
         
         # STEP 2: Process sections starting at Column E (Profiles, Accessories, etc.)
-        print("📊 Processing sections from Column E")
+        print("[INFO] Processing sections from Column E")
         
         # Find where sections start (look for section headers in column E)
         sections_found = []
@@ -319,7 +319,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             else:
                 end_row = max_row
             
-            print(f"📄 Processing section: {section_name} (rows {start_row}-{end_row})")
+            print(f"[INFO] Processing section: {section_name} (rows {start_row}-{end_row})")
             
             # Add section header
             story.append(Paragraph(f"<b>{section_name}</b>", section_style))
@@ -405,7 +405,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     # STEP 3: Process Summary sheet separately if it exists
     if summary_sheet_name:
         ws_summary = wb[summary_sheet_name]
-        print(f"📄 Processing Summary sheet separately: {summary_sheet_name}")
+        print(f"[INFO] Processing Summary sheet separately: {summary_sheet_name}")
         story.append(PageBreak())
         story.append(Paragraph("<b>SUMMARY</b>", title_style))
         story.append(Spacer(1, 0.2*inch))
@@ -670,11 +670,11 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 img.hAlign = 'CENTER'
                 story.append(img)
         except Exception as e:
-            print(f"⚠️ Could not add pie chart: {e}")
+            print(f"[WARNING] Could not add pie chart: {e}")
     
     # Build PDF
     doc.build(story)
-    print(f"✅ PDF exported to: {pdf_path}")
+    print(f"[OK] PDF exported to: {pdf_path}")
 
 def create_table(table_data, headers, normal_style):
     """Create a formatted table from data."""

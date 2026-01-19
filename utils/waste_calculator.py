@@ -78,7 +78,7 @@ def read_waste_from_excel(excel_path: str) -> Dict:
             "overall_waste_percentage": overall_waste_percentage
         }
     except Exception as e:
-        print(f"⚠️ Error reading waste from Excel: {e}")
+        print(f"[WARNING] Error reading waste from Excel: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -113,9 +113,9 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         extra_materials = load_extra_materials(extra_materials_path)
         
         # Debug output
-        print(f"📊 Waste Calculator: Loaded {len(elevations_data)} elevations, {len(extra_materials)} extra materials")
+        print(f"[Waste Calculator] Loaded {len(elevations_data)} elevations, {len(extra_materials)} extra materials")
     except Exception as e:
-        print(f"❌ Error loading waste data: {e}")
+        print(f"[ERROR] Error loading waste data: {e}")
         import traceback
         traceback.print_exc()
         return {
@@ -277,7 +277,7 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
             
             # If still no usage found, skip to avoid 100% waste calculation
             if total_qty_used <= 0:
-                print(f"⚠️ Waste Calculator: Could not match usage data for {material_key} (waste: {waste_qty}, tried part_number: {part_number})")
+                print(f"[WARNING] Waste Calculator: Could not match usage data for {material_key} (waste: {waste_qty}, tried part_number: {part_number})")
                 continue
             
             # Recalculate purchased quantity with found usage
@@ -320,13 +320,13 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         overall_waste_percentage = excel_waste_data["overall_waste_percentage"]
         total_waste_cost = excel_waste_data["total_waste_cost"]
         total_material_cost = excel_waste_data["total_material_cost"]
-        print(f"✅ Waste Calculator: Using values from Excel (waste: {overall_waste_percentage:.2f}%, cost: ${total_waste_cost:.2f})")
+        print(f"[OK] Waste Calculator: Using values from Excel (waste: {overall_waste_percentage:.2f}%, cost: ${total_waste_cost:.2f})")
     else:
         # Calculate overall waste percentage to match Excel report
         # Excel uses: waste_cost / total_discounted_price * 100
         # where total_discounted_price is the cost of USED materials (not including waste)
         overall_waste_percentage = (total_waste_cost / total_material_cost * 100) if total_material_cost > 0 else 0.0
-        print(f"⚠️ Waste Calculator: Excel not available, calculated waste: {overall_waste_percentage:.2f}%")
+        print(f"[WARNING] Waste Calculator: Excel not available, calculated waste: {overall_waste_percentage:.2f}%")
     
     # Generate optimization suggestions with elevation context
     suggestions = generate_optimization_suggestions(
@@ -397,7 +397,7 @@ def _generate_bay_width_suggestion(material: Dict, elevations_data: Dict, stock_
             suggestion = {
                 "priority": "high" if waste_pct > 30 else "medium",
                 "category": "Bay Width Optimization",
-                "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Current bay widths: {', '.join([f'{w:.1f}\"' for w in bay_widths_inches[:5]])}. Average waste per bay: {avg_waste_per_bay:.2f}ft. Consider adjusting bay widths to better utilize {stock_length_ft:.0f}ft stock lengths. For example, try distributing widths more evenly or adjusting individual bays by ±2-3\" to reduce leftover pieces.",
+                "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Current bay widths: {', '.join([f'{w:.1f}\"' for w in bay_widths_inches[:5]])}. Average waste per bay: {avg_waste_per_bay:.2f}ft. Consider adjusting bay widths to better utilize {stock_length_ft:.0f}ft stock lengths. For example, try distributing widths more evenly or adjusting individual bays by +/-2-3\" to reduce leftover pieces.",
                 "estimated_savings": waste_cost * 0.25
             }
             return suggestion

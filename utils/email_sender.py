@@ -47,7 +47,7 @@ def save_email_settings(settings):
             json.dump(settings, f, indent=2)
         return True
     except Exception as e:
-        print(f"❌ Error saving email settings: {e}")
+        print(f"[ERROR] Error saving email settings: {e}")
         return False
 
 def send_estimate_email(pdf_path, recipient_email, recipient_name="", subject="", body=""):
@@ -123,7 +123,7 @@ Best regards,
             server.login(settings['sender_email'], settings['sender_password'])
             server.send_message(msg)
         
-        print(f"✅ Email sent successfully to {recipient_email}")
+        print(f"[OK] Email sent successfully to {recipient_email}")
         return True
     except smtplib.SMTPAuthenticationError:
         raise Exception("Email authentication failed. Please check your email settings.")

@@ -287,7 +287,7 @@ def calculate_door_price(size_str: str, width_type: str, hardware_dict: dict, fi
     }
 
     try:
-        # Normalize size key (e.g., "3' X 8'" → "3x8")
+        # Normalize size key (e.g., "3' X 8'" -> "3x8")
         parts = size_str.upper().replace("'", "").replace(" ", "").split("X")
         if len(parts) != 2:
             raise ValueError(f"Invalid door size format: {size_str}")
@@ -352,7 +352,7 @@ def calculate_door_info(doors: list, finish='Clear', total_count: int = 1) -> li
             door_hardware = door_info.get('hardware', {})
 
             if door_size_str and door_count_per_elev > 0:
-                # Calculate total door count (per elevation × total_count)
+                # Calculate total door count (per elevation * total_count)
                 total_door_count = door_count_per_elev * total_count
                 door_price = calculate_door_price(door_size_str, door_stile, door_hardware, finish)
                 

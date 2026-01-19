@@ -3,6 +3,8 @@ pandas
 Pillow
 flet
 reportlab
+scikit-learn
+numpy
 
 
 # To compile to EXE:

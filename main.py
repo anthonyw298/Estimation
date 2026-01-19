@@ -17,7 +17,19 @@ try:
     from utils.pdf_generator import export_project_to_pdf, REPORTLAB_AVAILABLE
 except ImportError:
     REPORTLAB_AVAILABLE = False
-    print("⚠️ PDF export not available (reportlab not installed)")
+    print("[WARNING] PDF export not available (reportlab not installed)")
+
+# ML Predictor (optional - will fail gracefully if sklearn not installed)
+try:
+    from utils.ml_predictor import (
+        predict_project_cost, get_pattern_insights, train_ml_model,
+        get_training_status, add_project_to_training, collect_training_data_from_projects,
+        is_in_training, remove_project_from_training, remove_elevation_from_training
+    )
+    ML_AVAILABLE = True
+except ImportError as e:
+    ML_AVAILABLE = False
+    print(f"[WARNING] ML predictions not available: {e}")
 
 
 # --- Constants & Config ---
@@ -263,7 +275,7 @@ def main(page: ft.Page):
             os.makedirs(settings_dir, exist_ok=True)
         with open(paths["settings"], 'w') as f:
             json.dump(settings, f, indent=4)
-        print(f"💾 Saved project settings to: {paths['settings']}")
+        print(f"[SAVED] Saved project settings to: {paths['settings']}")
 
     def load_elevations(project_name):
         paths = get_project_paths(project_name)
@@ -377,6 +389,14 @@ def main(page: ft.Page):
                 state["projects"].remove(name)
                 save_projects()
                 
+                # Remove from ML training data if ML is available
+                removed_count = 0
+                if ML_AVAILABLE:
+                    try:
+                        removed_count = remove_project_from_training(name)
+                    except Exception as ex:
+                        print(f"[ML] Error removing project from training: {ex}")
+                
                 # Clean up files
                 try:
                     paths = get_project_paths(name)
@@ -394,8 +414,19 @@ def main(page: ft.Page):
                 # Refresh view
                 page.views.pop()
                 page.views.append(build_projects_view())
+                
+                # If on ML Analytics page, refresh it too
+                if len(page.views) > 1 and page.views[-1].route == "/ml_analytics":
+                    page.views.pop()
+                    page.views.append(build_ml_analytics_view())
+                
                 page.update()
-                show_snack(f"Project '{name}' deleted", "red")
+                
+                # Show snack with ML info if applicable
+                if ML_AVAILABLE and removed_count > 0:
+                    show_snack(f"Project '{name}' deleted ({removed_count} training samples removed)", "red")
+                else:
+                    show_snack(f"Project '{name}' deleted", "red")
 
         new_proj_name = create_input_field("New Project Name", "new_proj", expand=True)
         
@@ -505,7 +536,17 @@ def main(page: ft.Page):
                         ft.Divider(color="transparent", height=10),
                         ft.Row([
                             new_proj_name,
-                            ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=COLOR_ACCENT, icon_size=40, on_click=add_project_click, tooltip="Create Project")
+                            ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=COLOR_ACCENT, icon_size=40, on_click=add_project_click, tooltip="Create Project"),
+                            ft.Container(width=20),
+                            ft.ElevatedButton(
+                                "ML Analytics",
+                                icon=ft.Icons.AUTO_GRAPH,
+                                bgcolor="#4CAF50" if ML_AVAILABLE else COLOR_SURFACE,
+                                color="white" if ML_AVAILABLE else COLOR_TEXT_DIM,
+                                on_click=lambda e: page.go("/ml_analytics") if ML_AVAILABLE else show_snack("ML not available. Install scikit-learn.", "red"),
+                                height=45,
+                                tooltip="Machine Learning Analytics - Learn from past projects"
+                            )
                         ]),
                         ft.Divider(color="transparent", height=20),
                         ft.Row(project_tiles, wrap=True, spacing=20, run_spacing=20)
@@ -516,6 +557,666 @@ def main(page: ft.Page):
             ],
             bgcolor=COLOR_BG,
             padding=0
+        )
+
+    def build_ml_analytics_view():
+        """Build the ML Analytics view - accessible from projects page."""
+        if not ML_AVAILABLE:
+            return ft.View(
+                "/ml_analytics",
+                [ft.Container(
+                    content=ft.Column([
+                        ft.Text("ML Analytics Not Available", size=24, weight="bold", color=COLOR_ACCENT),
+                        ft.Text("Please install scikit-learn: pip install scikit-learn numpy", color=COLOR_TEXT_DIM),
+                        ft.ElevatedButton("Back to Projects", on_click=lambda e: page.go("/"))
+                    ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    expand=True,
+                    alignment=ft.alignment.center
+                )],
+                bgcolor=COLOR_BG
+            )
+        
+        # ML UI components - start with empty state
+        ml_status_text = ft.Text("Ready to load projects", size=14, color=COLOR_TEXT_DIM)
+        ml_minimum_warning = ft.Container(
+            visible=False,
+            content=ft.Row([
+                ft.Icon(ft.Icons.WARNING, color="#FFC107", size=20),
+                ft.Text("", size=13, color="#FFC107", expand=True, weight="bold")
+            ], spacing=10),
+            bgcolor="#FFF3CD",
+            padding=12,
+            border_radius=8,
+            border=ft.Border(
+                ft.BorderSide(1, "#FFC107"),
+                ft.BorderSide(1, "#FFC107"),
+                ft.BorderSide(1, "#FFC107"),
+                ft.BorderSide(1, "#FFC107")
+            )
+        )
+        ml_stats_column = ft.Column([], spacing=10)
+        ml_projects_list = ft.Column([], spacing=8, scroll=ft.ScrollMode.AUTO)
+        ml_insights_list = ft.Column([], spacing=8)
+        
+        # Track selected elevations (dict: project_name-elev_name -> elevation_data)
+        selected_elevations = {}
+        
+        # Container for projects list with animation
+        ml_projects_container = ft.Container(
+            content=ml_projects_list,
+            height=500,
+            border=ft.Border(
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+            ),
+            border_radius=8,
+            padding=10,
+            opacity=0,
+            animate_opacity=300
+        )
+        
+        # Container for insights with animation
+        ml_insights_container = ft.Container(
+            content=ml_insights_list,
+            height=500,
+            border=ft.Border(
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+            ),
+            border_radius=8,
+            padding=10,
+            opacity=0,
+            animate_opacity=300
+        )
+        
+        # Empty state for projects
+        projects_empty_state = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.AUTO_GRAPH, size=64, color=COLOR_TEXT_DIM),
+                ft.Text("No projects loaded", size=18, weight="bold", color=COLOR_TEXT_DIM),
+                ft.Text("Click 'Load Projects' to see predictions", size=12, color=COLOR_TEXT_DIM),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+            alignment=ft.alignment.center,
+            expand=True
+        )
+        
+        # Empty state for insights
+        insights_empty_state = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.INSIGHTS, size=64, color=COLOR_TEXT_DIM),
+                ft.Text("No insights available", size=18, weight="bold", color=COLOR_TEXT_DIM),
+                ft.Text("Train the model to see pattern insights", size=12, color=COLOR_TEXT_DIM),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+            alignment=ft.alignment.center,
+            expand=True
+        )
+        
+        # Track loaded state
+        projects_loaded = False
+        insights_loaded = False
+        
+        def refresh_ml_status():
+            """Refresh ML training status."""
+            status = get_training_status()
+            sample_count = status['training_samples']
+            ml_status_text.value = f"Model Trained: {'Yes' if status['is_trained'] else 'No'} | Training Samples: {sample_count} | sklearn: {'OK' if status['sklearn_available'] else 'Missing'}"
+            ml_status_text.color = "#4CAF50" if status['is_trained'] else COLOR_TEXT_DIM
+            
+            # Show minimum warning if less than 3 samples
+            if sample_count < 3:
+                ml_minimum_warning.content.controls[1].value = f"Need minimum of 3 samples to train. Currently have {sample_count} sample(s)."
+                ml_minimum_warning.visible = True
+            else:
+                ml_minimum_warning.visible = False
+            
+            page.update()
+        
+        def train_model_action(e):
+            """Train ML model from all projects."""
+            show_snack("Training model...", COLOR_ACCENT)
+            page.update()
+            
+            success, message = train_ml_model()
+            
+            if success:
+                show_snack(message, "green")
+                refresh_ml_status()
+                refresh_all_projects()
+                show_patterns()
+            else:
+                show_snack(message, "red")
+                refresh_ml_status()
+        
+        def add_single_to_training(elev_data, project_name, elev_name, button_ref, container_ref=None):
+            """Add a single elevation to training data with visual feedback."""
+            print(f"[ML] Adding elevation from {project_name} - {elev_name} to training...")
+            
+            # Show loading state
+            if button_ref:
+                button_ref.icon = ft.Icons.HOURGLASS_EMPTY
+                button_ref.icon_color = COLOR_TEXT_DIM
+                button_ref.disabled = True
+            page.update()
+            
+            try:
+                result = add_project_to_training(elev_data, project_name, elev_name)
+                print(f"[ML] Result: {result}")
+                
+                if result:
+                    # Show success state - keep selected state
+                    if button_ref:
+                        button_ref.icon = ft.Icons.CHECK_CIRCLE
+                        button_ref.icon_color = "#4CAF50"
+                        button_ref.disabled = False
+                        button_ref.tooltip = "In training data"
+                    
+                    # Update container background to show selected
+                    if container_ref:
+                        container_ref.bgcolor = "#E8F5E9"  # Light green background
+                        container_ref.border = ft.Border(
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50")
+                        )
+                    
+                    show_snack("Added to training data!", "green")
+                    refresh_ml_status()
+                    page.update()
+                    
+                    # Refresh to show all selected states
+                    refresh_all_projects()
+                else:
+                    # Show already added state
+                    if button_ref:
+                        button_ref.icon = ft.Icons.CHECK_CIRCLE
+                        button_ref.icon_color = "#4CAF50"
+                        button_ref.disabled = False
+                        button_ref.tooltip = "Already in training data"
+                    
+                    # Update container to show selected
+                    if container_ref:
+                        container_ref.bgcolor = "#E8F5E9"
+                        container_ref.border = ft.Border(
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50"),
+                            ft.BorderSide(2, "#4CAF50")
+                        )
+                    
+                    show_snack("Already in training data", COLOR_TEXT_DIM)
+                    page.update()
+                
+            except Exception as ex:
+                print(f"[ERROR] Error adding to training: {ex}")
+                if button_ref:
+                    button_ref.icon = ft.Icons.ADD_CIRCLE_OUTLINE
+                    button_ref.icon_color = COLOR_ACCENT
+                    button_ref.disabled = False
+                show_snack(f"Error: {ex}", "red")
+                page.update()
+        
+        def refresh_all_projects():
+            """Show all projects with their ML predictions and checkboxes."""
+            nonlocal projects_loaded
+            
+            ml_projects_list.controls = []
+            selected_elevations.clear()
+            
+            # Get all projects
+            for project_name in state["projects"]:
+                paths = get_project_paths(project_name)
+                if os.path.exists(paths["elevations"]):
+                    try:
+                        with open(paths["elevations"], 'r') as f:
+                            elevations = json.load(f)
+                        
+                        for elev_name, elev_data in elevations.items():
+                            prediction = predict_project_cost(elev_data)
+                            
+                            # Check if already in training
+                            in_training = is_in_training(elev_data, project_name, elev_name)
+                            
+                            # Create unique key for this elevation
+                            elev_key = f"{project_name}-{elev_name}"
+                            
+                            # Create checkbox with data stored
+                            elevation_checkbox = ft.Checkbox(
+                                value=in_training,  # Pre-check if in training
+                                on_change=lambda e, key=elev_key, data=elev_data, proj=project_name, en=elev_name: on_checkbox_change(e, key, data, proj, en),
+                                tooltip="Select to add/remove from training data",
+                                data={'key': elev_key, 'data': elev_data, 'project': project_name, 'elev_name': elev_name}  # Store data in checkbox
+                            )
+                            
+                            # Color based on confidence
+                            conf_color = "#4CAF50" if prediction['confidence'] >= 0.7 else "#FFC107" if prediction['confidence'] >= 0.5 else "#F44336"
+                            
+                            # Create button with reference for visual feedback (legacy, but keep for quick add)
+                            add_button = ft.IconButton(
+                                icon=ft.Icons.CHECK_CIRCLE if in_training else ft.Icons.ADD_CIRCLE_OUTLINE,
+                                icon_color="#4CAF50" if in_training else COLOR_ACCENT,
+                                tooltip="In training data" if in_training else "Add to training data",
+                                style=ft.ButtonStyle(
+                                    shape=ft.CircleBorder(),
+                                )
+                            )
+                            
+                            # Create container with reference for styling
+                            project_container = ft.Container(
+                                content=ft.Row([
+                                    elevation_checkbox,
+                                    ft.Column([
+                                        ft.Row([
+                                            ft.Text(f"{project_name} - {elev_name}", size=13, weight="bold", color=COLOR_TEXT, expand=True),
+                                            ft.Container(
+                                                content=ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color="#4CAF50"),
+                                                visible=in_training,
+                                                tooltip="In training data"
+                                            )
+                                        ], spacing=5),
+                                        ft.Text(
+                                            f"{elev_data.get('opening_width_inches', 0):.0f}\" x {elev_data.get('opening_height_inches', 0):.0f}\" | "
+                                            f"{elev_data.get('bays_wide', 0)}x{elev_data.get('bays_tall', 0)} bays | "
+                                            f"{elev_data.get('finish', 'N/A')}",
+                                            size=11, color=COLOR_TEXT_DIM
+                                        )
+                                    ], expand=True, spacing=2),
+                                    ft.Column([
+                                        ft.Text(f"${prediction['predicted_cost']:,.2f}", size=14, weight="bold", color=conf_color),
+                                        ft.Text(f"{prediction['confidence']*100:.0f}% confidence", size=10, color=COLOR_TEXT_DIM)
+                                    ], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=2),
+                                    add_button
+                                ], spacing=10),
+                                padding=12,
+                                bgcolor="#E8F5E9" if in_training else COLOR_INPUT_BG,
+                                border=ft.Border(
+                                    ft.BorderSide(2, "#4CAF50"),
+                                    ft.BorderSide(2, "#4CAF50"),
+                                    ft.BorderSide(2, "#4CAF50"),
+                                    ft.BorderSide(2, "#4CAF50")
+                                ) if in_training else ft.Border(
+                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                                ),
+                                border_radius=8,
+                                animate=ft.Animation(300, "easeOut")
+                            )
+                            
+                            # Set up click handler with references
+                            add_button.on_click = lambda e, ed=elev_data, pn=project_name, en=elev_name, btn=add_button, cont=project_container: add_single_to_training(ed, pn, en, btn, cont)
+                            
+                            # Track if in training in selected_elevations
+                            if in_training:
+                                selected_elevations[elev_key] = {'data': elev_data, 'project': project_name, 'elev_name': elev_name}
+                            
+                            ml_projects_list.controls.append(project_container)
+                    except Exception as ex:
+                        print(f"[WARNING] Error loading project {project_name}: {ex}")
+            
+            # Show empty state or content
+            if not ml_projects_list.controls:
+                ml_projects_container.content = projects_empty_state
+                ml_projects_container.opacity = 1
+                projects_loaded = False
+            else:
+                ml_projects_container.content = ml_projects_list
+                ml_projects_container.opacity = 1
+                projects_loaded = True
+            
+            page.update()
+        
+        def on_checkbox_change(e, elev_key, elev_data, project_name, elev_name):
+            """Handle checkbox state change."""
+            if e.control.value:
+                selected_elevations[elev_key] = {'data': elev_data, 'project': project_name, 'elev_name': elev_name}
+            else:
+                if elev_key in selected_elevations:
+                    del selected_elevations[elev_key]
+            page.update()
+        
+        def select_all_projects(e):
+            """Select all elevations for training."""
+            selected_elevations.clear()
+            for container in ml_projects_list.controls:
+                if isinstance(container.content, ft.Row) and len(container.content.controls) >= 2:
+                    checkbox = container.content.controls[0]
+                    if isinstance(checkbox, ft.Checkbox) and checkbox.data:
+                        checkbox.value = True
+                        # Add to selected using stored data
+                        cb_data = checkbox.data
+                        selected_elevations[cb_data['key']] = {
+                            'data': cb_data['data'],
+                            'project': cb_data['project'],
+                            'elev_name': cb_data.get('elev_name', '')
+                        }
+            page.update()
+            show_snack("All elevations selected", "green")
+        
+        def deselect_all_projects(e):
+            """Deselect all projects."""
+            selected_elevations.clear()
+            for container in ml_projects_list.controls:
+                if isinstance(container.content, ft.Row):
+                    checkbox = container.content.controls[0]
+                    if isinstance(checkbox, ft.Checkbox):
+                        checkbox.value = False
+            page.update()
+            show_snack("All elevations deselected", COLOR_TEXT_DIM)
+        
+        def add_selected_to_training(e):
+            """Add all selected elevations to training data."""
+            added = 0
+            already_in = 0
+            for elev_key, info in selected_elevations.items():
+                result = add_project_to_training(info['data'], info['project'], info.get('elev_name', ''))
+                if result:
+                    added += 1
+                else:
+                    already_in += 1
+            
+            if added > 0:
+                show_snack(f"Added {added} elevation(s) to training data!", "green")
+                refresh_ml_status()
+                refresh_all_projects()
+            elif already_in > 0:
+                show_snack(f"All selected elevations already in training data", COLOR_TEXT_DIM)
+            else:
+                show_snack("No elevations selected", "red")
+        
+        def remove_selected_from_training(e):
+            """Remove all selected elevations from training data."""
+            if not selected_elevations:
+                show_snack("No elevations selected", "red")
+                return
+            
+            removed = 0
+            not_in_training = 0
+            for elev_key, info in selected_elevations.items():
+                if remove_elevation_from_training(info['data'], info['project'], info.get('elev_name', '')):
+                    removed += 1
+                else:
+                    not_in_training += 1
+            
+            if removed > 0:
+                show_snack(f"Removed {removed} elevation(s) from training data!", "green")
+                refresh_ml_status()
+                refresh_all_projects()
+            elif not_in_training > 0:
+                show_snack(f"Selected elevations not in training data", COLOR_TEXT_DIM)
+            else:
+                show_snack("No elevations selected", "red")
+        
+        def add_all_to_training(e):
+            """Add all projects to training data."""
+            added = 0
+            for project_name in state["projects"]:
+                paths = get_project_paths(project_name)
+                if os.path.exists(paths["elevations"]):
+                    try:
+                        with open(paths["elevations"], 'r') as f:
+                            elevations = json.load(f)
+                        
+                        for elev_name, elev_data in elevations.items():
+                            if add_project_to_training(elev_data, project_name, elev_name):
+                                added += 1
+                    except:
+                        pass
+            
+            if added > 0:
+                show_snack(f"Added {added} elevations to training data!", "green")
+                refresh_ml_status()
+            else:
+                show_snack("No new data to add", COLOR_TEXT_DIM)
+        
+        def show_patterns():
+            """Show pattern analysis - only shows content when model is trained."""
+            nonlocal insights_loaded
+            
+            ml_insights_list.controls = []
+            
+            patterns = get_pattern_insights()
+            
+            # Only show patterns if model is trained
+            if patterns.get('error') or not patterns.get('is_trained'):
+                ml_insights_container.content = insights_empty_state
+                ml_insights_container.opacity = 1
+                insights_loaded = False
+                page.update()
+                return
+            
+            # Model is trained - show statistics
+            if patterns.get('sample_count', 0) > 0:
+                ml_insights_list.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Statistics", size=14, weight="bold", color=COLOR_ACCENT),
+                            ft.Row([
+                                ft.Column([
+                                    ft.Text("Avg Cost", size=11, color=COLOR_TEXT_DIM),
+                                    ft.Text(f"${patterns.get('avg_cost', 0):,.2f}", size=16, weight="bold", color=COLOR_TEXT)
+                                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True),
+                                ft.Column([
+                                    ft.Text("Avg Sqft", size=11, color=COLOR_TEXT_DIM),
+                                    ft.Text(f"{patterns.get('avg_sqft', 0):.0f} sqft", size=16, weight="bold", color=COLOR_TEXT)
+                                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True),
+                                ft.Column([
+                                    ft.Text("Avg Size", size=11, color=COLOR_TEXT_DIM),
+                                    ft.Text(f"{patterns.get('avg_width', 0):.0f}\" x {patterns.get('avg_height', 0):.0f}\"", size=14, weight="bold", color=COLOR_TEXT)
+                                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True),
+                            ], alignment=ft.MainAxisAlignment.SPACE_AROUND)
+                        ], spacing=10),
+                        padding=15,
+                        bgcolor=COLOR_INPUT_BG,
+                        border_radius=8
+                    )
+                )
+                
+                # Cost range
+                ml_insights_list.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Cost Range", size=14, weight="bold", color=COLOR_ACCENT),
+                            ft.Row([
+                                ft.Text(f"Min: ${patterns.get('min_cost', 0):,.2f}", size=12, color=COLOR_TEXT),
+                                ft.Text(" - ", color=COLOR_TEXT_DIM),
+                                ft.Text(f"Max: ${patterns.get('max_cost', 0):,.2f}", size=12, color=COLOR_TEXT),
+                            ], alignment=ft.MainAxisAlignment.CENTER)
+                        ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                        padding=15,
+                        bgcolor=COLOR_INPUT_BG,
+                        border_radius=8
+                    )
+                )
+            
+            # Common configurations
+            configs = patterns.get('common_configurations', [])
+            if configs:
+                config_items = []
+                for c in configs[:5]:
+                    config_items.append(
+                        ft.Row([
+                            ft.Text(f"{c['config']} bays", size=12, color=COLOR_TEXT, expand=True),
+                            ft.Text(f"{c['count']} projects ({c['percentage']:.0f}%)", size=11, color=COLOR_TEXT_DIM)
+                        ])
+                    )
+                
+                ml_insights_list.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Common Configurations", size=14, weight="bold", color=COLOR_ACCENT),
+                            ft.Column(config_items, spacing=5)
+                        ], spacing=10),
+                        padding=15,
+                        bgcolor=COLOR_INPUT_BG,
+                        border_radius=8
+                    )
+                )
+            
+            # Model status (always show when trained)
+            ml_insights_list.controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.CHECK_CIRCLE, color="#4CAF50", size=18),
+                        ft.Text(
+                            f"Model trained - {patterns.get('sample_count', 0)} samples", 
+                            size=12, color=COLOR_TEXT
+                        )
+                    ], spacing=10),
+                    padding=10,
+                    bgcolor=COLOR_INPUT_BG,
+                    border_radius=8
+                )
+            )
+            
+            # Show insights
+            ml_insights_container.content = ml_insights_list
+            ml_insights_container.opacity = 1
+            insights_loaded = True
+            
+            page.update()
+        
+        def load_projects_action(e):
+            """Load projects and show them with animation."""
+            show_snack("Loading projects...", COLOR_ACCENT)
+            refresh_ml_status()
+            refresh_all_projects()
+            show_patterns()
+            show_snack("Projects loaded!", "green")
+        
+        # Initialize - start blank
+        refresh_ml_status()
+        # Don't auto-load projects - user must click "Load Projects"
+        ml_projects_container.content = projects_empty_state
+        ml_projects_container.opacity = 1
+        ml_insights_container.content = insights_empty_state
+        ml_insights_container.opacity = 1
+        projects_loaded = False
+        insights_loaded = False
+        
+        return ft.View(
+            "/ml_analytics",
+            [
+                ft.Container(
+                    content=ft.Column([
+                        # Header
+                        ft.Row([
+                            ft.IconButton(ft.Icons.ARROW_BACK, icon_color=COLOR_ACCENT, on_click=lambda e: page.go("/")),
+                            ft.Text("ML ANALYTICS", size=28, weight="bold", color=COLOR_ACCENT, expand=True),
+                            ft.ElevatedButton(
+                                "Load Projects",
+                                icon=ft.Icons.REFRESH,
+                                bgcolor=COLOR_ACCENT,
+                                color="white",
+                                on_click=load_projects_action,
+                                height=40
+                            ),
+                            ft.ElevatedButton(
+                                "Train Model",
+                                icon=ft.Icons.MODEL_TRAINING,
+                                bgcolor="#4CAF50",
+                                color="white",
+                                on_click=train_model_action,
+                                height=40
+                            )
+                        ], alignment=ft.MainAxisAlignment.START),
+                        ml_status_text,
+                        ml_minimum_warning,  # Show minimum requirement warning
+                        ft.Divider(height=20, color=COLOR_SURFACE),
+                        
+                        # Main content in two columns
+                        ft.Row([
+                            # Left: Projects list
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("PROJECT PREDICTIONS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                                    ]),
+                                    # Bulk action buttons
+                                    ft.Row([
+                                        ft.ElevatedButton(
+                                            "Select All",
+                                            icon=ft.Icons.CHECKLIST,
+                                            bgcolor="#2196F3",
+                                            color="white",
+                                            on_click=select_all_projects,
+                                            height=35,
+                                            tooltip="Select all elevations"
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Deselect All",
+                                            icon=ft.Icons.CLEAR_ALL,
+                                            bgcolor=COLOR_TEXT_DIM,
+                                            color="white",
+                                            on_click=deselect_all_projects,
+                                            height=35,
+                                            tooltip="Deselect all elevations"
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Add Selected",
+                                            icon=ft.Icons.ADD_CIRCLE,
+                                            bgcolor="#4CAF50",
+                                            color="white",
+                                            on_click=add_selected_to_training,
+                                            height=35,
+                                            tooltip="Add selected elevations to training"
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Remove Selected",
+                                            icon=ft.Icons.REMOVE_CIRCLE,
+                                            bgcolor="#F44336",
+                                            color="white",
+                                            on_click=remove_selected_from_training,
+                                            height=35,
+                                            tooltip="Remove selected elevations from training"
+                                        )
+                                    ], spacing=8),
+                                    ft.Container(height=10),
+                                    ml_projects_container
+                                ]),
+                                expand=True,
+                                padding=20,
+                                bgcolor=COLOR_SURFACE,
+                                border_radius=12,
+                                animate=ft.Animation(300, "easeOut")
+                            ),
+                            
+                            # Right: Insights
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("PATTERN INSIGHTS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Icon(ft.Icons.INSIGHTS, size=16, color=COLOR_TEXT_DIM),
+                                                ft.Text("Train model to see insights", size=10, color=COLOR_TEXT_DIM)
+                                            ], spacing=5),
+                                            tooltip="Patterns learned from training data"
+                                        )
+                                    ]),
+                                    ft.Container(height=10),
+                                    ml_insights_container
+                                ]),
+                                expand=True,
+                                padding=20,
+                                bgcolor=COLOR_SURFACE,
+                                border_radius=12,
+                                animate=ft.Animation(300, "easeOut")
+                            )
+                        ], spacing=20, expand=True)
+                    ], expand=True),
+                    padding=30,
+                    expand=True
+                )
+            ],
+            bgcolor=COLOR_BG,
+            padding=0,
+            scroll=ft.ScrollMode.AUTO
         )
 
     def build_workspace_view():
@@ -1010,24 +1711,24 @@ def main(page: ft.Page):
                 
                 paths = get_project_paths(state["current_project"])
                 save_project_settings(state["current_project"], existing_settings)
-                print(f"💾 Auto-saved miscellaneous cost settings before report generation: {misc_settings}")
+                print(f"[SAVED] Auto-saved miscellaneous cost settings before report generation: {misc_settings}")
                 print(f"   Settings file location: {paths['settings']}")
                 # Verify file was created and wait a moment for file system
                 import time
                 time.sleep(0.1)  # Small delay to ensure file is written
                 if os.path.exists(paths["settings"]):
-                    print(f"   ✅ Settings file exists at: {paths['settings']}")
+                    print(f"   [OK] Settings file exists at: {paths['settings']}")
                     try:
                         with open(paths["settings"], 'r') as f:
                             saved_data = json.load(f)
-                            print(f"   ✅ Verified saved data: {saved_data}")
+                            print(f"   [OK] Verified saved data: {saved_data}")
                             # Double-check the values match
                             if saved_data != misc_settings:
-                                print(f"   ⚠️ WARNING: Saved data doesn't match! Expected: {misc_settings}, Got: {saved_data}")
+                                print(f"   [WARNING] WARNING: Saved data doesn't match! Expected: {misc_settings}, Got: {saved_data}")
                     except Exception as e:
-                        print(f"   ❌ Error reading saved file: {e}")
+                        print(f"   [ERROR] Error reading saved file: {e}")
                 else:
-                    print(f"   ❌ Settings file NOT found at: {paths['settings']}")
+                    print(f"   [ERROR] Settings file NOT found at: {paths['settings']}")
                     print(f"   Current working directory: {os.getcwd()}")
                     print(f"   Absolute path would be: {os.path.abspath(paths['settings'])}")
                 
@@ -1188,10 +1889,10 @@ def main(page: ft.Page):
                 try:
                     with open(paths["elevations"], 'w') as f:
                         json.dump(state["saved_elevations"], f, indent=4)
-                    print(f"✅ Saved elevations to: {paths['elevations']}")
+                    print(f"[OK] Saved elevations to: {paths['elevations']}")
                 except Exception as save_err:
                     error_msg = f"Failed to save elevations: {str(save_err)}"
-                    print(f"❌ {error_msg}")
+                    print(f"[ERROR] {error_msg}")
                     show_snack(error_msg, "red")
                     raise
                 
@@ -1200,7 +1901,7 @@ def main(page: ft.Page):
                 
                 # Trigger Excel Gen (silent or with notif)
                 try:
-                    print(f"🔄 Generating report for elevation: {elev}")
+                    print(f"[GENERATING] Generating report for elevation: {elev}")
                     print(f"   Excel path: {paths['excel']}")
                     print(f"   Elevations path: {paths['elevations']}")
                     generate_excel_report(
@@ -1227,15 +1928,15 @@ def main(page: ft.Page):
                     )
                     # Check if file was actually created
                     if os.path.exists(paths["excel"]):
-                        print(f"✅ Report generated successfully: {paths['excel']}")
+                        print(f"[OK] Report generated successfully: {paths['excel']}")
                         show_snack(f"Report saved to: {paths['excel']}", "green")
                     else:
                         error_msg = f"Report file not found at: {paths['excel']}"
-                        print(f"❌ {error_msg}")
+                        print(f"[ERROR] {error_msg}")
                         show_snack(error_msg, "red")
                 except Exception as report_err:
                     error_msg = f"Report generation failed: {str(report_err)}"
-                    print(f"❌ {error_msg}")
+                    print(f"[ERROR] {error_msg}")
                     show_snack(error_msg, "red")
                     import traceback
                     traceback.print_exc()
@@ -1261,7 +1962,8 @@ def main(page: ft.Page):
                 try:
                     refresh_waste_calculator()
                 except Exception as ex:
-                    print(f"⚠️ Error refreshing waste calculator: {ex}")
+                    print(f"[WARNING] Error refreshing waste calculator: {ex}")
+                
                 
                 page.update()
 
@@ -1313,7 +2015,7 @@ def main(page: ft.Page):
                 try:
                     refresh_waste_calculator()
                 except Exception as ex:
-                    print(f"⚠️ Error refreshing waste calculator: {ex}")
+                    print(f"[WARNING] Error refreshing waste calculator: {ex}")
                 
                 show_snack("Elevation Deleted", "red")
                 # Force update the dropdown control
@@ -1356,7 +2058,7 @@ def main(page: ft.Page):
                 show_snack(f"Full Report Generated: {out}", "green")
             except Exception as ex:
                 error_msg = f"Report Error: {ex}"
-                print(f"❌ {error_msg}")
+                print(f"[ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
@@ -1428,7 +2130,7 @@ def main(page: ft.Page):
                     
             except Exception as ex:
                 error_msg = f"PDF export error: {str(ex)}"
-                print(f"❌ {error_msg}")
+                print(f"[ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
@@ -1440,7 +2142,7 @@ def main(page: ft.Page):
                 def get_pct(key):
                     field = inputs.get(key)
                     if field is None:
-                        print(f"⚠️ Field '{key}' not found in inputs")
+                        print(f"[WARNING] Field '{key}' not found in inputs")
                         return 0.0
                     val = field.value if hasattr(field, 'value') else ""
                     if not val or not str(val).strip():
@@ -1450,7 +2152,7 @@ def main(page: ft.Page):
                         print(f"   {key}: '{val}' -> {pct_val}")
                         return pct_val
                     except (ValueError, AttributeError, TypeError) as err:
-                        print(f"   ⚠️ Could not convert {key} value '{val}': {err}")
+                        print(f"   [WARNING] Could not convert {key} value '{val}': {err}")
                         return 0.0
                 
                 settings = {
@@ -1463,7 +2165,7 @@ def main(page: ft.Page):
                     "commissions_pct": get_pct("commissions_pct")
                 }
                 
-                print(f"💾 Saving summary settings: {settings}")
+                print(f"[SAVED] Saving summary settings: {settings}")
                 paths = get_project_paths(state["current_project"])
                 
                 # Save settings with explicit file flush
@@ -1477,24 +2179,24 @@ def main(page: ft.Page):
                     try:
                         with open(paths["settings"], 'r') as f:
                             saved_data = json.load(f)
-                            print(f"✅ Verified saved settings: {saved_data}")
+                            print(f"[OK] Verified saved settings: {saved_data}")
                             if saved_data != settings:
-                                print(f"⚠️ WARNING: Saved data doesn't match! Expected: {settings}, Got: {saved_data}")
+                                print(f"[WARNING] WARNING: Saved data doesn't match! Expected: {settings}, Got: {saved_data}")
                     except Exception as verify_err:
-                        print(f"❌ Error verifying saved file: {verify_err}")
+                        print(f"[ERROR] Error verifying saved file: {verify_err}")
                 else:
-                    print(f"❌ Settings file NOT found at: {paths['settings']}")
+                    print(f"[ERROR] Settings file NOT found at: {paths['settings']}")
                     show_snack("Error: Settings file not created", "red")
                     return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
-                print(f"📊 Has non-zero percentages: {has_percentages}")
+                print(f"[INFO] Has non-zero percentages: {has_percentages}")
                 
                 # Regenerate the Excel report to show the updated miscellaneous summary
                 if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
                     try:
-                        print(f"🔄 Regenerating report with updated miscellaneous cost settings...")
+                        print(f"[GENERATING] Regenerating report with updated miscellaneous cost settings...")
                         print(f"   Settings file path: {paths['settings']}")
                         print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
                         print(f"   Excel file path: {paths['excel']}")
@@ -1524,7 +2226,7 @@ def main(page: ft.Page):
                             
                             # Copy to main project file
                             shutil.copy2(temp_report_path, paths["excel"])
-                            print(f"✅ Copied updated report to main project file: {paths['excel']}")
+                            print(f"[OK] Copied updated report to main project file: {paths['excel']}")
                             
                             # Clean up temp file
                             try:
@@ -1532,16 +2234,16 @@ def main(page: ft.Page):
                             except:
                                 pass
                         else:
-                            print(f"⚠️ Generated report file not found at: {temp_report_path}")
+                            print(f"[WARNING] Generated report file not found at: {temp_report_path}")
                         
-                        print(f"✅ Report regenerated successfully with miscellaneous cost settings")
+                        print(f"[OK] Report regenerated successfully with miscellaneous cost settings")
                         if has_percentages:
                             show_snack("Miscellaneous cost settings saved and report updated. Please close and reopen Excel to see changes.", "green")
                         else:
                             show_snack("Settings saved (all percentages are 0%)", "orange")
                     except Exception as report_err:
                         error_msg = f"Settings saved but report update failed: {str(report_err)}"
-                        print(f"❌ {error_msg}")
+                        print(f"[ERROR] {error_msg}")
                         import traceback
                         traceback.print_exc()
                         show_snack("Settings saved, but report update failed", "orange")
@@ -1551,11 +2253,11 @@ def main(page: ft.Page):
                     else:
                         show_snack("Settings saved (all percentages are 0%)", "orange")
                 
-                print(f"✅ Settings saved successfully")
+                print(f"[OK] Settings saved successfully")
                 page.update()
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
-                print(f"❌ {error_msg}")
+                print(f"[ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
@@ -1565,7 +2267,7 @@ def main(page: ft.Page):
                 def get_pct(key):
                     field = inputs.get(key)
                     if field is None:
-                        print(f"⚠️ Field '{key}' not found in inputs")
+                        print(f"[WARNING] Field '{key}' not found in inputs")
                         return 0.0
                     val = field.value if hasattr(field, 'value') else ""
                     if not val or not str(val).strip():
@@ -1575,7 +2277,7 @@ def main(page: ft.Page):
                         print(f"   {key}: '{val}' -> {pct_val}")
                         return pct_val
                     except (ValueError, AttributeError, TypeError) as err:
-                        print(f"   ⚠️ Could not convert {key} value '{val}': {err}")
+                        print(f"   [WARNING] Could not convert {key} value '{val}': {err}")
                         return 0.0
                 
                 settings = {
@@ -1587,7 +2289,7 @@ def main(page: ft.Page):
                     "commission_pct": get_pct("commission_pct")
                 }
                 
-                print(f"💾 Saving markup settings: {settings}")
+                print(f"[SAVED] Saving markup settings: {settings}")
                 paths = get_project_paths(state["current_project"])
                 
                 # Load existing settings and merge with markups
@@ -1605,22 +2307,22 @@ def main(page: ft.Page):
                     try:
                         with open(paths["settings"], 'r') as f:
                             saved_data = json.load(f)
-                            print(f"✅ Verified saved settings: {saved_data}")
+                            print(f"[OK] Verified saved settings: {saved_data}")
                     except Exception as verify_err:
-                        print(f"❌ Error verifying saved file: {verify_err}")
+                        print(f"[ERROR] Error verifying saved file: {verify_err}")
                 else:
-                    print(f"❌ Settings file NOT found at: {paths['settings']}")
+                    print(f"[ERROR] Settings file NOT found at: {paths['settings']}")
                     show_snack("Error: Settings file not created", "red")
                     return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
-                print(f"📊 Has non-zero markup percentages: {has_percentages}")
+                print(f"[INFO] Has non-zero markup percentages: {has_percentages}")
                 
                 # Regenerate the Excel report to show the updated markups
                 if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
                     try:
-                        print(f"🔄 Regenerating report with updated markup settings...")
+                        print(f"[GENERATING] Regenerating report with updated markup settings...")
                         print(f"   Settings file path: {paths['settings']}")
                         print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
                         print(f"   Excel file path: {paths['excel']}")
@@ -1649,7 +2351,7 @@ def main(page: ft.Page):
                             
                             # Copy to main project file
                             shutil.copy2(temp_report_path, paths["excel"])
-                            print(f"✅ Copied updated report to main project file: {paths['excel']}")
+                            print(f"[OK] Copied updated report to main project file: {paths['excel']}")
                             
                             # Clean up temp file
                             try:
@@ -1657,16 +2359,16 @@ def main(page: ft.Page):
                             except:
                                 pass
                         else:
-                            print(f"⚠️ Generated report file not found at: {temp_report_path}")
+                            print(f"[WARNING] Generated report file not found at: {temp_report_path}")
                         
-                        print(f"✅ Report regenerated successfully with markup settings")
+                        print(f"[OK] Report regenerated successfully with markup settings")
                         if has_percentages:
                             show_snack("Markup settings saved and report updated. Please close and reopen Excel to see changes.", "green")
                         else:
                             show_snack("Settings saved (all percentages are 0%)", "orange")
                     except Exception as report_err:
                         error_msg = f"Settings saved but report update failed: {str(report_err)}"
-                        print(f"❌ {error_msg}")
+                        print(f"[ERROR] {error_msg}")
                         import traceback
                         traceback.print_exc()
                         show_snack("Settings saved, but report update failed", "orange")
@@ -1676,11 +2378,11 @@ def main(page: ft.Page):
                     else:
                         show_snack("Settings saved (all percentages are 0%)", "orange")
                 
-                print(f"✅ Markup settings saved successfully")
+                print(f"[OK] Markup settings saved successfully")
                 page.update()
             except Exception as ex:
                 error_msg = f"Error saving markup settings: {str(ex)}"
-                print(f"❌ {error_msg}")
+                print(f"[ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
@@ -1735,7 +2437,7 @@ def main(page: ft.Page):
                 page.update()
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
-                print(f"❌ {error_msg}")
+                print(f"[ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
@@ -1873,7 +2575,7 @@ def main(page: ft.Page):
                 }
             else:
                 paths = get_project_paths(state["current_project"])
-                print(f"📊 Waste Calculator: Calculating for project '{state['current_project']}'")
+                print(f"[Waste Calculator] Calculating for project '{state['current_project']}'")
                 print(f"   Elevations path: {paths['elevations']}")
                 print(f"   Materials path: {paths['materials']}")
                 print(f"   Excel path: {paths['excel']}")
@@ -2432,6 +3134,8 @@ def main(page: ft.Page):
         page.views.append(build_projects_view())
         if page.route == "/workspace" and state["current_project"]:
             page.views.append(build_workspace_view())
+        elif page.route == "/ml_analytics":
+            page.views.append(build_ml_analytics_view())
         page.update()
 
     def view_pop(e):

@@ -682,7 +682,7 @@ def apply_material_impact_to_extra_materials(material_impact_details, extra_mate
                             break
                     
                     if not found:
-                        print(f"⚠️ Warning: Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
+                        print(f"[WARNING] Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
             
             part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0
@@ -711,7 +711,7 @@ def apply_material_impact_to_extra_materials(material_impact_details, extra_mate
                             temp_leftovers.append(remaining_after_use)
                             temp_leftovers.sort(reverse=True)
                     else:
-                        print(f"⚠️ Warning: Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
+                        print(f"[WARNING] Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
             
             part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0
@@ -737,7 +737,7 @@ def apply_material_impact_to_extra_materials(material_impact_details, extra_mate
                         temp_leftovers.append(remaining_after_use)
                         temp_leftovers.sort(reverse=True)
                 else:
-                    print(f"⚠️ Warning: Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+                    print(f"[WARNING] Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
                 part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0 # Profiles only use length_pieces, quantity is effectively 0 for whole pieces
 
@@ -834,7 +834,7 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
                             break
                     
                     if not found:
-                        print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
+                        print(f"[WARNING] (in-memory): Could not find suitable leftover piece to consume {used_length:.4f} for {part_number} ({finish}).")
             
             part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0
@@ -862,7 +862,7 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
                             temp_leftovers.append(remaining_after_use)
                             temp_leftovers.sort(reverse=True)
                     else:
-                        print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
+                        print(f"[WARNING] (in-memory): Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
             
             part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0
@@ -890,7 +890,7 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
                             temp_leftovers.append(remaining_after_use)
                             temp_leftovers.sort(reverse=True)
                     else:
-                        print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
+                        print(f"[WARNING] (in-memory): Could not find suitable leftover piece to consume {length_used:.4f} for {part_number} ({finish}).")
             
             part_extra['length_pieces'] = temp_leftovers
             part_extra['quantity'] = 0.0
@@ -916,7 +916,7 @@ def apply_material_impact_to_extra_materials_in_memory(materials_dict, material_
                         temp_leftovers.append(remaining_after_use)
                         temp_leftovers.sort(reverse=True)
                 else:
-                    print(f"⚠️ Warning (in-memory): Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
+                    print(f"[WARNING] (in-memory): Could not find suitable leftover piece to consume {used_from_leftover_qty_or_length:.4f} for {part_number} ({finish}).")
                 part_extra['length_pieces'] = temp_leftovers
             # If no leftovers were used, ensure length_pieces exists as a list
             if 'length_pieces' not in part_extra or not isinstance(part_extra.get('length_pieces'), list):
@@ -996,7 +996,7 @@ def reverse_material_impact(elevation_material_impacts, extra_materials_file="ex
                         temp_leftovers.pop(i) # Remove the specific piece
                         removed = True
                         break
-                if not removed: print(f"⚠️ Warning: Generated leftover '{leftover_generated_qty_or_length:.4f} ft' for {part_number} ({finish}) not found in current inventory for reversal.")
+                if not removed: print(f"[WARNING] Generated leftover '{leftover_generated_qty_or_length:.4f} ft' for {part_number} ({finish}) not found in current inventory for reversal.")
                 part_extra['length_pieces'] = temp_leftovers # Update the original list
 
             # When reversing, if material was USED FROM leftover, we put it back into inventory.

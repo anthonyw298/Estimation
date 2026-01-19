@@ -767,7 +767,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         with open(elevations_json_path, 'r') as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"⚠️ Could not load elevations JSON: {e}")
+        print(f"[WARNING] Could not load elevations JSON: {e}")
         return
 
     # For summary, use a shared in-memory state that accumulates leftovers across all elevations
@@ -777,11 +777,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     try:
         extra_materials = load_extra_materials(extra_materials_json_path)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"⚠️ Could not load extra materials JSON: {e}")
+        print(f"[WARNING] Could not load extra materials JSON: {e}")
         extra_materials = {}
 
     if not data:
-        print("ℹ️ No data found, summary cleared if existed.")
+        print("[INFO] No data found, summary cleared if existed.")
         return
 
     # --- Elevation summary defaults (can be overridden later when settings are loaded) ---
@@ -1437,7 +1437,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     }
     
     # Load percentages from settings file
-    print(f"🔍 Attempting to load settings from: {summary_settings_path}")
+    print(f"[INFO] Attempting to load settings from: {summary_settings_path}")
     print(f"   Elevations path: {elevations_json_path}")
     
     # Always try to construct path from elevations path first (most reliable)
@@ -1473,7 +1473,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     for path_to_try in unique_paths:
         if os.path.exists(path_to_try):
             try:
-                print(f"   ✅ Found file, trying to read: {path_to_try}")
+                print(f"   [OK] Found file, trying to read: {path_to_try}")
                 with open(path_to_try, 'r') as f:
                     settings_data = json.load(f)
                     # Miscellaneous percentages
@@ -1486,7 +1486,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                         "Shipping and Transport": settings_data.get("shipping_transport_pct", 0.0),
                         "Commissions": settings_data.get("commissions_pct", 0.0)
                     }
-                    print(f"✅ Loaded summary percentages from {path_to_try}")
+                    print(f"[OK] Loaded summary percentages from {path_to_try}")
                     print(f"   Percentages: {summary_pcts}")
                     # Elevation summary display flags
                     elevation_summary_settings["show_elevation_names"] = settings_data.get("show_elevation_names", False)
@@ -1497,18 +1497,18 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     settings_loaded = True
                     break
             except Exception as e:
-                print(f"   ❌ Error reading {path_to_try}: {e}")
+                print(f"   [ERROR] Error reading {path_to_try}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
     
     if not settings_loaded:
-        print(f"⚠️ Could not load settings from any path. Tried:")
+        print(f"[WARNING] Could not load settings from any path. Tried:")
         for path_to_try in unique_paths:
-            exists = "✅ EXISTS" if os.path.exists(path_to_try) else "❌ NOT FOUND"
+            exists = "[EXISTS]" if os.path.exists(path_to_try) else "[NOT FOUND]"
             print(f"   {exists}: {path_to_try}")
         if not summary_settings_path:
-            print(f"   ⚠️ No summary settings path was provided to create_summary_sheet")
+            print(f"   [WARNING] No summary settings path was provided to create_summary_sheet")
 
     # Build elevation summary column definitions based on flags
     elevation_summary_cols = []
@@ -1608,7 +1608,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             total_label_cell.font = Font(bold=True)
             col_idx += 1
         # Debug: print totals to console
-        print(f"📊 ELEVATION SUMMARY TOTALS: Qty={total_qty}, SQFT={total_sqft}, Perimeter={total_perimeter}")
+        print(f"[SUMMARY] ELEVATION SUMMARY TOTALS: Qty={total_qty}, SQFT={total_sqft}, Perimeter={total_perimeter}")
         
         if elevation_summary_settings["show_elevation_quantity"]:
             # Write the accumulated total directly
@@ -1647,7 +1647,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
 
     # Calculate base amount: use discounted total only
     base_amount = final_discounted_total
-    print(f"📊 Miscellaneous Cost section - Base amount (discounted total): ${base_amount:.2f}")
+    print(f"[SUMMARY] Miscellaneous Cost section - Base amount (discounted total): ${base_amount:.2f}")
     
     # ========== STEP 1: Collect all MISCELLANEOUS items ==========
     summary_total = 0.0
@@ -1675,7 +1675,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     for path_to_try_markup in unique_paths:
         if os.path.exists(path_to_try_markup):
             try:
-                print(f"   🔍 Loading markup settings from: {path_to_try_markup}")
+                print(f"   [INFO] Loading markup settings from: {path_to_try_markup}")
                 with open(path_to_try_markup, 'r') as f:
                     settings_data = json.load(f)
                     markup_pcts = {
@@ -1686,15 +1686,15 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                         "Planning / Technical Office": settings_data.get("planning_technical_pct", 0.0),
                         "Commission": settings_data.get("commission_pct", 0.0)
                     }
-                    print(f"✅ Loaded markup percentages: {markup_pcts}")
+                    print(f"[OK] Loaded markup percentages: {markup_pcts}")
                     markup_settings_loaded = True
                     break
             except Exception as e:
-                print(f"   ❌ Error reading markup settings from {path_to_try_markup}: {e}")
+                print(f"   [ERROR] Error reading markup settings from {path_to_try_markup}: {e}")
                 continue
     
     if not markup_settings_loaded:
-        print(f"⚠️ Could not load markup settings from any path")
+        print(f"[WARNING] Could not load markup settings from any path")
     
     # Calculate markups based on appropriate bases
     markup_total = 0.0
@@ -1780,7 +1780,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=misc_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     misc_end_row = misc_subtotal_row
-    print(f"✅ Miscellaneous Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
+    print(f"[OK] Miscellaneous Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
     
     # ========== STEP 4: Write MARKUPS HEADER (below Miscellaneous) ==========
     markup_start_row = misc_end_row + 2
@@ -1824,7 +1824,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=markup_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     markup_end_row = markup_subtotal_row
-    print(f"✅ Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
+    print(f"[OK] Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
     
     # ============================================================================
     # FINAL TOTAL - Below markup section with spacing
@@ -1898,19 +1898,19 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     
     try:
         _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
-        print(f"✅ Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
+        print(f"[OK] Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
         print(f"   Active Materials: ${active_material_cost:.2f}, Misc: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
     except Exception as e:
-        print(f"⚠️ Could not add pie chart: {e}")
+        print(f"[WARNING] Could not add pie chart: {e}")
     
-    print(f"📊 Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
-    print(f"📝 Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")
-    print(f"📝 Final total written to row {final_total_row}")
+    print(f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
+    print(f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")
+    print(f"[INFO] Final total written to row {final_total_row}")
     
     _autofit_columns(ws, 1, 10, start_row, final_total_row)
     _clean_trailing_blank_rows(ws, 1)
 
-    print(f"✅ Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
+    print(f"[OK] Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
 
 def _format_door_summary(calculated_outputs):
     if not calculated_outputs:
@@ -1971,7 +1971,7 @@ def generate_excel_report(
         private_excel_path = os.path.join(private_projects_dir, os.path.basename(excel_path))
     
     # Debug logging
-    print(f"📁 Using paths:")
+    print(f"[PATHS] Using paths:")
     print(f"   Elevations: {private_elevations_path}")
     print(f"   Materials: {private_extra_materials_path}")
     print(f"   Excel: {private_excel_path}")
@@ -2548,29 +2548,29 @@ def generate_excel_report(
             project_base = elev_basename.replace("_Elevations.json", "")
             # Construct settings path in the same directory as elevations
             private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
-            print(f"🔍 Constructed settings path from elevations: {private_summary_settings_path}")
+            print(f"[INFO] Constructed settings path from elevations: {private_summary_settings_path}")
         else:
             # Fallback to provided path
             summary_settings_path_abs = os.path.abspath(summary_settings_path)
             if os.path.exists(summary_settings_path_abs):
                 private_summary_settings_path = summary_settings_path_abs
-                print(f"🔍 Using provided settings path: {private_summary_settings_path}")
+                print(f"[INFO] Using provided settings path: {private_summary_settings_path}")
             else:
                 # Try in private projects dir
                 private_summary_settings_path = os.path.join(private_projects_dir, os.path.basename(summary_settings_path))
-                print(f"🔍 Trying constructed path: {private_summary_settings_path}")
+                print(f"[INFO] Trying constructed path: {private_summary_settings_path}")
     else:
         # Try to construct from elevations path even if not provided
         elev_basename = os.path.basename(private_elevations_path)
         if "_Elevations.json" in elev_basename:
             project_base = elev_basename.replace("_Elevations.json", "")
             private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
-            print(f"🔍 No settings path provided, constructing from elevations: {private_summary_settings_path}")
+            print(f"[INFO] No settings path provided, constructing from elevations: {private_summary_settings_path}")
     
     if private_summary_settings_path and os.path.exists(private_summary_settings_path):
-        print(f"✅ Settings file found: {private_summary_settings_path}")
+        print(f"[OK] Settings file found: {private_summary_settings_path}")
     elif private_summary_settings_path:
-        print(f"⚠️ Settings file not found: {private_summary_settings_path}")
+        print(f"[WARNING] Settings file not found: {private_summary_settings_path}")
     
     create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb, summary_settings_path=private_summary_settings_path)
     
@@ -2580,7 +2580,7 @@ def generate_excel_report(
         wb.save(final_save_path)
         print(f"Excel report '{final_save_path}' fully rebuilt with separate tabs.")
     except Exception as save_err:
-        print(f"❌ Error saving Excel report during full rebuild: {save_err}")
+        print(f"[ERROR] Error saving Excel report during full rebuild: {save_err}")
         if completion_callback: completion_callback(f"Error saving report: {save_err}")
         return
 
