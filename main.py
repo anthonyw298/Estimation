@@ -275,7 +275,6 @@ def main(page: ft.Page):
             os.makedirs(settings_dir, exist_ok=True)
         with open(paths["settings"], 'w') as f:
             json.dump(settings, f, indent=4)
-        print(f"[SAVED] Saved project settings to: {paths['settings']}")
 
     def load_elevations(project_name):
         paths = get_project_paths(project_name)
@@ -367,6 +366,49 @@ def main(page: ft.Page):
     def build_projects_view():
         load_projects()
         
+        # ============================================================
+        # HELPER: Get project metadata (systems, finishes, elevation count)
+        # ============================================================
+        def get_project_metadata(project_name):
+            """Load project's elevations and extract metadata for filtering."""
+            metadata = {
+                "systems": set(),
+                "finishes": set(),
+                "elevation_count": 0
+            }
+            try:
+                paths = get_project_paths(project_name)
+                elev_path = paths.get("elevations", "")
+                if os.path.exists(elev_path):
+                    with open(elev_path, 'r') as f:
+                        elevations = json.load(f)
+                    metadata["elevation_count"] = len(elevations)
+                    for elev_name, elev_data in elevations.items():
+                        if elev_data.get("system"):
+                            metadata["systems"].add(elev_data["system"])
+                        if elev_data.get("finish"):
+                            metadata["finishes"].add(elev_data["finish"])
+            except Exception:
+                pass
+            return metadata
+        
+        # ============================================================
+        # COLLECT ALL SYSTEMS AND FINISHES FOR FILTER DROPDOWNS
+        # ============================================================
+        all_systems = set()
+        all_finishes = set()
+        project_metadata_cache = {}
+        
+        for p in state["projects"]:
+            meta = get_project_metadata(p)
+            project_metadata_cache[p] = meta
+            all_systems.update(meta["systems"])
+            all_finishes.update(meta["finishes"])
+        
+        # Sort for dropdown display
+        all_systems = sorted(list(all_systems))
+        all_finishes = sorted(list(all_finishes))
+        
         def on_project_click(e, name):
             state["current_project"] = name
             load_elevations(name)
@@ -428,31 +470,218 @@ def main(page: ft.Page):
                 else:
                     show_snack(f"Project '{name}' deleted", "red")
 
-        new_proj_name = create_input_field("New Project Name", "new_proj", expand=True)
+        # ============================================================
+        # SEARCH & FILTER UI COMPONENTS (Professional Design)
+        # ============================================================
+        search_field = ft.TextField(
+            hint_text="Search by project name...",
+            prefix_icon=ft.Icons.SEARCH_ROUNDED,
+            border_radius=10,
+            bgcolor="#0D0D0D",
+            border_color="#333333",
+            focused_border_color=COLOR_ACCENT,
+            color=COLOR_TEXT,
+            hint_style=ft.TextStyle(color="#666666", size=13),
+            width=300,
+            height=48,
+            content_padding=ft.padding.only(left=15, right=15, top=12, bottom=12),
+            text_size=14,
+            cursor_color=COLOR_ACCENT
+        )
         
-        # Grid of projects
-        project_tiles = []
-        for p in state["projects"]:
-            project_tiles.append(
+        system_filter = ft.Dropdown(
+            hint_text="All Systems",
+            options=[ft.dropdown.Option("All Systems")] + [ft.dropdown.Option(s) for s in all_systems],
+            value="All Systems",
+            width=240,
+            bgcolor="#0D0D0D",
+            border_color="#333333",
+            focused_border_color=COLOR_ACCENT,
+            color=COLOR_TEXT,
+            hint_style=ft.TextStyle(color="#666666", size=13),
+            text_size=13,
+            border_radius=10,
+            content_padding=ft.padding.symmetric(horizontal=15, vertical=12)
+        )
+        
+        finish_filter = ft.Dropdown(
+            hint_text="All Finishes",
+            options=[ft.dropdown.Option("All Finishes")] + [ft.dropdown.Option(f) for f in all_finishes],
+            value="All Finishes",
+            width=180,
+            bgcolor="#0D0D0D",
+            border_color="#333333",
+            focused_border_color=COLOR_ACCENT,
+            color=COLOR_TEXT,
+            hint_style=ft.TextStyle(color="#666666", size=13),
+            text_size=13,
+            border_radius=10,
+            content_padding=ft.padding.symmetric(horizontal=15, vertical=12)
+        )
+        
+        result_count_text_widget = ft.Text(
+            f"Showing {len(state['projects'])} of {len(state['projects'])} projects",
+            size=12,
+            color=COLOR_TEXT_DIM,
+            weight=ft.FontWeight.W_400
+        )
+        result_count_text = ft.Container(
+            content=ft.Row([
                 ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Container(expand=True),
-                            ft.IconButton(ft.Icons.CLOSE, icon_color="red", icon_size=16, 
+                    content=ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=14, color=COLOR_ACCENT),
+                    padding=4
+                ),
+                result_count_text_widget
+            ], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
+            padding=ft.padding.symmetric(horizontal=12, vertical=6),
+            bgcolor="#0D0D0D",
+            border_radius=20
+        )
+        
+        # Container for project tiles (will be updated dynamically)
+        projects_grid = ft.Row([], wrap=True, spacing=20, run_spacing=25, alignment=ft.MainAxisAlignment.CENTER)
+        
+        # ============================================================
+        # FILTER LOGIC
+        # ============================================================
+        def apply_filters(e=None):
+            """Apply search and filter criteria to project list."""
+            search_term = (search_field.value or "").lower().strip()
+            selected_system = system_filter.value
+            selected_finish = finish_filter.value
+            
+            filtered_projects = []
+            
+            for p in state["projects"]:
+                # Search by name
+                if search_term and search_term not in p.lower():
+                    continue
+                
+                # Filter by system
+                meta = project_metadata_cache.get(p, {"systems": set(), "finishes": set()})
+                if selected_system and selected_system != "All Systems":
+                    if selected_system not in meta["systems"]:
+                        continue
+                
+                # Filter by finish
+                if selected_finish and selected_finish != "All Finishes":
+                    if selected_finish not in meta["finishes"]:
+                        continue
+                
+                filtered_projects.append(p)
+            
+            # Rebuild project tiles with enhanced design
+            projects_grid.controls.clear()
+            for p in filtered_projects:
+                meta = project_metadata_cache.get(p, {"elevation_count": 0, "systems": set(), "finishes": set()})
+                elev_count = meta["elevation_count"]
+                finishes_list = list(meta["finishes"])
+                finish_badge = finishes_list[0] if finishes_list else None
+                
+                # Create the clickable card using GestureDetector for reliable clicks
+                def create_project_card(project_name, elevation_count, finish):
+                    finish_badge_widget = ft.Container(
+                        content=ft.Text(finish, size=9, color="#FFFFFF", weight=ft.FontWeight.W_500),
+                        bgcolor="#4CAF50" if finish else "transparent",
+                        padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                        border_radius=10,
+                        visible=finish is not None
+                    )
+                    
+                    return ft.GestureDetector(
+                        content=ft.Container(
+                            content=ft.Column([
+                                # Delete button row (top) - separate click handler
+                                ft.Row([
+                                    ft.Container(expand=True),
+                                    ft.IconButton(
+                                        ft.Icons.DELETE_OUTLINE, 
+                                        icon_color="#FF5252", 
+                                        icon_size=18,
                                         tooltip="Delete Project", 
-                                        on_click=lambda e, name=p: delete_project_click(e, name))
-                        ]),
-                        ft.Icon(ft.Icons.FOLDER_OPEN, size=40, color=COLOR_ACCENT),
-                        ft.Text(p, size=16, weight=ft.FontWeight.BOLD, color=COLOR_TEXT, overflow=ft.TextOverflow.ELLIPSIS)
-                    ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                    width=160, height=160,
-                    bgcolor=COLOR_SURFACE,
-                    border_radius=10,
-                    padding=10,
-                    on_click=lambda e, name=p: on_project_click(e, name),
-                    animate=ft.Animation(200, "easeOut"),
-                )
-            )
+                                        on_click=lambda e, name=project_name: delete_project_click(e, name),
+                                    ),
+                                ], alignment=ft.MainAxisAlignment.END),
+                                # Icon with gradient background
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=38, color="#FFFFFF"),
+                                    width=65,
+                                    height=65,
+                                    border_radius=32,
+                                    gradient=ft.LinearGradient(
+                                        begin=ft.alignment.top_left,
+                                        end=ft.alignment.bottom_right,
+                                        colors=[COLOR_ACCENT, "#005BB5"]
+                                    ),
+                                    alignment=ft.alignment.center,
+                                ),
+                                ft.Container(height=10),
+                                # Project name
+                                ft.Text(project_name, size=14, weight=ft.FontWeight.W_600, color=COLOR_TEXT, 
+                                       overflow=ft.TextOverflow.ELLIPSIS, max_lines=2, 
+                                       text_align=ft.TextAlign.CENTER, width=140),
+                                # Elevation count with icon
+                                ft.Row([
+                                    ft.Icon(ft.Icons.LAYERS_OUTLINED, size=14, color=COLOR_TEXT_DIM),
+                                    ft.Text(f"{elevation_count} elevation{'s' if elevation_count != 1 else ''}", 
+                                           size=11, color=COLOR_TEXT_DIM, weight=ft.FontWeight.W_400),
+                                ], spacing=4, alignment=ft.MainAxisAlignment.CENTER),
+                                # Finish badge
+                                finish_badge_widget
+                            ], alignment=ft.MainAxisAlignment.START, 
+                               horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                            width=175, height=200,
+                            bgcolor=COLOR_SURFACE,
+                            border_radius=16,
+                            padding=ft.padding.only(top=5, bottom=15, left=10, right=10),
+                            border=ft.Border(
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A")
+                            ),
+                        ),
+                        on_tap=lambda e, name=project_name: on_project_click(e, name),
+                        mouse_cursor=ft.MouseCursor.CLICK
+                    )
+                
+                projects_grid.controls.append(create_project_card(p, elev_count, finish_badge))
+            
+            # Update result count
+            result_count_text_widget.value = f"Showing {len(filtered_projects)} of {len(state['projects'])} projects"
+            
+            page.update()
+        
+        # Attach filter handlers
+        search_field.on_change = apply_filters
+        system_filter.on_change = apply_filters
+        finish_filter.on_change = apply_filters
+        
+        def clear_filters(e):
+            """Reset all filters."""
+            search_field.value = ""
+            system_filter.value = "All Systems"
+            finish_filter.value = "All Finishes"
+            apply_filters()
+        
+        # Initial load of projects
+        apply_filters()
+        
+        # Custom styled input for new project
+        new_proj_name = ft.TextField(
+            hint_text="Enter project name...",
+            border_radius=8,
+            bgcolor="#0D0D0D",
+            border_color="#333333",
+            focused_border_color=COLOR_ACCENT,
+            color=COLOR_TEXT,
+            hint_style=ft.TextStyle(color="#666666", size=13),
+            width=280,
+            height=42,
+            content_padding=ft.padding.symmetric(horizontal=15, vertical=10),
+            text_size=14,
+            cursor_color=COLOR_ACCENT
+        )
 
         # Try to load the United Glass logo
         # Try multiple possible filenames
@@ -515,44 +744,168 @@ def main(page: ft.Page):
         if logo_image is not None:
             logo_display = logo_image
         
+        # Empty state for when no projects exist
+        empty_state = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.FOLDER_OFF_OUTLINED, size=80, color=COLOR_TEXT_DIM),
+                ft.Container(height=16),
+                ft.Text("No Projects Yet", size=24, weight=ft.FontWeight.W_600, color=COLOR_TEXT),
+                ft.Text("Create your first project to get started", size=14, color=COLOR_TEXT_DIM),
+            ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=60,
+            visible=len(state["projects"]) == 0
+        )
+        
         return ft.View(
             "/",
             [
                 ft.Container(
                     content=ft.Column([
-                        # Header with logo on left and text on right
-                        ft.Row([
-                            # Logo on the left
-                            ft.Container(
-                                content=logo_display,
-                                alignment=ft.alignment.center,
+                        # ========== HEADER SECTION ==========
+                        ft.Container(
+                            content=ft.Row([
+                                # Logo
+                                ft.Container(
+                                    content=logo_display,
+                                    alignment=ft.alignment.center,
+                                ),
+                                ft.Container(width=30),
+                                # Title and subtitle
+                                ft.Column([
+                                    ft.Text("ESTIMATION TOOL", 
+                                           size=42, 
+                                           weight=ft.FontWeight.BOLD, 
+                                           color=COLOR_ACCENT,
+                                           font_family="Arial"),
+                                    ft.Text("Professional Storefront & Curtain Wall Estimator", 
+                                           size=16, 
+                                           color=COLOR_TEXT_DIM,
+                                           weight=ft.FontWeight.W_400),
+                                ], spacing=4, alignment=ft.MainAxisAlignment.CENTER),
+                            ], alignment=ft.MainAxisAlignment.CENTER),
+                            padding=ft.padding.only(bottom=30),
+                        ),
+                        
+                        # ========== ACTION BAR (Create + ML Analytics) ==========
+                        ft.Container(
+                            content=ft.Row([
+                                # Create Project Card
+                                ft.Container(
+                                    content=ft.Row([
+                                        ft.Icon(ft.Icons.CREATE_NEW_FOLDER_OUTLINED, size=24, color=COLOR_ACCENT),
+                                        ft.Container(width=12),
+                                        new_proj_name,
+                                        ft.Container(width=8),
+                                        ft.ElevatedButton(
+                                            "Create",
+                                            icon=ft.Icons.ADD,
+                                            bgcolor=COLOR_ACCENT,
+                                            color="white",
+                                            on_click=add_project_click,
+                                            height=42,
+                                            style=ft.ButtonStyle(
+                                                shape=ft.RoundedRectangleBorder(radius=8),
+                                                elevation=0
+                                            )
+                                        ),
+                                    ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                    bgcolor=COLOR_SURFACE,
+                                    padding=ft.padding.symmetric(horizontal=20, vertical=12),
+                                    border_radius=12,
+                                    border=ft.Border(
+                                        ft.BorderSide(1, "#2A2A2A"),
+                                        ft.BorderSide(1, "#2A2A2A"),
+                                        ft.BorderSide(1, "#2A2A2A"),
+                                        ft.BorderSide(1, "#2A2A2A")
+                                    ),
+                                    expand=True
+                                ),
+                                ft.Container(width=15),
+                                # ML Analytics Button
+                                ft.Container(
+                                    content=ft.ElevatedButton(
+                                        "ML Analytics",
+                                        icon=ft.Icons.AUTO_GRAPH,
+                                        bgcolor="#4CAF50" if ML_AVAILABLE else "#2A2A2A",
+                                        color="white" if ML_AVAILABLE else COLOR_TEXT_DIM,
+                                        on_click=lambda e: page.go("/ml_analytics") if ML_AVAILABLE else show_snack("ML not available. Install scikit-learn.", "red"),
+                                        height=42,
+                                        style=ft.ButtonStyle(
+                                            shape=ft.RoundedRectangleBorder(radius=8),
+                                            elevation=0
+                                        ),
+                                        tooltip="Machine Learning Analytics - Predict costs from historical data"
+                                    ),
+                                ),
+                            ], alignment=ft.MainAxisAlignment.CENTER),
+                            padding=ft.padding.only(bottom=25),
+                        ),
+                        
+                        # ========== SEARCH & FILTER SECTION ==========
+                        ft.Container(
+                            content=ft.Column([
+                                # Section Header
+                                ft.Row([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.FILTER_LIST_ROUNDED, size=22, color=COLOR_ACCENT),
+                                        ft.Container(width=8),
+                                        ft.Text("Search & Filter", size=16, weight=ft.FontWeight.W_600, color=COLOR_TEXT),
+                                    ]),
+                                    ft.Container(expand=True),
+                                    ft.TextButton(
+                                        "Clear All",
+                                        icon=ft.Icons.CLEAR_ALL,
+                                        icon_color=COLOR_TEXT_DIM,
+                                        on_click=clear_filters,
+                                        style=ft.ButtonStyle(
+                                            color=COLOR_TEXT_DIM,
+                                            overlay_color="#FFFFFF10"
+                                        )
+                                    ),
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                ft.Container(height=15),
+                                # Filter Controls
+                                ft.Row([
+                                    search_field,
+                                    system_filter,
+                                    finish_filter,
+                                ], spacing=20, alignment=ft.MainAxisAlignment.CENTER, wrap=True),
+                                ft.Container(height=12),
+                                # Result count
+                                result_count_text,
+                            ], horizontal_alignment=ft.CrossAxisAlignment.STRETCH, spacing=0),
+                            bgcolor=COLOR_SURFACE,
+                            padding=20,
+                            border_radius=14,
+                            border=ft.Border(
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A"),
+                                ft.BorderSide(1, "#2A2A2A")
                             ),
-                            # Text content on the right
-                            ft.Column([
-                                ft.Text("ESTIMATION TOOL", size=40, weight=ft.FontWeight.BOLD, color=COLOR_ACCENT, font_family="Arial"),
-                                ft.Text("Select or create a project to begin", size=18, color=COLOR_TEXT_DIM),
-                            ], spacing=8, alignment=ft.MainAxisAlignment.CENTER, expand=True),
-                        ], spacing=25, alignment=ft.MainAxisAlignment.CENTER),
-                        ft.Divider(color="transparent", height=10),
+                        ),
+                        ft.Container(height=25),
+                        
+                        # ========== PROJECTS SECTION HEADER ==========
                         ft.Row([
-                            new_proj_name,
-                            ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=COLOR_ACCENT, icon_size=40, on_click=add_project_click, tooltip="Create Project"),
-                            ft.Container(width=20),
-                            ft.ElevatedButton(
-                                "ML Analytics",
-                                icon=ft.Icons.AUTO_GRAPH,
-                                bgcolor="#4CAF50" if ML_AVAILABLE else COLOR_SURFACE,
-                                color="white" if ML_AVAILABLE else COLOR_TEXT_DIM,
-                                on_click=lambda e: page.go("/ml_analytics") if ML_AVAILABLE else show_snack("ML not available. Install scikit-learn.", "red"),
-                                height=45,
-                                tooltip="Machine Learning Analytics - Learn from past projects"
-                            )
-                        ]),
-                        ft.Divider(color="transparent", height=20),
-                        ft.Row(project_tiles, wrap=True, spacing=20, run_spacing=20)
-                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                    padding=40,
-                    alignment=ft.alignment.top_center
+                            ft.Row([
+                                ft.Icon(ft.Icons.FOLDER_COPY_OUTLINED, size=22, color=COLOR_ACCENT),
+                                ft.Container(width=8),
+                                ft.Text("Your Projects", size=18, weight=ft.FontWeight.W_600, color=COLOR_TEXT),
+                            ]),
+                            ft.Container(expand=True),
+                            ft.Text(f"{len(state['projects'])} total", size=13, color=COLOR_TEXT_DIM),
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Container(height=15),
+                        
+                        # ========== PROJECTS GRID ==========
+                        empty_state,
+                        projects_grid
+                        
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO),
+                    padding=ft.padding.symmetric(horizontal=50, vertical=30),
+                    alignment=ft.alignment.top_center,
+                    expand=True
                 )
             ],
             bgcolor=COLOR_BG,
@@ -693,7 +1046,6 @@ def main(page: ft.Page):
         
         def add_single_to_training(elev_data, project_name, elev_name, button_ref, container_ref=None):
             """Add a single elevation to training data with visual feedback."""
-            print(f"[ML] Adding elevation from {project_name} - {elev_name} to training...")
             
             # Show loading state
             if button_ref:
@@ -704,7 +1056,6 @@ def main(page: ft.Page):
             
             try:
                 result = add_project_to_training(elev_data, project_name, elev_name)
-                print(f"[ML] Result: {result}")
                 
                 if result:
                     # Show success state - keep selected state
@@ -1711,26 +2062,9 @@ def main(page: ft.Page):
                 
                 paths = get_project_paths(state["current_project"])
                 save_project_settings(state["current_project"], existing_settings)
-                print(f"[SAVED] Auto-saved miscellaneous cost settings before report generation: {misc_settings}")
-                print(f"   Settings file location: {paths['settings']}")
                 # Verify file was created and wait a moment for file system
                 import time
                 time.sleep(0.1)  # Small delay to ensure file is written
-                if os.path.exists(paths["settings"]):
-                    print(f"   [OK] Settings file exists at: {paths['settings']}")
-                    try:
-                        with open(paths["settings"], 'r') as f:
-                            saved_data = json.load(f)
-                            print(f"   [OK] Verified saved data: {saved_data}")
-                            # Double-check the values match
-                            if saved_data != misc_settings:
-                                print(f"   [WARNING] WARNING: Saved data doesn't match! Expected: {misc_settings}, Got: {saved_data}")
-                    except Exception as e:
-                        print(f"   [ERROR] Error reading saved file: {e}")
-                else:
-                    print(f"   [ERROR] Settings file NOT found at: {paths['settings']}")
-                    print(f"   Current working directory: {os.getcwd()}")
-                    print(f"   Absolute path would be: {os.path.abspath(paths['settings'])}")
                 
                 elev = inputs["type"].value.strip() if inputs["type"].value else ""
                 if not elev: raise ValueError("Elevation Name Required")
@@ -1889,7 +2223,6 @@ def main(page: ft.Page):
                 try:
                     with open(paths["elevations"], 'w') as f:
                         json.dump(state["saved_elevations"], f, indent=4)
-                    print(f"[OK] Saved elevations to: {paths['elevations']}")
                 except Exception as save_err:
                     error_msg = f"Failed to save elevations: {str(save_err)}"
                     print(f"[ERROR] {error_msg}")
@@ -1901,9 +2234,6 @@ def main(page: ft.Page):
                 
                 # Trigger Excel Gen (silent or with notif)
                 try:
-                    print(f"[GENERATING] Generating report for elevation: {elev}")
-                    print(f"   Excel path: {paths['excel']}")
-                    print(f"   Elevations path: {paths['elevations']}")
                     generate_excel_report(
                         excel_path=paths["excel"], 
                         elevations_json_path=paths["elevations"], 
@@ -1928,7 +2258,6 @@ def main(page: ft.Page):
                     )
                     # Check if file was actually created
                     if os.path.exists(paths["excel"]):
-                        print(f"[OK] Report generated successfully: {paths['excel']}")
                         show_snack(f"Report saved to: {paths['excel']}", "green")
                     else:
                         error_msg = f"Report file not found at: {paths['excel']}"
@@ -2149,10 +2478,8 @@ def main(page: ft.Page):
                         return 0.0
                     try:
                         pct_val = float(str(val).strip())
-                        print(f"   {key}: '{val}' -> {pct_val}")
                         return pct_val
-                    except (ValueError, AttributeError, TypeError) as err:
-                        print(f"   [WARNING] Could not convert {key} value '{val}': {err}")
+                    except (ValueError, AttributeError, TypeError):
                         return 0.0
                 
                 settings = {
@@ -2164,8 +2491,6 @@ def main(page: ft.Page):
                     "shipping_transport_pct": get_pct("shipping_transport_pct"),
                     "commissions_pct": get_pct("commissions_pct")
                 }
-                
-                print(f"[SAVED] Saving summary settings: {settings}")
                 paths = get_project_paths(state["current_project"])
                 
                 # Save settings with explicit file flush
@@ -2175,32 +2500,16 @@ def main(page: ft.Page):
                 import time
                 time.sleep(0.2)  # Small delay to ensure file is written
                 
-                if os.path.exists(paths["settings"]):
-                    try:
-                        with open(paths["settings"], 'r') as f:
-                            saved_data = json.load(f)
-                            print(f"[OK] Verified saved settings: {saved_data}")
-                            if saved_data != settings:
-                                print(f"[WARNING] WARNING: Saved data doesn't match! Expected: {settings}, Got: {saved_data}")
-                    except Exception as verify_err:
-                        print(f"[ERROR] Error verifying saved file: {verify_err}")
-                else:
-                    print(f"[ERROR] Settings file NOT found at: {paths['settings']}")
+                if not os.path.exists(paths["settings"]):
                     show_snack("Error: Settings file not created", "red")
                     return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
-                print(f"[INFO] Has non-zero percentages: {has_percentages}")
                 
                 # Regenerate the Excel report to show the updated miscellaneous summary
                 if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
                     try:
-                        print(f"[GENERATING] Regenerating report with updated miscellaneous cost settings...")
-                        print(f"   Settings file path: {paths['settings']}")
-                        print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
-                        print(f"   Excel file path: {paths['excel']}")
-                        
                         # Generate to a temporary location first, then copy to main project file
                         # This ensures the file is fully written before we try to use it
                         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2226,17 +2535,12 @@ def main(page: ft.Page):
                             
                             # Copy to main project file
                             shutil.copy2(temp_report_path, paths["excel"])
-                            print(f"[OK] Copied updated report to main project file: {paths['excel']}")
                             
                             # Clean up temp file
                             try:
                                 os.remove(temp_report_path)
                             except:
                                 pass
-                        else:
-                            print(f"[WARNING] Generated report file not found at: {temp_report_path}")
-                        
-                        print(f"[OK] Report regenerated successfully with miscellaneous cost settings")
                         if has_percentages:
                             show_snack("Miscellaneous cost settings saved and report updated. Please close and reopen Excel to see changes.", "green")
                         else:
@@ -2253,7 +2557,6 @@ def main(page: ft.Page):
                     else:
                         show_snack("Settings saved (all percentages are 0%)", "orange")
                 
-                print(f"[OK] Settings saved successfully")
                 page.update()
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
@@ -2274,10 +2577,8 @@ def main(page: ft.Page):
                         return 0.0
                     try:
                         pct_val = float(str(val).strip())
-                        print(f"   {key}: '{val}' -> {pct_val}")
                         return pct_val
-                    except (ValueError, AttributeError, TypeError) as err:
-                        print(f"   [WARNING] Could not convert {key} value '{val}': {err}")
+                    except (ValueError, AttributeError, TypeError):
                         return 0.0
                 
                 settings = {
@@ -2288,8 +2589,6 @@ def main(page: ft.Page):
                     "planning_technical_pct": get_pct("planning_technical_pct"),
                     "commission_pct": get_pct("commission_pct")
                 }
-                
-                print(f"[SAVED] Saving markup settings: {settings}")
                 paths = get_project_paths(state["current_project"])
                 
                 # Load existing settings and merge with markups
@@ -2303,30 +2602,16 @@ def main(page: ft.Page):
                 import time
                 time.sleep(0.2)  # Small delay to ensure file is written
                 
-                if os.path.exists(paths["settings"]):
-                    try:
-                        with open(paths["settings"], 'r') as f:
-                            saved_data = json.load(f)
-                            print(f"[OK] Verified saved settings: {saved_data}")
-                    except Exception as verify_err:
-                        print(f"[ERROR] Error verifying saved file: {verify_err}")
-                else:
-                    print(f"[ERROR] Settings file NOT found at: {paths['settings']}")
+                if not os.path.exists(paths["settings"]):
                     show_snack("Error: Settings file not created", "red")
                     return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
-                print(f"[INFO] Has non-zero markup percentages: {has_percentages}")
                 
                 # Regenerate the Excel report to show the updated markups
                 if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
                     try:
-                        print(f"[GENERATING] Regenerating report with updated markup settings...")
-                        print(f"   Settings file path: {paths['settings']}")
-                        print(f"   Settings file exists: {os.path.exists(paths['settings'])}")
-                        print(f"   Excel file path: {paths['excel']}")
-                        
                         # Generate to a temporary location first, then copy to main project file
                         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         os.makedirs("reports", exist_ok=True)
@@ -2351,17 +2636,12 @@ def main(page: ft.Page):
                             
                             # Copy to main project file
                             shutil.copy2(temp_report_path, paths["excel"])
-                            print(f"[OK] Copied updated report to main project file: {paths['excel']}")
                             
                             # Clean up temp file
                             try:
                                 os.remove(temp_report_path)
                             except:
                                 pass
-                        else:
-                            print(f"[WARNING] Generated report file not found at: {temp_report_path}")
-                        
-                        print(f"[OK] Report regenerated successfully with markup settings")
                         if has_percentages:
                             show_snack("Markup settings saved and report updated. Please close and reopen Excel to see changes.", "green")
                         else:
@@ -2378,7 +2658,6 @@ def main(page: ft.Page):
                     else:
                         show_snack("Settings saved (all percentages are 0%)", "orange")
                 
-                print(f"[OK] Markup settings saved successfully")
                 page.update()
             except Exception as ex:
                 error_msg = f"Error saving markup settings: {str(ex)}"
@@ -2575,16 +2854,11 @@ def main(page: ft.Page):
                 }
             else:
                 paths = get_project_paths(state["current_project"])
-                print(f"[Waste Calculator] Calculating for project '{state['current_project']}'")
-                print(f"   Elevations path: {paths['elevations']}")
-                print(f"   Materials path: {paths['materials']}")
-                print(f"   Excel path: {paths['excel']}")
                 waste_stats = calculate_waste_statistics(
                     paths["elevations"],
                     paths["materials"],
-                    excel_path=paths.get("excel")  # Pass Excel path to read directly from Summary sheet
+                    excel_path=paths.get("excel")
                 )
-                print(f"   Result: {len(waste_stats['material_breakdown'])} materials, {waste_stats['overall_waste_percentage']:.2f}% waste")
             
             # Update waste percentage display
             waste_pct = waste_stats["overall_waste_percentage"]
@@ -3130,18 +3404,43 @@ def main(page: ft.Page):
         )
 
     def route_change(e):
-        page.views.clear()
-        page.views.append(build_projects_view())
-        if page.route == "/workspace" and state["current_project"]:
+        # Smooth transition - only rebuild what's needed
+        target_route = page.route
+        
+        if target_route == "/":
+            page.views.clear()
+            page.views.append(build_projects_view())
+        elif target_route == "/workspace" and state["current_project"]:
+            # Keep projects view as base, add workspace on top
+            if not page.views or page.views[0].route != "/":
+                page.views.clear()
+                page.views.append(build_projects_view())
+            # Remove any views after the first one
+            while len(page.views) > 1:
+                page.views.pop()
             page.views.append(build_workspace_view())
-        elif page.route == "/ml_analytics":
+        elif target_route == "/ml_analytics":
+            if not page.views or page.views[0].route != "/":
+                page.views.clear()
+                page.views.append(build_projects_view())
+            while len(page.views) > 1:
+                page.views.pop()
             page.views.append(build_ml_analytics_view())
+        else:
+            # Default fallback
+            page.views.clear()
+            page.views.append(build_projects_view())
+        
         page.update()
 
     def view_pop(e):
-        page.views.pop()
-        top_view = page.views[-1]
-        page.go(top_view.route)
+        if len(page.views) > 1:
+            page.views.pop()
+            top_view = page.views[-1]
+            page.go(top_view.route)
+        else:
+            # If no views left, go to home
+            page.go("/")
 
     page.on_route_change = route_change
     page.on_view_pop = view_pop
