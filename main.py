@@ -575,19 +575,9 @@ def main(page: ft.Page):
             for p in filtered_projects:
                 meta = project_metadata_cache.get(p, {"elevation_count": 0, "systems": set(), "finishes": set()})
                 elev_count = meta["elevation_count"]
-                finishes_list = list(meta["finishes"])
-                finish_badge = finishes_list[0] if finishes_list else None
                 
                 # Create the clickable card using GestureDetector for reliable clicks
-                def create_project_card(project_name, elevation_count, finish):
-                    finish_badge_widget = ft.Container(
-                        content=ft.Text(finish, size=9, color="#FFFFFF", weight=ft.FontWeight.W_500),
-                        bgcolor="#4CAF50" if finish else "transparent",
-                        padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                        border_radius=10,
-                        visible=finish is not None
-                    )
-                    
+                def create_project_card(project_name, elevation_count):
                     return ft.GestureDetector(
                         content=ft.Container(
                             content=ft.Column([
@@ -626,8 +616,6 @@ def main(page: ft.Page):
                                     ft.Text(f"{elevation_count} elevation{'s' if elevation_count != 1 else ''}", 
                                            size=11, color=COLOR_TEXT_DIM, weight=ft.FontWeight.W_400),
                                 ], spacing=4, alignment=ft.MainAxisAlignment.CENTER),
-                                # Finish badge
-                                finish_badge_widget
                             ], alignment=ft.MainAxisAlignment.START, 
                                horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
                             width=175, height=200,
@@ -645,7 +633,7 @@ def main(page: ft.Page):
                         mouse_cursor=ft.MouseCursor.CLICK
                     )
                 
-                projects_grid.controls.append(create_project_card(p, elev_count, finish_badge))
+                projects_grid.controls.append(create_project_card(p, elev_count))
             
             # Update result count
             result_count_text_widget.value = f"Showing {len(filtered_projects)} of {len(state['projects'])} projects"
@@ -852,16 +840,6 @@ def main(page: ft.Page):
                                         ft.Text("Search & Filter", size=16, weight=ft.FontWeight.W_600, color=COLOR_TEXT),
                                     ]),
                                     ft.Container(expand=True),
-                                    ft.TextButton(
-                                        "Clear All",
-                                        icon=ft.Icons.CLEAR_ALL,
-                                        icon_color=COLOR_TEXT_DIM,
-                                        on_click=clear_filters,
-                                        style=ft.ButtonStyle(
-                                            color=COLOR_TEXT_DIM,
-                                            overlay_color="#FFFFFF10"
-                                        )
-                                    ),
                                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                                 ft.Container(height=15),
                                 # Filter Controls

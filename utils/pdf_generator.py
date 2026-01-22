@@ -12,7 +12,7 @@ try:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     REPORTLAB_AVAILABLE = True
 except ImportError:
@@ -186,9 +186,6 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     elif 'SUMMARY' in all_sheets:
         summary_sheet_name = 'SUMMARY'
     
-    print(f"[INFO] Found {len(elevation_sheets)} elevation sheet(s): {elevation_sheets}")
-    if summary_sheet_name:
-        print(f"[INFO] Found Summary sheet: {summary_sheet_name}")
     
     # Create PDF document
     doc = SimpleDocTemplate(
@@ -261,14 +258,12 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
         max_row = ws.max_row
         max_col = ws.max_column
         
-        print(f"[INFO] Processing sheet '{sheet_name}': {max_row} rows x {max_col} columns")
         
         # Add elevation sheet title
         story.append(Paragraph(f"<b>{sheet_name}</b>", section_style))
         story.append(Spacer(1, 0.2*inch))
         
         # STEP 1: Process System Input (Column A-B, Rows 1-15)
-        print("[INFO] Processing System Input (Columns A-B, Rows 1-15)")
         input_table = []
         for row_idx in range(1, 16):  # Rows 1-15
             label = format_cell_value(ws.cell(row=row_idx, column=1).value)
@@ -277,12 +272,10 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 input_table.append([label, value])
         
         if input_table:
-            story.append(Paragraph("<b>System Input</b>", section_style))
-            story.append(Spacer(1, 0.1*inch))
-            story.extend(create_table(input_table, ['Item', 'Value'], normal_style))
+            story.extend(create_table(input_table, ['Item', 'Value'], normal_style, 
+                                      "System Input", section_style))
         
         # STEP 2: Process sections starting at Column E (Profiles, Accessories, etc.)
-        print("[INFO] Processing sections from Column E")
         
         # Find where sections start (look for section headers in column E)
         sections_found = []
@@ -319,11 +312,9 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             else:
                 end_row = max_row
             
-            print(f"[INFO] Processing section: {section_name} (rows {start_row}-{end_row})")
             
-            # Add section header
-            story.append(Paragraph(f"<b>{section_name}</b>", section_style))
-            story.append(Spacer(1, 0.1*inch))
+            # Store section name to pass to create_table for KeepTogether
+            current_section_name = section_name
             
             # Process rows in this section
             for row_idx in range(start_row, end_row + 1):
@@ -346,16 +337,21 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 
                 if not any([str(v).strip() for v in row_data if v]):
                     if current_table and current_headers:
-                        story.extend(create_table(current_table, current_headers, normal_style))
+                        # Pass section header to keep header and table together
+                        story.extend(create_table(current_table, current_headers, normal_style, 
+                                                  current_section_name, section_style))
                         current_table = []
                         current_headers = None
+                        current_section_name = None  # Only use once per section
                     continue
                 
                 # Check for table header
                 if is_table_header_row(row_data):
                     if current_table and current_headers:
-                        story.extend(create_table(current_table, current_headers, normal_style))
+                        story.extend(create_table(current_table, current_headers, normal_style,
+                                                  current_section_name, section_style))
                         current_table = []
+                        current_section_name = None
                     new_headers = [h.strip() for h in row_data if h and str(h).strip()]
                     if new_headers != current_headers:
                         current_headers = new_headers
@@ -376,9 +372,11 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             
             # Add table for this section
             if current_table and current_headers:
-                story.extend(create_table(current_table, current_headers, normal_style))
+                story.extend(create_table(current_table, current_headers, normal_style,
+                                          current_section_name, section_style))
                 current_table = []
                 current_headers = None
+                current_section_name = None
         
         # Add bay diagrams after sections
         for row_idx, img_data in bay_diagrams:
@@ -405,7 +403,6 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     # STEP 3: Process Summary sheet separately if it exists
     if summary_sheet_name:
         ws_summary = wb[summary_sheet_name]
-        print(f"[INFO] Processing Summary sheet separately: {summary_sheet_name}")
         story.append(PageBreak())
         story.append(Paragraph("<b>SUMMARY</b>", title_style))
         story.append(Spacer(1, 0.2*inch))
@@ -424,6 +421,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
         current_table = []
         current_headers = None
         last_header_row = None  # Track to avoid processing header row as data
+        current_summary_section = None  # Track section for KeepTogether
         
         for row_idx in range(1, max_row_summary + 1):
             if row_idx in excel_images_summary and pie_chart and row_idx == pie_chart[0]:
@@ -452,14 +450,15 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             if first_value and is_section_header(first_value, first_cell):
                 # Close previous table if exists
                 if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
+                    story.extend(create_table(current_table, current_headers, normal_style,
+                                              current_summary_section, section_style))
                     current_table = []
                     current_headers = None
                     last_header_row = None
+                    current_summary_section = None
                 
-                # Start new section
-                story.append(Paragraph(f"<b>{first_value}</b>", section_style))
-                story.append(Spacer(1, 0.1*inch))
+                # Track current section for KeepTogether
+                current_summary_section = str(first_value)
                 
                 # Special handling for GRAND TOTAL - value is in same row (column C)
                 cell_str = str(first_value).strip().upper()
@@ -470,10 +469,12 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                         grand_total_bold = row_bold_flags[2] if len(row_bold_flags) > 2 else False
                         # Display as a simple Item/Value table with just one row
                         grand_table = [[(first_value, True), (grand_total_value, grand_total_bold)]]
-                        story.extend(create_table(grand_table, ['Item', 'Value'], normal_style))
+                        story.extend(create_table(grand_table, ['Item', 'Value'], normal_style,
+                                                  current_summary_section, section_style))
                         current_table = []
                         current_headers = None
                         last_header_row = None
+                        current_summary_section = None
                         continue
                 
                 # For summary sections (COST OVERVIEW, MISCELLANEOUS, etc.), set up Item/Value headers
@@ -497,8 +498,10 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             
             if is_table_header_row(row_data) and not is_item_value_section:
                 if current_table and current_headers:
-                    story.extend(create_table(current_table, current_headers, normal_style))
+                    story.extend(create_table(current_table, current_headers, normal_style,
+                                              current_summary_section, section_style))
                     current_table = []
+                    current_summary_section = None
                 # Only update headers if they're different (avoid duplicates)
                 new_headers = [h.strip() for h in row_data if h and str(h).strip()]
                 if new_headers != current_headers:
@@ -655,7 +658,8 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
         
         # Close final table
         if current_table and current_headers:
-            story.extend(create_table(current_table, current_headers, normal_style))
+            story.extend(create_table(current_table, current_headers, normal_style,
+                                      current_summary_section, section_style))
     
     # Add pie chart at the very end
     if pie_chart:
@@ -676,8 +680,12 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
     doc.build(story)
     print(f"[OK] PDF exported to: {pdf_path}")
 
-def create_table(table_data, headers, normal_style):
-    """Create a formatted table from data."""
+def create_table(table_data, headers, normal_style, section_header=None, section_style=None):
+    """Create a formatted table from data. 
+    
+    If section_header and section_style are provided, the header will be kept 
+    together with the first few rows of the table to prevent orphaned headers.
+    """
     elements = []
     
     if not table_data or not headers:
@@ -757,9 +765,6 @@ def create_table(table_data, headers, normal_style):
         other_width = (total_width - desc_width) / (num_cols - 1)
         col_widths = [desc_width] + [other_width] * (num_cols - 1)
     
-    # Create table with page break support
-    table = Table(full_data, colWidths=col_widths[:num_cols], repeatRows=1, splitByRow=1)
-    
     # Table style
     table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
@@ -786,9 +791,27 @@ def create_table(table_data, headers, normal_style):
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
     ]
     
-    table.setStyle(TableStyle(table_style))
-    elements.append(table)
-    elements.append(Spacer(1, 0.2*inch))
+    # If we have a section header, keep it together with the table
+    if section_header and section_style:
+        # Create the full table
+        table = Table(full_data, colWidths=col_widths[:num_cols], repeatRows=1, splitByRow=True)
+        table.setStyle(TableStyle(table_style))
+        
+        # Wrap the section header, spacer, and table together using KeepTogether
+        # This prevents the header from appearing alone at the bottom of a page
+        keep_together_elements = [
+            Paragraph(f"<b>{section_header}</b>", section_style),
+            Spacer(1, 0.1*inch),
+            table
+        ]
+        elements.append(KeepTogether(keep_together_elements))
+        elements.append(Spacer(1, 0.2*inch))
+    else:
+        # No section header - just add the table normally
+        table = Table(full_data, colWidths=col_widths[:num_cols], repeatRows=1, splitByRow=True)
+        table.setStyle(TableStyle(table_style))
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
     
     return elements
 
