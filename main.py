@@ -1,10 +1,5 @@
 import flet as ft
-import json
-import os
-import sys
-import datetime
-import base64
-import io
+import json, os, sys, datetime, base64, io, time, traceback, shutil
 
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
@@ -213,11 +208,8 @@ def main(page: ft.Page):
 
     # --- State ---
     state = {
-        "projects": [],
-        "current_project": None,
-        "saved_elevations": {},
-        "current_doors": [],
-        "selected_door_index": None,
+        "projects": [], "current_project": None, "saved_elevations": {},
+        "current_doors": [], "selected_door_index": None,
         "system_options": ["YES 45TU FRONT SET(OG)", "Other"],
         "finish_options": ["Clear", "Black", "Paint"],
         "door_options": ['None', "3' X 7'", "3' X 8'", "3' X 9'", "6' X 7'", "6' X 8'", "6' X 9'"],
@@ -231,6 +223,15 @@ def main(page: ft.Page):
 
     # --- Inputs Ref (to access values easily) ---
     inputs = {}
+
+    # --- Helper Functions ---
+    def get_input_pct(key):
+        """Get percentage value from input field, returns 0.0 if invalid"""
+        field = inputs.get(key)
+        if not field: return 0.0
+        val = getattr(field, 'value', '') or ''
+        try: return float(val) if str(val).strip() else 0.0
+        except: return 0.0
 
     # --- Data Loading Functions ---
     def load_projects():
@@ -2054,27 +2055,15 @@ def main(page: ft.Page):
             is_update = inputs["save_btn"].text == "UPDATE ELEVATION"
             try:
                 # Auto-save miscellaneous cost settings before generating report
-                def get_pct(key):
-                    field = inputs.get(key)
-                    if field is None:
-                        return 0.0
-                    val = field.value if hasattr(field, 'value') else ""
-                    try:
-                        return float(val) if val and str(val).strip() else 0.0
-                    except (ValueError, AttributeError, TypeError):
-                        return 0.0
-                
-                # Load existing settings first to preserve markups
                 existing_settings = load_project_settings(state["current_project"])
-                
                 misc_settings = {
-                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
-                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
-                    "admin_management_pct": get_pct("admin_management_pct"),
-                    "engineering_pct": get_pct("engineering_pct"),
-                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
-                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
-                    "commissions_pct": get_pct("commissions_pct")
+                    "overhead_materials_pct": get_input_pct("overhead_materials_pct"),
+                    "overhead_labor_pct": get_input_pct("overhead_labor_pct"),
+                    "admin_management_pct": get_input_pct("admin_management_pct"),
+                    "engineering_pct": get_input_pct("engineering_pct"),
+                    "packaging_materials_pct": get_input_pct("packaging_materials_pct"),
+                    "shipping_transport_pct": get_input_pct("shipping_transport_pct"),
+                    "commissions_pct": get_input_pct("commissions_pct")
                 }
                 # Merge with existing settings to preserve markups
                 existing_settings.update(misc_settings)
@@ -2082,7 +2071,6 @@ def main(page: ft.Page):
                 paths = get_project_paths(state["current_project"])
                 save_project_settings(state["current_project"], existing_settings)
                 # Verify file was created and wait a moment for file system
-                import time
                 time.sleep(0.1)  # Small delay to ensure file is written
                 
                 elev = inputs["type"].value.strip() if inputs["type"].value else ""
@@ -2286,7 +2274,6 @@ def main(page: ft.Page):
                     error_msg = f"Report generation failed: {str(report_err)}"
                     print(f"[ERROR] {error_msg}")
                     show_snack(error_msg, "red")
-                    import traceback
                     traceback.print_exc()
                 
                 # Update dropdown with fresh data
@@ -2467,23 +2454,10 @@ def main(page: ft.Page):
 
         def gen_full_report(e):
             try:
-                # Save summary settings before generating report
-                def get_pct(key):
-                    val = inputs.get(key, ft.TextField()).value
-                    try:
-                        return float(val) if val and val.strip() else 0.0
-                    except (ValueError, AttributeError):
-                        return 0.0
-                
-                settings = {
-                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
-                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
-                    "admin_management_pct": get_pct("admin_management_pct"),
-                    "engineering_pct": get_pct("engineering_pct"),
-                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
-                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
-                    "commissions_pct": get_pct("commissions_pct")
-                }
+                settings = {k: get_input_pct(k) for k in [
+                    "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
+                    "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
+                ]}
                 save_project_settings(state["current_project"], settings)
                 
                 paths = get_project_paths(state["current_project"])
@@ -2500,7 +2474,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"Report Error: {ex}"
                 print(f"[ERROR] {error_msg}")
-                import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
@@ -2528,22 +2501,10 @@ def main(page: ft.Page):
                     os.makedirs("reports", exist_ok=True)
                     
                     # Save settings first
-                    def get_pct(key):
-                        val = inputs.get(key, ft.TextField()).value
-                        try:
-                            return float(val) if val and val.strip() else 0.0
-                        except (ValueError, AttributeError):
-                            return 0.0
-                    
-                    settings = {
-                        "overhead_materials_pct": get_pct("overhead_materials_pct"),
-                        "overhead_labor_pct": get_pct("overhead_labor_pct"),
-                        "admin_management_pct": get_pct("admin_management_pct"),
-                        "engineering_pct": get_pct("engineering_pct"),
-                        "packaging_materials_pct": get_pct("packaging_materials_pct"),
-                        "shipping_transport_pct": get_pct("shipping_transport_pct"),
-                        "commissions_pct": get_pct("commissions_pct")
-                    }
+                    settings = {k: get_input_pct(k) for k in [
+                        "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
+                        "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
+                    ]}
                     save_project_settings(state["current_project"], settings)
                     
                     generate_excel_report(
@@ -2572,7 +2533,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"PDF export error: {str(ex)}"
                 print(f"[ERROR] {error_msg}")
-                import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
@@ -2580,36 +2540,16 @@ def main(page: ft.Page):
         
         def save_summary_settings(e):
             try:
-                def get_pct(key):
-                    field = inputs.get(key)
-                    if field is None:
-                        print(f"[WARNING] Field '{key}' not found in inputs")
-                        return 0.0
-                    val = field.value if hasattr(field, 'value') else ""
-                    if not val or not str(val).strip():
-                        return 0.0
-                    try:
-                        pct_val = float(str(val).strip())
-                        return pct_val
-                    except (ValueError, AttributeError, TypeError):
-                        return 0.0
-                
-                settings = {
-                    "overhead_materials_pct": get_pct("overhead_materials_pct"),
-                    "overhead_labor_pct": get_pct("overhead_labor_pct"),
-                    "admin_management_pct": get_pct("admin_management_pct"),
-                    "engineering_pct": get_pct("engineering_pct"),
-                    "packaging_materials_pct": get_pct("packaging_materials_pct"),
-                    "shipping_transport_pct": get_pct("shipping_transport_pct"),
-                    "commissions_pct": get_pct("commissions_pct")
-                }
+                settings = {k: get_input_pct(k) for k in [
+                    "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
+                    "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
+                ]}
                 paths = get_project_paths(state["current_project"])
                 
                 # Save settings with explicit file flush
                 save_project_settings(state["current_project"], settings)
                 
                 # Verify file was written correctly
-                import time
                 time.sleep(0.2)  # Small delay to ensure file is written
                 
                 if not os.path.exists(paths["settings"]):
@@ -2638,7 +2578,6 @@ def main(page: ft.Page):
                         )
                         
                         # Copy the generated report to the main project Excel file location
-                        import shutil
                         if os.path.exists(temp_report_path):
                             # Ensure the directory exists
                             excel_dir = os.path.dirname(paths["excel"])
@@ -2673,34 +2612,15 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
                 print(f"[ERROR] {error_msg}")
-                import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
         def save_markup_settings(e):
             try:
-                def get_pct(key):
-                    field = inputs.get(key)
-                    if field is None:
-                        print(f"[WARNING] Field '{key}' not found in inputs")
-                        return 0.0
-                    val = field.value if hasattr(field, 'value') else ""
-                    if not val or not str(val).strip():
-                        return 0.0
-                    try:
-                        pct_val = float(str(val).strip())
-                        return pct_val
-                    except (ValueError, AttributeError, TypeError):
-                        return 0.0
-                
-                settings = {
-                    "profit_on_material_pct": get_pct("profit_on_material_pct"),
-                    "profit_on_waste_pct": get_pct("profit_on_waste_pct"),
-                    "profit_on_glass_pct": get_pct("profit_on_glass_pct"),
-                    "profit_on_wages_pct": get_pct("profit_on_wages_pct"),
-                    "planning_technical_pct": get_pct("planning_technical_pct"),
-                    "commission_pct": get_pct("commission_pct")
-                }
+                settings = {k: get_input_pct(k) for k in [
+                    "profit_on_material_pct", "profit_on_waste_pct", "profit_on_glass_pct",
+                    "profit_on_wages_pct", "planning_technical_pct", "commission_pct"
+                ]}
                 paths = get_project_paths(state["current_project"])
                 
                 # Load existing settings and merge with markups
@@ -2711,7 +2631,6 @@ def main(page: ft.Page):
                 save_project_settings(state["current_project"], existing_settings)
                 
                 # Verify file was written correctly
-                import time
                 time.sleep(0.2)  # Small delay to ensure file is written
                 
                 if not os.path.exists(paths["settings"]):
@@ -2739,7 +2658,6 @@ def main(page: ft.Page):
                         )
                         
                         # Copy the generated report to the main project Excel file location
-                        import shutil
                         if os.path.exists(temp_report_path):
                             # Ensure the directory exists
                             excel_dir = os.path.dirname(paths["excel"])
@@ -2774,7 +2692,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"Error saving markup settings: {str(ex)}"
                 print(f"[ERROR] {error_msg}")
-                import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
@@ -2808,8 +2725,6 @@ def main(page: ft.Page):
                             None, False, None, None, mode="export_all",
                             summary_settings_path=paths["settings"]
                         )
-                        
-                        import shutil
                         if os.path.exists(temp_report_path):
                             excel_dir = os.path.dirname(paths["excel"])
                             if excel_dir:
@@ -2829,7 +2744,6 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
                 print(f"[ERROR] {error_msg}")
-                import traceback
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
