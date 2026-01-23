@@ -427,48 +427,77 @@ def main(page: ft.Page):
             page.update()
 
         def delete_project_click(e, name):
-            if name in state["projects"]:
-                state["projects"].remove(name)
-                save_projects()
-                
-                # Remove from ML training data if ML is available
-                removed_count = 0
-                if ML_AVAILABLE:
-                    try:
-                        removed_count = remove_project_from_training(name)
-                    except Exception as ex:
-                        print(f"[ML] Error removing project from training: {ex}")
-                
-                # Clean up files
-                try:
-                    paths = get_project_paths(name)
-                    for p in paths.values():
-                        if os.path.exists(p): os.remove(p)
+            """Show confirmation dialog before deleting project"""
+            def do_delete(e):
+                if name in state["projects"]:
+                    state["projects"].remove(name)
+                    save_projects()
                     
-                    # Also remove any door files
-                    clean_name = name.replace(" ", "_").replace("/", "_")
-                    for f in os.listdir(PROJECTS_DIR):
-                        if f.startswith(clean_name) and "_doors.json" in f:
-                            os.remove(os.path.join(PROJECTS_DIR, f))
-                except Exception as ex:
-                    print(f"Error cleaning up project files: {ex}")
+                    # Remove from ML training data if ML is available
+                    removed_count = 0
+                    if ML_AVAILABLE:
+                        try:
+                            removed_count = remove_project_from_training(name)
+                        except Exception as ex:
+                            print(f"[ML] Error removing project from training: {ex}")
+                    
+                    # Clean up files
+                    try:
+                        paths = get_project_paths(name)
+                        for p in paths.values():
+                            if os.path.exists(p): os.remove(p)
+                        
+                        # Also remove any door files
+                        clean_name = name.replace(" ", "_").replace("/", "_")
+                        for f in os.listdir(PROJECTS_DIR):
+                            if f.startswith(clean_name) and "_doors.json" in f:
+                                os.remove(os.path.join(PROJECTS_DIR, f))
+                    except Exception as ex:
+                        print(f"Error cleaning up project files: {ex}")
 
-                # Refresh view
-                page.views.pop()
-                page.views.append(build_projects_view())
-                
-                # If on ML Analytics page, refresh it too
-                if len(page.views) > 1 and page.views[-1].route == "/ml_analytics":
+                    # Close dialog first
+                    dlg.open = False
+                    page.update()
+                    
+                    # Refresh view
                     page.views.pop()
-                    page.views.append(build_ml_analytics_view())
-                
+                    page.views.append(build_projects_view())
+                    
+                    # If on ML Analytics page, refresh it too
+                    if len(page.views) > 1 and page.views[-1].route == "/ml_analytics":
+                        page.views.pop()
+                        page.views.append(build_ml_analytics_view())
+                    
+                    page.update()
+                    
+                    # Show snack with ML info if applicable
+                    if ML_AVAILABLE and removed_count > 0:
+                        show_snack(f"Project '{name}' deleted ({removed_count} training samples removed)", "red")
+                    else:
+                        show_snack(f"Project '{name}' deleted", "red")
+            
+            def cancel_delete(e):
+                dlg.open = False
                 page.update()
-                
-                # Show snack with ML info if applicable
-                if ML_AVAILABLE and removed_count > 0:
-                    show_snack(f"Project '{name}' deleted ({removed_count} training samples removed)", "red")
-                else:
-                    show_snack(f"Project '{name}' deleted", "red")
+            
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Delete Project", color=COLOR_TEXT),
+                content=ft.Text(
+                    f"Are you sure you want to delete '{name}'?\n\nThis action cannot be undone.",
+                    color=COLOR_TEXT,
+                    size=14
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=cancel_delete),
+                    ft.TextButton("Delete", on_click=do_delete, style=ft.ButtonStyle(color="#FF5252"))
+                ],
+                bgcolor=COLOR_SURFACE,
+            )
+            
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
 
         # ============================================================
         # SEARCH & FILTER UI COMPONENTS (Professional Design)
@@ -1817,6 +1846,10 @@ def main(page: ft.Page):
                 clear_workspace()
                 inputs["save_btn"].text = "CREATE ELEVATION"
                 inputs["saved_elev"].value = "New Elevation"  # Keep "New Elevation" for consistency
+                # Unlock the name field and hide duplicate button in create mode
+                inputs["type"].read_only = False
+                if inputs.get("duplicate_btn"):
+                    inputs["duplicate_btn"].visible = False
                 page.update()
                 return
             
@@ -1830,6 +1863,10 @@ def main(page: ft.Page):
             inputs["system"].value = data.get("system", state["system_options"][0])
             inputs["finish"].value = data.get("finish", state["finish_options"][0])
             inputs["type"].value = elev_name
+            # Lock the name field and show duplicate button in update mode
+            inputs["type"].read_only = True
+            if inputs.get("duplicate_btn"):
+                inputs["duplicate_btn"].visible = True
             inputs["count"].value = str(data.get("total_count", ""))
             inputs["width"].value = str(data.get("opening_width_inches", ""))
             inputs["height"].value = str(data.get("opening_height_inches", ""))
@@ -1872,12 +1909,16 @@ def main(page: ft.Page):
 
         def clear_workspace():
             inputs["type"].value = ""
+            inputs["type"].read_only = False  # Unlock name field in create mode
             inputs["count"].value = ""
             inputs["width"].value = ""
             inputs["height"].value = ""
             inputs["bays_wide"].value = ""
             inputs["bays_tall"].value = ""
             inputs["save_btn"].text = "CREATE ELEVATION"
+            # Hide duplicate button in create mode
+            if inputs.get("duplicate_btn"):
+                inputs["duplicate_btn"].visible = False
             # Clear dynamic fields
             inputs["custom_w_col"].controls.clear()
             inputs["custom_h_col"].controls.clear()
@@ -2276,6 +2317,99 @@ def main(page: ft.Page):
 
             except Exception as ex:
                 show_snack(f"Error: {str(ex)}", "red")
+
+        def duplicate_elevation_action(e):
+            """Duplicate the current elevation with a new name"""
+            elev_name = inputs["saved_elev"].value
+            if not elev_name or elev_name == "New Elevation" or elev_name not in state["saved_elevations"]:
+                show_snack("No elevation selected to duplicate", "red")
+                return
+            
+            # Get the current elevation data
+            original_data = state["saved_elevations"][elev_name].copy()
+            
+            # Create a text field for new name
+            new_name_field = ft.TextField(
+                label="New Elevation Name",
+                value=f"{elev_name} (Copy)",
+                bgcolor=COLOR_INPUT_BG,
+                border_color=COLOR_ACCENT_LIGHT,
+                color=COLOR_TEXT,
+                label_style=ft.TextStyle(color=COLOR_TEXT_DIM),
+                focused_border_color=COLOR_ACCENT,
+                autofocus=True,
+            )
+            
+            def do_duplicate(e):
+                new_name = new_name_field.value.strip()
+                if not new_name:
+                    show_snack("Elevation name cannot be empty", "red")
+                    return
+                
+                if new_name in state["saved_elevations"]:
+                    show_snack(f"Elevation '{new_name}' already exists", "red")
+                    return
+                
+                # Create duplicate with new name
+                state["saved_elevations"][new_name] = original_data.copy()
+                
+                # Copy door data if it exists
+                original_door_path = get_door_path(state["current_project"], elev_name)
+                if os.path.exists(original_door_path):
+                    try:
+                        with open(original_door_path, 'r') as f:
+                            door_data = json.load(f)
+                        new_door_path = get_door_path(state["current_project"], new_name)
+                        with open(new_door_path, 'w') as f:
+                            json.dump(door_data, f, indent=4)
+                    except Exception as ex:
+                        print(f"Error copying door data: {ex}")
+                
+                # Save elevations
+                paths = get_project_paths(state["current_project"])
+                with open(paths["elevations"], 'w') as f:
+                    json.dump(state["saved_elevations"], f, indent=4)
+                
+                # Reload elevations
+                load_elevations(state["current_project"])
+                
+                # Update dropdown
+                new_opts = sorted(state["saved_elevations"].keys())
+                dropdown_options = [ft.dropdown.Option("New Elevation")] + [ft.dropdown.Option(x) for x in new_opts]
+                inputs["saved_elev"].options = dropdown_options
+                inputs["saved_elev"].value = new_name
+                
+                # Close dialog
+                dlg.open = False
+                page.update()
+                
+                # Load the duplicated elevation
+                on_elevation_load(None)
+                
+                show_snack(f"Elevation duplicated as '{new_name}'", "green")
+            
+            def cancel_duplicate(e):
+                dlg.open = False
+                page.update()
+            
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Duplicate Elevation", color=COLOR_TEXT),
+                content=ft.Container(
+                    content=new_name_field,
+                    width=400,
+                    padding=10
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=cancel_duplicate),
+                    ft.TextButton("Duplicate", on_click=do_duplicate, style=ft.ButtonStyle(color=COLOR_ACCENT))
+                ],
+                bgcolor=COLOR_SURFACE,
+            )
+            
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
 
         def delete_elevation_action(e):
             elev = inputs["saved_elev"].value
@@ -3256,6 +3390,7 @@ def main(page: ft.Page):
             ft.Container(
                 content=ft.Row([
                     assign_ref("save_btn", ft.ElevatedButton("CREATE ELEVATION", bgcolor=COLOR_ACCENT, color="white", on_click=save_elevation_action, expand=True, height=50)),
+                    assign_ref("duplicate_btn", ft.IconButton(ft.Icons.CONTENT_COPY, icon_color=COLOR_ACCENT, tooltip="Duplicate Elevation", on_click=duplicate_elevation_action, visible=False)),
                     ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Delete Elevation", on_click=delete_elevation_action)
                 ]),
                 margin=ft.margin.only(top=20)
