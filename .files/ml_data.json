@@ -1,0 +1,41 @@
+[
+  {
+    "id": "1_1_1.0_1.0_1x1_Clear",
+    "project": "1",
+    "width": 1.0,
+    "height": 1.0,
+    "bays": 1,
+    "bays_wide": 1,
+    "bays_tall": 1,
+    "sqft": 0.006944444444444444,
+    "finish": "Clear",
+    "cost": 2830.25625,
+    "timestamp": "2026-01-26T03:01:03.763549"
+  },
+  {
+    "id": "1_1 (Copy)_1.0_1.0_1x1_Clear",
+    "project": "1",
+    "width": 1.0,
+    "height": 1.0,
+    "bays": 1,
+    "bays_wide": 1,
+    "bays_tall": 1,
+    "sqft": 0.006944444444444444,
+    "finish": "Clear",
+    "cost": 2830.25625,
+    "timestamp": "2026-01-26T03:01:03.765794"
+  },
+  {
+    "id": "2_2_2.0_2.0_2x2_Clear",
+    "project": "2",
+    "width": 2.0,
+    "height": 2.0,
+    "bays": 4,
+    "bays_wide": 2,
+    "bays_tall": 2,
+    "sqft": 0.05555555555555555,
+    "finish": "Clear",
+    "cost": 3939.5833333333335,
+    "timestamp": "2026-01-26T03:01:03.768947"
+  }
+]
