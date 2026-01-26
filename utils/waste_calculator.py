@@ -83,9 +83,19 @@ def read_waste_from_excel(excel_path: str) -> Dict:
         traceback.print_exc()
         return None
 
-def calculate_waste_statistics(project_path: str, extra_materials_path: str, excel_path: Optional[str] = None) -> Dict:
+def calculate_waste_statistics(project_path: str = None, extra_materials_path: str = None, excel_path: Optional[str] = None, elevations_data: Optional[Dict] = None, extra_materials: Optional[Dict] = None) -> Dict:
     """
     Calculate comprehensive waste statistics for a project.
+    
+    Can accept either file paths OR data dictionaries directly.
+    If data dictionaries are provided, they take precedence over file paths.
+    
+    Args:
+        project_path: Path to elevations JSON file (optional if elevations_data provided)
+        extra_materials_path: Path to extra materials JSON file (optional if extra_materials provided)
+        excel_path: Optional path to Excel file for reading waste stats
+        elevations_data: Optional dictionary of elevations data (takes precedence over project_path)
+        extra_materials: Optional dictionary of extra materials (takes precedence over extra_materials_path)
     
     Returns:
         Dictionary with waste statistics including:
@@ -95,7 +105,29 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         - material_breakdown: List of waste data per material
         - suggestions: List of optimization suggestions
     """
-    if not os.path.exists(project_path) or not os.path.exists(extra_materials_path):
+    # Load data from dictionaries if provided, otherwise from files
+    if elevations_data is None:
+        if project_path and os.path.exists(project_path):
+            try:
+                with open(project_path, 'r') as f:
+                    elevations_data = json.load(f)
+            except Exception as e:
+                print(f"[ERROR] Error loading elevations from file: {e}")
+                elevations_data = {}
+        else:
+            elevations_data = {}
+    
+    if extra_materials is None:
+        if extra_materials_path and os.path.exists(extra_materials_path):
+            try:
+                extra_materials = load_extra_materials(extra_materials_path)
+            except Exception as e:
+                print(f"[ERROR] Error loading extra materials from file: {e}")
+                extra_materials = {}
+        else:
+            extra_materials = {}
+    
+    if not elevations_data and not extra_materials:
         return {
             "total_waste_cost": 0.0,
             "total_material_cost": 0.0,
@@ -105,13 +137,6 @@ def calculate_waste_statistics(project_path: str, extra_materials_path: str, exc
         }
     
     try:
-        # Load elevations data
-        with open(project_path, 'r') as f:
-            elevations_data = json.load(f)
-        
-        # Load extra materials (leftovers/waste)
-        extra_materials = load_extra_materials(extra_materials_path)
-        
         # Debug output
         print(f"[Waste Calculator] Loaded {len(elevations_data)} elevations, {len(extra_materials)} extra materials")
     except Exception as e:

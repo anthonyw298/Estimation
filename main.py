@@ -2969,11 +2969,20 @@ def main(page: ft.Page):
                     "suggestions": []
                 }
             else:
-                paths = get_project_paths(state["current_project"])
+                # Get data directly from Supabase database
+                elevations_data = db.get_elevations(state["current_project"])
+                extra_materials_data = db.get_materials(state["current_project"])
+                
+                # Get Excel path if it exists
+                excel_path = get_project_paths(state["current_project"]).get("excel")
+                if excel_path and not os.path.exists(excel_path):
+                    excel_path = None
+                
+                # Calculate waste statistics directly from database data
                 waste_stats = calculate_waste_statistics(
-                    paths["elevations"],
-                    paths["materials"],
-                    excel_path=paths.get("excel")
+                    elevations_data=elevations_data,
+                    extra_materials=extra_materials_data,
+                    excel_path=excel_path
                 )
             
             # Update waste percentage display
@@ -3471,8 +3480,18 @@ def main(page: ft.Page):
         ))
 
         # Create Tabs
+        def on_tab_change(e):
+            """Handle tab change - refresh waste calculator when Summary tab is selected"""
+            if e.control.selected_index == 1:  # Summary tab is index 1
+                try:
+                    refresh_waste_calculator()
+                    page.update()
+                except Exception as ex:
+                    print(f"[WARNING] Error refreshing waste calculator on tab change: {ex}")
+        
         tabs = ft.Tabs(
             selected_index=0,
+            on_change=on_tab_change,
             tabs=[
                 ft.Tab(
                     text="Elevations",
