@@ -89,16 +89,20 @@ def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_heigh
     
     # Calculate bay dimensions
     if custom_bay_widths and len(custom_bay_widths) == bays_wide:
-        bay_widths = custom_bay_widths
+        bay_widths = [max(0.1, float(w)) for w in custom_bay_widths]  # Ensure minimum positive value
     else:
-        bay_widths = [opening_width / bays_wide] * bays_wide
+        bay_widths = [max(0.1, opening_width / bays_wide)] * bays_wide
     
     if custom_bay_heights and len(custom_bay_heights) == bays_tall:
-        bay_heights = custom_bay_heights
+        bay_heights = [max(0.1, float(h)) for h in custom_bay_heights]  # Ensure minimum positive value
     else:
-        bay_heights = [opening_height / bays_tall] * bays_tall
+        bay_heights = [max(0.1, opening_height / bays_tall)] * bays_tall
     
     if not bay_widths or not bay_heights:
+        return None
+    
+    # Validate all dimensions are positive
+    if any(w <= 0 for w in bay_widths) or any(h <= 0 for h in bay_heights):
         return None
     
     # Create image with dark background to match app theme
@@ -150,18 +154,38 @@ def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_heigh
             bay_w = bay_widths[col] * scale
             bay_h = bay_heights[row] * scale
             
+            # Ensure minimum size to avoid drawing errors
+            bay_w = max(10.0, bay_w)
+            bay_h = max(10.0, bay_h)
+            
+            # Calculate rectangle coordinates
+            x0 = current_x
+            y0 = current_y
+            x1 = current_x + bay_w
+            y1 = current_y + bay_h
+            
+            # Validate coordinates
+            if x1 <= x0 or y1 <= y0:
+                continue  # Skip invalid rectangles
+            
             # Draw bay rectangle with blue border
             draw.rectangle(
-                [current_x, current_y, current_x + bay_w, current_y + bay_h],
+                [x0, y0, x1, y1],
                 outline='#0073E6',
                 width=2
             )
             
-            # Draw fill with semi-transparent effect
-            draw.rectangle(
-                [current_x + 2, current_y + 2, current_x + bay_w - 2, current_y + bay_h - 2],
-                fill='#2A2A2A'
-            )
+            # Draw fill with semi-transparent effect (only if there's enough space)
+            if bay_w > 4 and bay_h > 4:
+                fill_x0 = x0 + 2
+                fill_y0 = y0 + 2
+                fill_x1 = x1 - 2
+                fill_y1 = y1 - 2
+                if fill_x1 > fill_x0 and fill_y1 > fill_y0:
+                    draw.rectangle(
+                        [fill_x0, fill_y0, fill_x1, fill_y1],
+                        fill='#2A2A2A'
+                    )
             
             # Bay center
             bay_center_x = current_x + bay_w / 2
