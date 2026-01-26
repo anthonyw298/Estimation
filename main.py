@@ -2631,8 +2631,12 @@ def main(page: ft.Page):
                     "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
                 ]}
                 
+                # Load existing settings and merge with miscellaneous settings to preserve markups
+                existing_settings = load_project_settings(state["current_project"])
+                existing_settings.update(settings)
+                
                 # Save settings to database
-                save_project_settings(state["current_project"], settings)
+                save_project_settings(state["current_project"], existing_settings)
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())

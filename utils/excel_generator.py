@@ -1670,7 +1670,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         "Commission": 0.0
     }
     
-    # Load markup percentages from settings file
+    # Load markup percentages from settings file (use same file as miscellaneous settings)
     markup_settings_loaded = False
     for path_to_try_markup in unique_paths:
         if os.path.exists(path_to_try_markup):
@@ -1678,6 +1678,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 print(f"   [INFO] Loading markup settings from: {path_to_try_markup}")
                 with open(path_to_try_markup, 'r') as f:
                     settings_data = json.load(f)
+                    print(f"   [DEBUG] Settings file keys: {list(settings_data.keys())}")
                     markup_pcts = {
                         "Profit on Material": settings_data.get("profit_on_material_pct", 0.0),
                         "Profit on Waste": settings_data.get("profit_on_waste_pct", 0.0),
@@ -1687,14 +1688,22 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                         "Commission": settings_data.get("commission_pct", 0.0)
                     }
                     print(f"[OK] Loaded markup percentages: {markup_pcts}")
+                    # Check if any markup percentages are > 0
+                    has_markups = any(pct > 0 for pct in markup_pcts.values())
+                    print(f"   [DEBUG] Has markups > 0: {has_markups}")
                     markup_settings_loaded = True
                     break
             except Exception as e:
                 print(f"   [ERROR] Error reading markup settings from {path_to_try_markup}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
     
     if not markup_settings_loaded:
-        print(f"[WARNING] Could not load markup settings from any path")
+        print(f"[WARNING] Could not load markup settings from any path. Tried:")
+        for path_to_try_markup in unique_paths:
+            exists = "[EXISTS]" if os.path.exists(path_to_try_markup) else "[NOT FOUND]"
+            print(f"   {exists}: {path_to_try_markup}")
     
     # Calculate markups based on appropriate bases
     markup_total = 0.0
@@ -1805,11 +1814,43 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
     # Add "(None configured)" if no items
+    # Check if markups are configured but just have zero base amounts
+    has_configured_markups = any(pct > 0 for pct in markup_pcts.values())
     if len(markup_items_list) == 0:
-        ws.cell(row=markup_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
-        ws.cell(row=markup_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
-        ws.cell(row=markup_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-        markup_items_end_row = markup_items_start_row
+        if has_configured_markups:
+            # Markups are configured but bases are zero - show configured markups with $0.00
+            configured_markups = []
+            for label, pct_key in [("Profit on Material", "Profit on Material"),
+                                    ("Profit on Waste", "Profit on Waste"),
+                                    ("Profit on Glass Purchase", "Profit on Glass Purchase"),
+                                    ("Profit on Wages", "Profit on Wages"),
+                                    ("Planning / Technical Office", "Planning / Technical Office"),
+                                    ("Commission", "Commission")]:
+                if markup_pcts[pct_key] > 0:
+                    configured_markups.append((label, 0.0))
+            
+            for i, (label, amount) in enumerate(configured_markups):
+                row = markup_items_start_row + i
+                ws.cell(row=row, column=category_start_col, value=label)
+                ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
+                ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+                ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+                markup_items_list.append((label, amount))
+            
+            if len(markup_items_list) > 0:
+                markup_items_end_row = markup_items_start_row + len(markup_items_list) - 1
+            else:
+                ws.cell(row=markup_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
+                ws.cell(row=markup_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
+                ws.cell(row=markup_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+                markup_items_end_row = markup_items_start_row
+        else:
+            # No markups configured at all
+            ws.cell(row=markup_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
+            ws.cell(row=markup_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
+            ws.cell(row=markup_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+            markup_items_end_row = markup_items_start_row
     else:
         markup_items_end_row = markup_items_start_row + len(markup_items_list) - 1
     
