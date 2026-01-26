@@ -1569,10 +1569,15 @@ def main(page: ft.Page):
             inputs["bays_tall"].parent.visible = is_yes45
             if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45
             if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45
-            if inputs.get("bay_diagram_container"): inputs["bay_diagram_container"].visible = is_yes45
             
             if is_yes45:
                 update_dynamic_bay_inputs(None)
+                # Auto-refresh bay diagram after updating inputs
+                auto_refresh_bay_diagram()
+            else:
+                # Hide bay diagram if not YES 45TU
+                if inputs.get("bay_diagram_container"):
+                    inputs["bay_diagram_container"].visible = False
             
             if page.views: 
                 page.update()
@@ -1617,7 +1622,7 @@ def main(page: ft.Page):
                 inputs["custom_w_col"].controls.append(ft.Text("Custom Bay Widths (leave blank to auto-fill)", size=12, color=COLOR_TEXT_DIM))
                 for i in range(bw):
                     val = current_w_vals[i] if i < len(current_w_vals) else ""
-                    field = create_input_field(f"Bay {i+1} Width", f"bay_w_{i}", expand=True, value=val)
+                    field = create_input_field(f"Bay {i+1} Width", f"bay_w_{i}", expand=True, value=val, on_change=lambda e: auto_refresh_bay_diagram())
                     new_w_fields.append(field)
                 
                 # Group fields in rows of 4 for cleaner layout
@@ -1675,6 +1680,9 @@ def main(page: ft.Page):
                              show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_w:.2f})", "orange")
                         else:
                              show_snack("All fields filled.", "green")
+                    
+                    # Refresh bay diagram after auto-fill
+                    auto_refresh_bay_diagram()
 
                 inputs["custom_w_col"].controls.append(
                     ft.ElevatedButton("Auto-Fill Remaining Widths", on_click=auto_fill_w, bgcolor=COLOR_ACCENT, color="white")
@@ -1693,7 +1701,7 @@ def main(page: ft.Page):
                 inputs["custom_h_col"].controls.append(ft.Text("Custom Bay Heights (leave blank to auto-fill)", size=12, color=COLOR_TEXT_DIM))
                 for i in range(bh):
                     val = current_h_vals[i] if i < len(current_h_vals) else ""
-                    field = create_input_field(f"Bay {i+1} Height", f"bay_h_{i}", expand=True, value=val)
+                    field = create_input_field(f"Bay {i+1} Height", f"bay_h_{i}", expand=True, value=val, on_change=lambda e: auto_refresh_bay_diagram())
                     new_h_fields.append(field)
                 
                 rows = []
@@ -1750,6 +1758,9 @@ def main(page: ft.Page):
                              show_snack(f"Warning: Sum ({filled_sum:.2f}) does not match Total ({total_h:.2f})", "orange")
                         else:
                              show_snack("All fields filled.", "green")
+                    
+                    # Refresh bay diagram after auto-fill
+                    auto_refresh_bay_diagram()
 
                 inputs["custom_h_col"].controls.append(
                      ft.ElevatedButton("Auto-Fill Remaining Heights", on_click=auto_fill_h, bgcolor=COLOR_ACCENT, color="white")
@@ -1757,67 +1768,130 @@ def main(page: ft.Page):
 
             inputs["dynamic_h_fields"] = new_h_fields
             
-            # Add Generate Bay Preview button if we have bays configured
-            if bw > 0 and bh > 0:
-                def generate_bay_preview(e):
-                    try:
-                        opening_w = float(inputs["width"].value) if inputs["width"].value else 0
-                        opening_h = float(inputs["height"].value) if inputs["height"].value else 0
-                        
-                        if opening_w <= 0 or opening_h <= 0:
-                            show_snack("Please set valid Opening Width and Height first", "red")
-                            return
-                        
-                        # Gather custom widths
-                        custom_w = []
-                        for f in inputs.get("dynamic_w_fields", []):
-                            try:
-                                if f.value:
-                                    custom_w.append(float(f.value))
-                            except:
-                                pass
-                        
-                        # Gather custom heights
-                        custom_h = []
-                        for f in inputs.get("dynamic_h_fields", []):
-                            try:
-                                if f.value:
-                                    custom_h.append(float(f.value))
-                            except:
-                                pass
-                        
-                        # Generate diagram
-                        diagram_b64 = create_bay_diagram_base64(
-                            bw, bh, opening_w, opening_h,
-                            custom_bay_widths=custom_w if len(custom_w) == bw else None,
-                            custom_bay_heights=custom_h if len(custom_h) == bh else None
-                        )
-                        
-                        if diagram_b64 and inputs.get("bay_diagram_image"):
-                            inputs["bay_diagram_image"].src_base64 = diagram_b64
-                            inputs["bay_diagram_image"].visible = True
-                            if inputs.get("bay_diagram_container"):
-                                inputs["bay_diagram_container"].visible = True
-                            page.update()
-                            show_snack("Bay diagram preview generated!", "green")
-                        else:
-                            show_snack("Could not generate bay diagram", "orange")
-                    except Exception as ex:
-                        show_snack(f"Error generating preview: {str(ex)}", "red")
-                
-                inputs["custom_h_col"].controls.append(ft.Container(height=10))
-                inputs["custom_h_col"].controls.append(
-                    ft.ElevatedButton(
-                        "GENERATE BAY PREVIEW",
-                        icon=ft.Icons.PREVIEW,
-                        on_click=generate_bay_preview,
-                        bgcolor="#4CAF50",
-                        color="white"
-                    )
-                )
+            # Auto-refresh bay diagram when inputs change
+            auto_refresh_bay_diagram()
             
             if page.views:
                 page.update()
+        
+        def auto_refresh_bay_diagram():
+            """Automatically refresh bay diagram when inputs change."""
+            try:
+                # Only refresh if YES 45TU system is selected
+                if inputs["system"].value != "YES 45TU FRONT SET(OG)":
+                    if inputs.get("bay_diagram_container"):
+                        inputs["bay_diagram_container"].visible = False
+                    return
+                
+                try:
+                    bw = int(inputs["bays_wide"].value) if inputs["bays_wide"].value else 0
+                    bh = int(inputs["bays_tall"].value) if inputs["bays_tall"].value else 0
+                except:
+                    bw, bh = 0, 0
+                
+                if bw <= 0 or bh <= 0:
+                    if inputs.get("bay_diagram_container"):
+                        inputs["bay_diagram_container"].visible = False
+                    return
+                
+                # Gather custom widths - collect all filled values
+                custom_w = []
+                for f in inputs.get("dynamic_w_fields", []):
+                    try:
+                        if f.value and str(f.value).strip():
+                            custom_w.append(float(f.value))
+                        else:
+                            custom_w.append(None)  # Mark as empty
+                    except:
+                        custom_w.append(None)
+                
+                # Gather custom heights - collect all filled values
+                custom_h = []
+                for f in inputs.get("dynamic_h_fields", []):
+                    try:
+                        if f.value and str(f.value).strip():
+                            custom_h.append(float(f.value))
+                        else:
+                            custom_h.append(None)  # Mark as empty
+                    except:
+                        custom_h.append(None)
+                
+                # Get opening dimensions from input fields first
+                try:
+                    w_val = inputs["width"].value
+                    opening_w = float(w_val) if w_val and str(w_val).strip() else 0
+                except:
+                    opening_w = 0
+                
+                try:
+                    h_val = inputs["height"].value
+                    opening_h = float(h_val) if h_val and str(h_val).strip() else 0
+                except:
+                    opening_h = 0
+                
+                # If opening dimensions not set, try to calculate from custom dimensions
+                if opening_w <= 0:
+                    filled_w = [w for w in custom_w if w is not None]
+                    if len(filled_w) == bw:  # All widths filled
+                        opening_w = sum(filled_w)
+                    elif len(filled_w) > 0:  # Some widths filled, estimate total
+                        avg_w = sum(filled_w) / len(filled_w)
+                        opening_w = avg_w * bw
+                
+                if opening_h <= 0:
+                    filled_h = [h for h in custom_h if h is not None]
+                    if len(filled_h) == bh:  # All heights filled
+                        opening_h = sum(filled_h)
+                    elif len(filled_h) > 0:  # Some heights filled, estimate total
+                        avg_h = sum(filled_h) / len(filled_h)
+                        opening_h = avg_h * bh
+                
+                # If still no opening dimensions, calculate from bay counts (use reasonable defaults)
+                if opening_w <= 0:
+                    opening_w = max(bw * 36.0, 100.0)  # Default estimate, minimum 100
+                if opening_h <= 0:
+                    opening_h = max(bh * 48.0, 100.0)  # Default estimate, minimum 100
+                
+                # Prepare custom dimensions for diagram (only use if all are filled)
+                final_custom_w = None
+                if len(custom_w) == bw and all(w is not None for w in custom_w):
+                    final_custom_w = [w for w in custom_w]
+                
+                final_custom_h = None
+                if len(custom_h) == bh and all(h is not None for h in custom_h):
+                    final_custom_h = [h for h in custom_h]
+                
+                # Generate diagram
+                diagram_b64 = create_bay_diagram_base64(
+                    bw, bh, opening_w, opening_h,
+                    custom_bay_widths=final_custom_w,
+                    custom_bay_heights=final_custom_h
+                )
+                
+                if diagram_b64 and inputs.get("bay_diagram_image"):
+                    inputs["bay_diagram_image"].src_base64 = diagram_b64
+                    inputs["bay_diagram_image"].visible = True
+                    if inputs.get("bay_diagram_container"):
+                        inputs["bay_diagram_container"].visible = True
+                    print(f"[Bay Diagram] Updated: {bw}W x {bh}H, opening={opening_w}x{opening_h}, custom_w={final_custom_w is not None}, custom_h={final_custom_h is not None}")
+                    if page.views:
+                        page.update()
+                else:
+                    # If diagram generation failed, hide the container
+                    print(f"[Bay Diagram] Failed to generate: diagram_b64={diagram_b64 is not None}, image={inputs.get('bay_diagram_image') is not None}, bw={bw}, bh={bh}, opening_w={opening_w}, opening_h={opening_h}")
+                    if inputs.get("bay_diagram_container"):
+                        inputs["bay_diagram_container"].visible = False
+                    if page.views:
+                        page.update()
+            except Exception as ex:
+                # Log error but don't break the UI
+                import traceback
+                print(f"[Bay Diagram] Refresh error: {ex}")
+                print(traceback.format_exc())
+                if inputs.get("bay_diagram_container"):
+                    inputs["bay_diagram_container"].visible = False
+                if page.views:
+                    page.update()
 
         def on_elevation_load(e):
             elev_name = inputs["saved_elev"].value
@@ -1885,6 +1959,8 @@ def main(page: ft.Page):
 
             load_doors(elev_name)
             render_doors()
+            # Auto-refresh bay diagram after loading
+            auto_refresh_bay_diagram()
             page.update()
 
         def clear_workspace():
@@ -3224,6 +3300,53 @@ def main(page: ft.Page):
         )
         inputs["discounted_cost_per_elev_checkbox"] = discounted_cost_per_elev_checkbox
         
+        # Door Manager (Collapsible) - defined before form_col so it can be referenced
+        hardware_cbs = {opt: ft.Checkbox(label=opt, fill_color=COLOR_ACCENT) for opt in state["hardware_options"]}
+        
+        door_list_col = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=5)
+        
+        door_manager_content = ft.Column([
+            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count")]),
+            create_dropdown("Style", "door_stile", state["stile_options"]),
+            ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
+            ft.Column([cb for cb in hardware_cbs.values()], spacing=0),
+            ft.Row([
+                ft.ElevatedButton("ADD DOOR", bgcolor="#4CAF50", color="white", on_click=lambda e: modify_door("add"), expand=True),
+                ft.ElevatedButton("UPDATE DOOR", bgcolor="#FF9800", color="white", on_click=lambda e: modify_door("update"), expand=True),
+            ]),
+            door_list_col
+        ], spacing=2)
+        
+        door_manager_expanded = False  # Default to collapsed
+        door_manager_content_container = ft.Container(
+            content=door_manager_content,
+            visible=False,  # Hidden by default
+            animate=ft.Animation(300, "easeOut"),
+            padding=0
+        )
+        
+        def toggle_door_manager(e):
+            nonlocal door_manager_expanded
+            door_manager_expanded = not door_manager_expanded
+            door_manager_content_container.visible = door_manager_expanded
+            door_manager_icon.icon = ft.Icons.EXPAND_MORE if door_manager_expanded else ft.Icons.CHEVRON_RIGHT
+            page.update()
+        
+        door_manager_icon = ft.IconButton(
+            icon=ft.Icons.CHEVRON_RIGHT,  # Pointing right when collapsed
+            icon_color=COLOR_ACCENT,
+            on_click=toggle_door_manager,
+            tooltip="Toggle Door Manager"
+        )
+        
+        door_col = ft.Column([
+            ft.Row([
+                ft.Text("DOOR MANAGER", size=14, weight="bold", color=COLOR_ACCENT, expand=True),
+                door_manager_icon
+            ]),
+            door_manager_content_container
+        ], spacing=0)
+        
         form_col = ft.Column([
             ft.Text("ELEVATION DETAILS", size=14, weight="bold", color=COLOR_ACCENT),
             ft.Row([create_dropdown("System", "system", state["system_options"], on_change=update_bay_visibility), 
@@ -3250,15 +3373,18 @@ def main(page: ft.Page):
             # Dimensions
             ft.Container(content=ft.Column([
                 ft.Text("DIMENSIONS", size=12, weight="bold", color=COLOR_TEXT_DIM),
-                ft.Row([create_input_field("Opening Width (\")", "width"), create_input_field("Opening Height (\")", "height")]),
+                ft.Row([
+                    create_input_field("Opening Width (\")", "width", on_change=lambda e: auto_refresh_bay_diagram()), 
+                    create_input_field("Opening Height (\")", "height", on_change=lambda e: auto_refresh_bay_diagram())
+                ]),
             ]), margin=ft.margin.only(top=10)),
 
             # Bays (Hidden by default if not Yes45)
             ft.Container(content=ft.Column([
                 ft.Text("BAY CONFIGURATION", size=12, weight="bold", color=COLOR_TEXT_DIM),
                 ft.Row([
-                    create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=update_dynamic_bay_inputs), 
-                    create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=update_dynamic_bay_inputs)
+                    create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram())), 
+                    create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram()))
                 ]),
             ]), margin=ft.margin.only(top=10)),
             
@@ -3272,53 +3398,53 @@ def main(page: ft.Page):
                 visible=False
             )),
             
-            # Bay Diagram Preview Container
-            assign_ref("bay_diagram_container", ft.Container(
-                content=ft.Column([
-                    ft.Text("BAY DIAGRAM PREVIEW", size=12, weight="bold", color=COLOR_TEXT_DIM),
-                    inputs.setdefault("bay_diagram_image", ft.Image(
-                        src_base64="",
-                        width=450,
-                        height=350,
-                        fit=ft.ImageFit.CONTAIN,
-                        visible=False
-                    ))
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                visible=False,
-                margin=ft.margin.only(top=15),
-                padding=10,
-                bgcolor=COLOR_SURFACE,
-                border_radius=10
-            )),
 
+            # Door Manager (below bay configurations)
+            door_col,
+            
+            # Create/Update/Delete buttons (below door manager, very close)
             ft.Container(
                 content=ft.Row([
                     assign_ref("save_btn", ft.ElevatedButton("CREATE ELEVATION", bgcolor=COLOR_ACCENT, color="white", on_click=save_elevation_action, expand=True, height=50)),
                     assign_ref("duplicate_btn", ft.IconButton(ft.Icons.CONTENT_COPY, icon_color=COLOR_ACCENT, tooltip="Duplicate Elevation", on_click=duplicate_elevation_action, visible=False)),
                     ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Delete Elevation", on_click=delete_elevation_action)
                 ]),
-                margin=ft.margin.only(top=20)
+                margin=ft.margin.only(top=2)
             )
         ], scroll=ft.ScrollMode.AUTO, expand=True)
 
-        # Right Col: Door Manager
-        hardware_cbs = {opt: ft.Checkbox(label=opt, fill_color=COLOR_ACCENT) for opt in state["hardware_options"]}
+        # Right Col: Bay Diagram (Full Right Half)
+        bay_diagram_image = inputs.setdefault("bay_diagram_image", ft.Image(
+            src_base64="",
+            fit=ft.ImageFit.CONTAIN,
+            visible=False
+        ))
         
-        door_list_col = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=5, height=200)
-
-        door_col = ft.Column([
-            ft.Text("DOOR MANAGER", size=14, weight="bold", color=COLOR_ACCENT),
-            ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count")]),
-            create_dropdown("Style", "door_stile", state["stile_options"]),
-            ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
-            ft.Column([cb for cb in hardware_cbs.values()], spacing=0),
-            ft.Row([
-                ft.ElevatedButton("ADD", bgcolor=COLOR_ACCENT, color="white", on_click=lambda e: modify_door("add"), expand=True),
-                ft.ElevatedButton("UPDATE", bgcolor=COLOR_ACCENT, color="white", on_click=lambda e: modify_door("update"), expand=True),
-            ]),
-            ft.Divider(color=COLOR_SURFACE),
-            door_list_col
-        ], scroll=ft.ScrollMode.AUTO, expand=True)
+        assign_ref("bay_diagram_container", ft.Container(
+            content=ft.Column([
+                ft.Text("BAY DIAGRAM", size=16, weight="bold", color=COLOR_ACCENT, text_align=ft.TextAlign.CENTER),
+                ft.Container(
+                    content=bay_diagram_image,
+                    expand=True,
+                    alignment=ft.alignment.center,
+                    padding=10
+                )
+            ], 
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=10,
+            expand=True),
+            visible=True,  # Container always visible, image visibility controls display
+            expand=True,
+            padding=20,
+            bgcolor=COLOR_SURFACE,
+            border_radius=10,
+            border=ft.Border(
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT)
+            )
+        ))
 
         # Create Tabs
         tabs = ft.Tabs(
@@ -3328,12 +3454,21 @@ def main(page: ft.Page):
                     text="Elevations",
                     content=ft.Row([
                         ft.Container(
-                            content=ft.Column([saved_dd, ft.Divider(color="transparent"), form_col]),
-                            expand=2, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
+                            content=ft.Column([
+                                saved_dd, 
+                                ft.Divider(color="transparent"), 
+                                form_col
+                            ]),
+                            expand=1, 
+                            bgcolor=COLOR_SURFACE, 
+                            border_radius=10, 
+                            padding=20, 
+                            margin=ft.margin.only(left=10, top=10, bottom=10)
                         ),
                         ft.Container(
-                            content=door_col,
-                            expand=1, bgcolor=COLOR_SURFACE, border_radius=10, padding=20, margin=10
+                            content=inputs["bay_diagram_container"],
+                            expand=1,
+                            margin=ft.margin.only(right=10, top=10, bottom=10)
                         )
                     ], expand=True)
                 ),
@@ -3367,7 +3502,7 @@ def main(page: ft.Page):
              
         if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45_init
         if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45_init
-        if inputs.get("bay_diagram_container"): inputs["bay_diagram_container"].visible = is_yes45_init
+        # Bay diagram visibility will be handled by auto_refresh_bay_diagram
         
         if is_yes45_init:
             # Manually populate dynamic inputs without triggering page.update
