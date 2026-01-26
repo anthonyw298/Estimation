@@ -314,8 +314,18 @@ def main(page: ft.Page):
                 with open(paths["elevations"], 'r') as f:
                     elevations = json.load(f)
                 db.save_elevations(project_name, elevations)
-            except:
-                pass
+            except Exception as e:
+                print(f"[WARNING] Error syncing elevations: {e}")
+        
+        # The Excel generator may have modified the extra materials (waste/leftovers)
+        if os.path.exists(paths.get("materials")):
+            try:
+                with open(paths["materials"], 'r') as f:
+                    materials = json.load(f)
+                db.save_materials(project_name, materials)
+                print(f"[OK] Synced {len(materials)} extra materials to database")
+            except Exception as e:
+                print(f"[WARNING] Error syncing materials: {e}")
         
         # Clean up temp files
         cleanup_temp_files(paths)
@@ -2977,17 +2987,36 @@ def main(page: ft.Page):
                 elevations_data = db.get_elevations(state["current_project"])
                 extra_materials_data = db.get_materials(state["current_project"])
                 
+                # Debug output
+                print(f"[Waste Calculator Frontend] Elevations: {len(elevations_data)} items")
+                print(f"[Waste Calculator Frontend] Extra materials: {len(extra_materials_data)} items")
+                if extra_materials_data:
+                    print(f"[Waste Calculator Frontend] Extra materials keys: {list(extra_materials_data.keys())[:5]}")
+                
                 # Get Excel path if it exists
                 excel_path = get_project_paths(state["current_project"]).get("excel")
                 if excel_path and not os.path.exists(excel_path):
                     excel_path = None
                 
                 # Calculate waste statistics directly from database data
-                waste_stats = calculate_waste_statistics(
-                    elevations_data=elevations_data,
-                    extra_materials=extra_materials_data,
-                    excel_path=excel_path
-                )
+                try:
+                    waste_stats = calculate_waste_statistics(
+                        elevations_data=elevations_data,
+                        extra_materials=extra_materials_data,
+                        excel_path=excel_path
+                    )
+                    print(f"[Waste Calculator Frontend] Material breakdown: {len(waste_stats.get('material_breakdown', []))} items")
+                except Exception as e:
+                    print(f"[ERROR] Waste calculator error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    waste_stats = {
+                        "total_waste_cost": 0.0,
+                        "total_material_cost": 0.0,
+                        "overall_waste_percentage": 0.0,
+                        "material_breakdown": [],
+                        "suggestions": []
+                    }
             
             # Update waste percentage display
             waste_pct = waste_stats["overall_waste_percentage"]
@@ -3012,7 +3041,10 @@ def main(page: ft.Page):
                             ft.DataCell(ft.Text(f"{material['waste_percentage']:.1f}%", size=11, 
                                               color=get_waste_percentage_color(material["waste_percentage"]))),
                             ft.DataCell(ft.Text(f"${material['waste_cost']:.2f}", size=11)),
-                            ft.DataCell(ft.Text(f"{material['waste_quantity']:.2f} {material['unit']}", size=11))
+                            ft.DataCell(ft.Text(
+                                material.get('waste_quantity_display', f"{material['waste_quantity']:.2f} {material['unit']}"), 
+                                size=11
+                            ))
                         ]
                     )
                 )

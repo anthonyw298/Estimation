@@ -139,6 +139,8 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
     try:
         # Debug output
         print(f"[Waste Calculator] Loaded {len(elevations_data)} elevations, {len(extra_materials)} extra materials")
+        if extra_materials:
+            print(f"[Waste Calculator] Extra materials sample: {list(extra_materials.items())[:3]}")
     except Exception as e:
         print(f"[ERROR] Error loading waste data: {e}")
         import traceback
@@ -157,9 +159,16 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
     total_material_cost = 0.0
     
     # Process each material in extra_materials (these are the waste/leftovers)
+    materials_processed = 0
+    materials_skipped = 0
     for material_key, material_data in extra_materials.items():
         if not material_data:
+            materials_skipped += 1
             continue
+        
+        materials_processed += 1
+        if materials_processed <= 3:  # Debug first 3
+            print(f"[Waste Calculator] Processing material: {material_key}, data: {material_data}")
         
         # Extract part number and finish from key (format: "BE9-2513-clear" or "E1-0199" or "PM-1006-SS")
         parts = material_key.split('-')
@@ -197,8 +206,19 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
         length_pieces = material_data.get('length_pieces', [])
         quantity = material_data.get('quantity', 0.0)
         
+        # Ensure length_pieces is a list (might be stored as string in database)
+        if isinstance(length_pieces, str):
+            try:
+                import json
+                length_pieces = json.loads(length_pieces)
+            except:
+                length_pieces = []
+        if not isinstance(length_pieces, list):
+            length_pieces = []
+        
         # Calculate waste quantity (from leftover pieces or quantity)
         waste_qty = 0.0
+        individual_pieces = []  # Track individual pieces for display
         if length_pieces and len(length_pieces) > 0:
             # For profiles/gaskets, waste is in length_pieces
             length_str = part_info.get('Length', '')
@@ -210,6 +230,7 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
                     # Valid leftover: > 0 and < min_purchase_length
                     if 0 < l_float < min_purchase_length:
                         valid_lengths.append(l_float)
+                        individual_pieces.append(l_float)
                 except (TypeError, ValueError):
                     pass
             waste_qty = sum(valid_lengths)
@@ -224,10 +245,11 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
             continue
         
         # Calculate material cost (using unit price)
+        # get_unit_price_by_part doesn't need extra_materials for unit price calculation
+        # It only needs the part number and finish to look up the base price
         unit_price, _ = get_unit_price_by_part(
             part_number, 
-            finish=finish, 
-            extra_materials_file=extra_materials_path
+            finish=finish
         )
         
         # Apply multiplier based on total cost (same logic as Excel generator)
@@ -320,20 +342,33 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
         # where total_discounted_price is the cost of USED materials only
         used_material_cost = total_qty_used * unit_price * multiplier if unit_price else 0.0
         
+        # Format waste quantity display - show individual pieces if available
+        waste_qty_display = waste_qty
+        if individual_pieces and len(individual_pieces) > 1:
+            # Show individual pieces in format like "2.5, 3.2, 1.8 ft (7.5 ft total)"
+            pieces_str = ", ".join([f"{p:.2f}" for p in individual_pieces])
+            waste_qty_display_str = f"{pieces_str} {('ft' if length_pieces and len(length_pieces) > 0 else 'pcs')} ({waste_qty:.2f} total)"
+        else:
+            waste_qty_display_str = f"{waste_qty:.2f} {('ft' if length_pieces and len(length_pieces) > 0 else 'pcs')}"
+        
         material_breakdown.append({
             "part_number": part_number,
             "description": description,
             "finish": finish,
             "total_quantity": total_qty_used,
             "waste_quantity": waste_qty,
+            "waste_quantity_display": waste_qty_display_str,  # Formatted string for display
             "waste_percentage": waste_percentage,
             "waste_cost": waste_cost,
             "material_cost": used_material_cost,
-            "unit": "ft" if length_pieces and len(length_pieces) > 0 else "pcs"
+            "unit": "ft" if length_pieces and len(length_pieces) > 0 else "pcs",
+            "individual_pieces": individual_pieces  # Store individual pieces for reference
         })
         
         total_waste_cost += waste_cost
         total_material_cost += used_material_cost  # Only count used materials, not waste
+    
+    print(f"[Waste Calculator] Processed {materials_processed} materials, skipped {materials_skipped}, breakdown items: {len(material_breakdown)}")
     
     # Try to read waste statistics directly from Excel Summary sheet (more accurate)
     excel_waste_data = None
@@ -341,17 +376,20 @@ def calculate_waste_statistics(project_path: str = None, extra_materials_path: s
         excel_waste_data = read_waste_from_excel(excel_path)
     
     # Use Excel values if available, otherwise calculate from data
+    # NOTE: Excel data only provides totals, not material breakdown - always use calculated breakdown
     if excel_waste_data:
         overall_waste_percentage = excel_waste_data["overall_waste_percentage"]
         total_waste_cost = excel_waste_data["total_waste_cost"]
         total_material_cost = excel_waste_data["total_material_cost"]
-        print(f"[OK] Waste Calculator: Using values from Excel (waste: {overall_waste_percentage:.2f}%, cost: ${total_waste_cost:.2f})")
+        print(f"[OK] Waste Calculator: Using totals from Excel (waste: {overall_waste_percentage:.2f}%, cost: ${total_waste_cost:.2f})")
+        print(f"[OK] Waste Calculator: Material breakdown from calculations: {len(material_breakdown)} items")
     else:
         # Calculate overall waste percentage to match Excel report
         # Excel uses: waste_cost / total_discounted_price * 100
         # where total_discounted_price is the cost of USED materials (not including waste)
         overall_waste_percentage = (total_waste_cost / total_material_cost * 100) if total_material_cost > 0 else 0.0
         print(f"[WARNING] Waste Calculator: Excel not available, calculated waste: {overall_waste_percentage:.2f}%")
+        print(f"[OK] Waste Calculator: Material breakdown from calculations: {len(material_breakdown)} items")
     
     # Generate optimization suggestions with elevation context
     suggestions = generate_optimization_suggestions(
