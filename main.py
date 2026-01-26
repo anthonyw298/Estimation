@@ -6,6 +6,7 @@ from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
 from utils.formulas import calculate_rectangle_area, calculate_perimeter, calculate_door_info
 from utils.waste_calculator import calculate_waste_statistics, get_waste_percentage_color
+from utils.database import db  # Centralized database
 
 # PDF export (optional - will fail gracefully if reportlab not installed)
 try:
@@ -233,22 +234,15 @@ def main(page: ft.Page):
         try: return float(val) if str(val).strip() else 0.0
         except: return 0.0
 
-    # --- Data Loading Functions ---
+    # --- Data Loading Functions (using centralized database) ---
     def load_projects():
-        if os.path.exists(MASTER_PROJECT_LIST_FILE):
-            try:
-                with open(MASTER_PROJECT_LIST_FILE, 'r') as f:
-                    state["projects"] = json.load(f)
-            except:
-                state["projects"] = []
-        else:
-            state["projects"] = []
+        state["projects"] = db.get_projects()
 
     def save_projects():
-        with open(MASTER_PROJECT_LIST_FILE, 'w') as f:
-            json.dump(state["projects"], f, indent=4)
+        db.save_projects(state["projects"])
 
     def get_project_paths(project_name):
+        """Get paths for Excel reports and temp files."""
         clean_name = project_name.replace(" ", "_").replace("/", "_")
         base = os.path.join(PROJECTS_DIR, clean_name)
         return {
@@ -258,62 +252,68 @@ def main(page: ft.Page):
             "settings": f"{base}_Settings.json"
         }
     
-    def load_project_settings(project_name):
+    def prepare_temp_files_for_excel(project_name):
+        """Write database data to temp JSON files for Excel generator, then clean up after."""
         paths = get_project_paths(project_name)
-        if os.path.exists(paths["settings"]):
-            try:
-                with open(paths["settings"], 'r') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-    
-    def save_project_settings(project_name, settings):
-        paths = get_project_paths(project_name)
-        # Ensure directory exists
-        settings_dir = os.path.dirname(paths["settings"])
-        if settings_dir:
-            os.makedirs(settings_dir, exist_ok=True)
+        
+        # Write elevations to temp file
+        elevations = db.get_elevations(project_name)
+        with open(paths["elevations"], 'w') as f:
+            json.dump(elevations, f, indent=4)
+        
+        # Write materials to temp file
+        materials = db.get_materials(project_name)
+        with open(paths["materials"], 'w') as f:
+            json.dump(materials, f, indent=4)
+        
+        # Write settings to temp file
+        settings = db.get_settings(project_name)
         with open(paths["settings"], 'w') as f:
             json.dump(settings, f, indent=4)
-
-    def load_elevations(project_name):
-        paths = get_project_paths(project_name)
+        
+        return paths
+    
+    def cleanup_temp_files(paths):
+        """Delete temp JSON files after Excel generation."""
+        for key in ["elevations", "materials", "settings"]:
+            if key in paths and os.path.exists(paths[key]):
+                try:
+                    os.remove(paths[key])
+                except:
+                    pass
+    
+    def sync_from_temp_files(project_name, paths):
+        """Read any changes from temp files back to database, then clean up."""
+        # The Excel generator may have modified the elevations
         if os.path.exists(paths["elevations"]):
             try:
                 with open(paths["elevations"], 'r') as f:
-                    state["saved_elevations"] = json.load(f)
+                    elevations = json.load(f)
+                db.save_elevations(project_name, elevations)
             except:
-                state["saved_elevations"] = {}
-        else:
-            state["saved_elevations"] = {}
-            # Create files if missing
-            with open(paths["elevations"], 'w') as f: json.dump({}, f)
-            if not os.path.exists(paths["materials"]):
-                with open(paths["materials"], 'w') as f: json.dump({}, f)
+                pass
+        
+        # Clean up temp files
+        cleanup_temp_files(paths)
+    
+    def load_project_settings(project_name):
+        return db.get_settings(project_name)
+    
+    def save_project_settings(project_name, settings):
+        db.save_settings(project_name, settings)
 
-    def get_door_path(project_name, elev_type):
-        if not project_name or not elev_type: return None
-        p_clean = project_name.replace(" ", "_")
-        e_clean = elev_type.replace(" ", "_")
-        return os.path.join(PROJECTS_DIR, f"{p_clean}_{e_clean}_doors.json")
+    def load_elevations(project_name):
+        state["saved_elevations"] = db.get_elevations(project_name)
 
     def load_doors(elev_type):
-        path = get_door_path(state["current_project"], elev_type)
-        if path and os.path.exists(path):
-            try:
-                with open(path, 'r') as f:
-                    state["current_doors"] = json.load(f)
-            except:
-                state["current_doors"] = []
-        else:
+        if not state["current_project"] or not elev_type:
             state["current_doors"] = []
+            return
+        state["current_doors"] = db.get_doors(state["current_project"], elev_type)
 
     def save_doors(elev_type):
-        path = get_door_path(state["current_project"], elev_type)
-        if path:
-            with open(path, 'w') as f:
-                json.dump(state["current_doors"], f, indent=4)
+        if state["current_project"] and elev_type:
+            db.save_doors(state["current_project"], elev_type, state["current_doors"])
 
     # --- UI Building Blocks ---
     
@@ -378,17 +378,13 @@ def main(page: ft.Page):
                 "elevation_count": 0
             }
             try:
-                paths = get_project_paths(project_name)
-                elev_path = paths.get("elevations", "")
-                if os.path.exists(elev_path):
-                    with open(elev_path, 'r') as f:
-                        elevations = json.load(f)
-                    metadata["elevation_count"] = len(elevations)
-                    for elev_name, elev_data in elevations.items():
-                        if elev_data.get("system"):
-                            metadata["systems"].add(elev_data["system"])
-                        if elev_data.get("finish"):
-                            metadata["finishes"].add(elev_data["finish"])
+                elevations = db.get_elevations(project_name)
+                metadata["elevation_count"] = len(elevations)
+                for elev_name, elev_data in elevations.items():
+                    if elev_data.get("system"):
+                        metadata["systems"].add(elev_data["system"])
+                    if elev_data.get("finish"):
+                        metadata["finishes"].add(elev_data["finish"])
             except Exception:
                 pass
             return metadata
@@ -431,9 +427,6 @@ def main(page: ft.Page):
             """Show confirmation dialog before deleting project"""
             def do_delete(e):
                 if name in state["projects"]:
-                    state["projects"].remove(name)
-                    save_projects()
-                    
                     # Remove from ML training data if ML is available
                     removed_count = 0
                     if ML_AVAILABLE:
@@ -442,19 +435,11 @@ def main(page: ft.Page):
                         except Exception as ex:
                             print(f"[ML] Error removing project from training: {ex}")
                     
-                    # Clean up files
-                    try:
-                        paths = get_project_paths(name)
-                        for p in paths.values():
-                            if os.path.exists(p): os.remove(p)
-                        
-                        # Also remove any door files
-                        clean_name = name.replace(" ", "_").replace("/", "_")
-                        for f in os.listdir(PROJECTS_DIR):
-                            if f.startswith(clean_name) and "_doors.json" in f:
-                                os.remove(os.path.join(PROJECTS_DIR, f))
-                    except Exception as ex:
-                        print(f"Error cleaning up project files: {ex}")
+                    # Delete project and all its data from database
+                    db.delete_project(name)
+                    
+                    # Update local state
+                    state["projects"].remove(name)
 
                     # Close dialog first
                     dlg.open = False
@@ -1128,94 +1113,91 @@ def main(page: ft.Page):
             
             # Get all projects
             for project_name in state["projects"]:
-                paths = get_project_paths(project_name)
-                if os.path.exists(paths["elevations"]):
-                    try:
-                        with open(paths["elevations"], 'r') as f:
-                            elevations = json.load(f)
+                try:
+                    elevations = db.get_elevations(project_name)
+                    
+                    for elev_name, elev_data in elevations.items():
+                        prediction = predict_project_cost(elev_data)
                         
-                        for elev_name, elev_data in elevations.items():
-                            prediction = predict_project_cost(elev_data)
-                            
-                            # Check if already in training
-                            in_training = is_in_training(elev_data, project_name, elev_name)
-                            
-                            # Create unique key for this elevation
-                            elev_key = f"{project_name}-{elev_name}"
-                            
-                            # Create checkbox with data stored
-                            elevation_checkbox = ft.Checkbox(
-                                value=in_training,  # Pre-check if in training
-                                on_change=lambda e, key=elev_key, data=elev_data, proj=project_name, en=elev_name: on_checkbox_change(e, key, data, proj, en),
-                                tooltip="Select to add/remove from training data",
-                                data={'key': elev_key, 'data': elev_data, 'project': project_name, 'elev_name': elev_name}  # Store data in checkbox
+                        # Check if already in training
+                        in_training = is_in_training(elev_data, project_name, elev_name)
+                        
+                        # Create unique key for this elevation
+                        elev_key = f"{project_name}-{elev_name}"
+                        
+                        # Create checkbox with data stored
+                        elevation_checkbox = ft.Checkbox(
+                            value=in_training,  # Pre-check if in training
+                            on_change=lambda e, key=elev_key, data=elev_data, proj=project_name, en=elev_name: on_checkbox_change(e, key, data, proj, en),
+                            tooltip="Select to add/remove from training data",
+                            data={'key': elev_key, 'data': elev_data, 'project': project_name, 'elev_name': elev_name}  # Store data in checkbox
+                        )
+                        
+                        # Color based on confidence
+                        conf_color = "#4CAF50" if prediction['confidence'] >= 0.7 else "#FFC107" if prediction['confidence'] >= 0.5 else "#F44336"
+                        
+                        # Create button with reference for visual feedback (legacy, but keep for quick add)
+                        add_button = ft.IconButton(
+                            icon=ft.Icons.CHECK_CIRCLE if in_training else ft.Icons.ADD_CIRCLE_OUTLINE,
+                            icon_color="#4CAF50" if in_training else COLOR_ACCENT,
+                            tooltip="In training data" if in_training else "Add to training data",
+                            style=ft.ButtonStyle(
+                                shape=ft.CircleBorder(),
                             )
-                            
-                            # Color based on confidence
-                            conf_color = "#4CAF50" if prediction['confidence'] >= 0.7 else "#FFC107" if prediction['confidence'] >= 0.5 else "#F44336"
-                            
-                            # Create button with reference for visual feedback (legacy, but keep for quick add)
-                            add_button = ft.IconButton(
-                                icon=ft.Icons.CHECK_CIRCLE if in_training else ft.Icons.ADD_CIRCLE_OUTLINE,
-                                icon_color="#4CAF50" if in_training else COLOR_ACCENT,
-                                tooltip="In training data" if in_training else "Add to training data",
-                                style=ft.ButtonStyle(
-                                    shape=ft.CircleBorder(),
-                                )
-                            )
-                            
-                            # Create container with reference for styling
-                            project_container = ft.Container(
-                                content=ft.Row([
-                                    elevation_checkbox,
-                                    ft.Column([
-                                        ft.Row([
-                                            ft.Text(f"{project_name} - {elev_name}", size=13, weight="bold", color=COLOR_TEXT, expand=True),
-                                            ft.Container(
-                                                content=ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color="#4CAF50"),
-                                                visible=in_training,
-                                                tooltip="In training data"
-                                            )
-                                        ], spacing=5),
-                                        ft.Text(
-                                            f"{elev_data.get('opening_width_inches', 0):.0f}\" x {elev_data.get('opening_height_inches', 0):.0f}\" | "
-                                            f"{elev_data.get('bays_wide', 0)}x{elev_data.get('bays_tall', 0)} bays | "
-                                            f"{elev_data.get('finish', 'N/A')}",
-                                            size=11, color=COLOR_TEXT_DIM
+                        )
+                        
+                        # Create container with reference for styling
+                        project_container = ft.Container(
+                            content=ft.Row([
+                                elevation_checkbox,
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Text(f"{project_name} - {elev_name}", size=13, weight="bold", color=COLOR_TEXT, expand=True),
+                                        ft.Container(
+                                            content=ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color="#4CAF50"),
+                                            visible=in_training,
+                                            tooltip="In training data"
                                         )
-                                    ], expand=True, spacing=2),
-                                    ft.Column([
-                                        ft.Text(f"${prediction['predicted_cost']:,.2f}", size=14, weight="bold", color=conf_color),
-                                        ft.Text(f"{prediction['confidence']*100:.0f}% confidence", size=10, color=COLOR_TEXT_DIM)
-                                    ], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=2),
-                                    add_button
-                                ], spacing=10),
-                                padding=12,
-                                bgcolor="#E8F5E9" if in_training else COLOR_INPUT_BG,
-                                border=ft.Border(
-                                    ft.BorderSide(2, "#4CAF50"),
-                                    ft.BorderSide(2, "#4CAF50"),
-                                    ft.BorderSide(2, "#4CAF50"),
-                                    ft.BorderSide(2, "#4CAF50")
-                                ) if in_training else ft.Border(
-                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
-                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
-                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT),
-                                    ft.BorderSide(1, COLOR_ACCENT_LIGHT)
-                                ),
-                                border_radius=8,
-                                animate=ft.Animation(300, "easeOut")
-                            )
-                            
-                            # Set up click handler with references
-                            add_button.on_click = lambda e, ed=elev_data, pn=project_name, en=elev_name, btn=add_button, cont=project_container: add_single_to_training(ed, pn, en, btn, cont)
-                            
-                            # Track if in training in selected_elevations
-                            if in_training:
-                                selected_elevations[elev_key] = {'data': elev_data, 'project': project_name, 'elev_name': elev_name}
-                            
-                            ml_projects_list.controls.append(project_container)
-                    except Exception as ex:
+                                    ], spacing=5),
+                                    ft.Text(
+                                        f"{elev_data.get('opening_width_inches', 0):.0f}\" x {elev_data.get('opening_height_inches', 0):.0f}\" | "
+                                        f"{elev_data.get('bays_wide', 0)}x{elev_data.get('bays_tall', 0)} bays | "
+                                        f"{elev_data.get('finish', 'N/A')}",
+                                        size=11, color=COLOR_TEXT_DIM
+                                    )
+                                ], expand=True, spacing=2),
+                                ft.Column([
+                                    ft.Text(f"${prediction['predicted_cost']:,.2f}", size=14, weight="bold", color=conf_color),
+                                    ft.Text(f"{prediction['confidence']*100:.0f}% confidence", size=10, color=COLOR_TEXT_DIM)
+                                ], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=2),
+                                add_button
+                            ], spacing=10),
+                            padding=12,
+                            bgcolor="#E8F5E9" if in_training else COLOR_INPUT_BG,
+                            border=ft.Border(
+                                ft.BorderSide(2, "#4CAF50"),
+                                ft.BorderSide(2, "#4CAF50"),
+                                ft.BorderSide(2, "#4CAF50"),
+                                ft.BorderSide(2, "#4CAF50")
+                            ) if in_training else ft.Border(
+                                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                ft.BorderSide(1, COLOR_ACCENT_LIGHT),
+                                ft.BorderSide(1, COLOR_ACCENT_LIGHT)
+                            ),
+                            border_radius=8,
+                            animate=ft.Animation(300, "easeOut")
+                        )
+                        
+                        # Set up click handler with references
+                        add_button.on_click = lambda e, ed=elev_data, pn=project_name, en=elev_name, btn=add_button, cont=project_container: add_single_to_training(ed, pn, en, btn, cont)
+                        
+                        # Track if in training in selected_elevations
+                        if in_training:
+                            selected_elevations[elev_key] = {'data': elev_data, 'project': project_name, 'elev_name': elev_name}
+                        
+                        ml_projects_list.controls.append(project_container)
+                except Exception as ex:
                         print(f"[WARNING] Error loading project {project_name}: {ex}")
             
             # Show empty state or content
@@ -1315,17 +1297,14 @@ def main(page: ft.Page):
             """Add all projects to training data."""
             added = 0
             for project_name in state["projects"]:
-                paths = get_project_paths(project_name)
-                if os.path.exists(paths["elevations"]):
-                    try:
-                        with open(paths["elevations"], 'r') as f:
-                            elevations = json.load(f)
-                        
-                        for elev_name, elev_data in elevations.items():
-                            if add_project_to_training(elev_data, project_name, elev_name):
-                                added += 1
-                    except:
-                        pass
+                try:
+                    elevations = db.get_elevations(project_name)
+                    
+                    for elev_name, elev_data in elevations.items():
+                        if add_project_to_training(elev_data, project_name, elev_name):
+                            added += 1
+                except:
+                    pass
             
             if added > 0:
                 show_snack(f"Added {added} elevations to training data!", "green")
@@ -2225,22 +2204,23 @@ def main(page: ft.Page):
 
                 state["saved_elevations"][elev] = data
                 
-                # Save to file
-                paths = get_project_paths(state["current_project"])
+                # Save to database
                 try:
-                    with open(paths["elevations"], 'w') as f:
-                        json.dump(state["saved_elevations"], f, indent=4)
+                    db.save_elevations(state["current_project"], state["saved_elevations"])
                 except Exception as save_err:
                     error_msg = f"Failed to save elevations: {str(save_err)}"
                     print(f"[ERROR] {error_msg}")
                     show_snack(error_msg, "red")
                     raise
                 
-                # Reload elevations from file to ensure state is in sync
+                # Reload elevations to ensure state is in sync
                 load_elevations(state["current_project"])
                 
                 # Trigger Excel Gen (silent or with notif)
                 try:
+                    # Prepare temp files for Excel generator
+                    paths = prepare_temp_files_for_excel(state["current_project"])
+                    
                     generate_excel_report(
                         excel_path=paths["excel"], 
                         elevations_json_path=paths["elevations"], 
@@ -2263,6 +2243,10 @@ def main(page: ft.Page):
                         custom_bay_heights=data.get("custom_bay_heights", []),
                         summary_settings_path=paths["settings"]
                     )
+                    
+                    # Sync changes back to database and cleanup temp files
+                    sync_from_temp_files(state["current_project"], paths)
+                    
                     # Check if file was actually created
                     if os.path.exists(paths["excel"]):
                         show_snack(f"Report saved to: {paths['excel']}", "green")
@@ -2275,6 +2259,8 @@ def main(page: ft.Page):
                     print(f"[ERROR] {error_msg}")
                     show_snack(error_msg, "red")
                     traceback.print_exc()
+                    # Cleanup temp files even on error
+                    cleanup_temp_files(paths)
                 
                 # Update dropdown with fresh data
                 new_opts = sorted(state["saved_elevations"].keys())
@@ -2341,21 +2327,15 @@ def main(page: ft.Page):
                 state["saved_elevations"][new_name] = original_data.copy()
                 
                 # Copy door data if it exists
-                original_door_path = get_door_path(state["current_project"], elev_name)
-                if os.path.exists(original_door_path):
-                    try:
-                        with open(original_door_path, 'r') as f:
-                            door_data = json.load(f)
-                        new_door_path = get_door_path(state["current_project"], new_name)
-                        with open(new_door_path, 'w') as f:
-                            json.dump(door_data, f, indent=4)
-                    except Exception as ex:
-                        print(f"Error copying door data: {ex}")
+                try:
+                    door_data = db.get_doors(state["current_project"], elev_name)
+                    if door_data:
+                        db.save_doors(state["current_project"], new_name, door_data)
+                except Exception as ex:
+                    print(f"Error copying door data: {ex}")
                 
-                # Save elevations
-                paths = get_project_paths(state["current_project"])
-                with open(paths["elevations"], 'w') as f:
-                    json.dump(state["saved_elevations"], f, indent=4)
+                # Save elevations to database
+                db.save_elevations(state["current_project"], state["saved_elevations"])
                 
                 # Reload elevations
                 load_elevations(state["current_project"])
@@ -2401,34 +2381,30 @@ def main(page: ft.Page):
         def delete_elevation_action(e):
             elev = inputs["saved_elev"].value
             if elev and elev != "New Elevation" and elev in state["saved_elevations"]:
-                del state["saved_elevations"][elev]
-                # Save removal
-                paths = get_project_paths(state["current_project"])
-                with open(paths["elevations"], 'w') as f:
-                    json.dump(state["saved_elevations"], f, indent=4)
+                # Delete elevation and its doors from database
+                db.delete_elevation(state["current_project"], elev)
                 
-                # Reload elevations from file to ensure state is in sync
+                # Reload elevations to ensure state is in sync
                 load_elevations(state["current_project"])
-                
-                # Remove door file
-                dp = get_door_path(state["current_project"], elev)
-                if os.path.exists(dp): os.remove(dp)
                 
                 # Regenerate the report to reflect deletion
                 try:
+                    temp_paths = prepare_temp_files_for_excel(state["current_project"])
                     generate_excel_report(
-                        excel_path=paths["excel"], 
-                        elevations_json_path=paths["elevations"], 
-                        extra_materials_json_path=paths["materials"],
+                        excel_path=temp_paths["excel"], 
+                        elevations_json_path=temp_paths["elevations"], 
+                        extra_materials_json_path=temp_paths["materials"],
                         system_input="", finish_input="", elevation_type="", total_count=0,
                         bays_wide=0, bays_tall=0, opening_width=0, opening_height=0,
                         sqft_per_type=0, total_sqft=0, perimeter_ft=0, total_perimeter_ft=0,
                         calculated_outputs=[], doors=None, 
-                        delete_elevation_type=elev, # Explicitly pass deleted name for cleanup if needed inside generator
-                        summary_settings_path=paths["settings"]
+                        delete_elevation_type=elev,
+                        summary_settings_path=temp_paths["settings"]
                     )
+                    sync_from_temp_files(state["current_project"], temp_paths)
                 except Exception as ex:
                     print(f"Error regenerating report after delete: {ex}")
+                    cleanup_temp_files(temp_paths)
 
                 # Update UI with fresh data
                 new_opts = sorted(state["saved_elevations"].keys())
@@ -2453,6 +2429,7 @@ def main(page: ft.Page):
                 show_snack("Please select an elevation to delete", "red")
 
         def gen_full_report(e):
+            temp_paths = None
             try:
                 settings = {k: get_input_pct(k) for k in [
                     "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
@@ -2460,25 +2437,29 @@ def main(page: ft.Page):
                 ]}
                 save_project_settings(state["current_project"], settings)
                 
-                paths = get_project_paths(state["current_project"])
+                temp_paths = prepare_temp_files_for_excel(state["current_project"])
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 out = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
                 os.makedirs("reports", exist_ok=True)
                 
                 generate_excel_report(
-                    out, paths["elevations"], paths["materials"],
+                    out, temp_paths["elevations"], temp_paths["materials"],
                     "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
-                    summary_settings_path=paths["settings"]
+                    summary_settings_path=temp_paths["settings"]
                 )
+                sync_from_temp_files(state["current_project"], temp_paths)
                 show_snack(f"Full Report Generated: {out}", "green")
             except Exception as ex:
                 error_msg = f"Report Error: {ex}"
                 print(f"[ERROR] {error_msg}")
                 traceback.print_exc()
                 show_snack(error_msg, "red")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
         
         def export_to_pdf(e):
             """Export current project to PDF"""
+            temp_paths = None
             try:
                 if not REPORTLAB_AVAILABLE:
                     show_snack("PDF export requires reportlab. Install with: pip install reportlab", "red")
@@ -2507,11 +2488,13 @@ def main(page: ft.Page):
                     ]}
                     save_project_settings(state["current_project"], settings)
                     
+                    temp_paths = prepare_temp_files_for_excel(state["current_project"])
                     generate_excel_report(
-                        excel_path, paths["elevations"], paths["materials"],
+                        excel_path, temp_paths["elevations"], temp_paths["materials"],
                         "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
-                        summary_settings_path=paths["settings"]
+                        summary_settings_path=temp_paths["settings"]
                     )
+                    sync_from_temp_files(state["current_project"], temp_paths)
                 
                 # Export to PDF
                 pdf_path = export_project_to_pdf(
@@ -2535,49 +2518,46 @@ def main(page: ft.Page):
                 print(f"[ERROR] {error_msg}")
                 traceback.print_exc()
                 show_snack(error_msg, "red")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
         
         # --- UI Structure ---
         
         def save_summary_settings(e):
+            temp_paths = None
             try:
                 settings = {k: get_input_pct(k) for k in [
                     "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
                     "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
                 ]}
-                paths = get_project_paths(state["current_project"])
                 
-                # Save settings with explicit file flush
+                # Save settings to database
                 save_project_settings(state["current_project"], settings)
-                
-                # Verify file was written correctly
-                time.sleep(0.2)  # Small delay to ensure file is written
-                
-                if not os.path.exists(paths["settings"]):
-                    show_snack("Error: Settings file not created", "red")
-                    return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
                 
                 # Regenerate the Excel report to show the updated miscellaneous summary
-                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                if state["saved_elevations"]:
                     try:
                         # Generate to a temporary location first, then copy to main project file
-                        # This ensures the file is fully written before we try to use it
                         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
                         generate_excel_report(
                             temp_report_path, 
-                            paths["elevations"], 
-                            paths["materials"],
+                            temp_paths["elevations"], 
+                            temp_paths["materials"],
                             "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
                             None, False, None, None, mode="export_all",
-                            summary_settings_path=paths["settings"]
+                            summary_settings_path=temp_paths["settings"]
                         )
+                        sync_from_temp_files(state["current_project"], temp_paths)
                         
                         # Copy the generated report to the main project Excel file location
+                        paths = get_project_paths(state["current_project"])
                         if os.path.exists(temp_report_path):
                             # Ensure the directory exists
                             excel_dir = os.path.dirname(paths["excel"])
@@ -2599,9 +2579,10 @@ def main(page: ft.Page):
                     except Exception as report_err:
                         error_msg = f"Settings saved but report update failed: {str(report_err)}"
                         print(f"[ERROR] {error_msg}")
-                        import traceback
                         traceback.print_exc()
                         show_snack("Settings saved, but report update failed", "orange")
+                        if temp_paths:
+                            cleanup_temp_files(temp_paths)
                 else:
                     if has_percentages:
                         show_snack("Miscellaneous cost settings saved", "green")
@@ -2612,52 +2593,50 @@ def main(page: ft.Page):
             except Exception as ex:
                 error_msg = f"Error saving settings: {str(ex)}"
                 print(f"[ERROR] {error_msg}")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
                 traceback.print_exc()
                 show_snack(error_msg, "red")
         
         def save_markup_settings(e):
+            temp_paths = None
             try:
                 settings = {k: get_input_pct(k) for k in [
                     "profit_on_material_pct", "profit_on_waste_pct", "profit_on_glass_pct",
                     "profit_on_wages_pct", "planning_technical_pct", "commission_pct"
                 ]}
-                paths = get_project_paths(state["current_project"])
                 
                 # Load existing settings and merge with markups
                 existing_settings = load_project_settings(state["current_project"])
                 existing_settings.update(settings)
                 
-                # Save settings with explicit file flush
+                # Save settings to database
                 save_project_settings(state["current_project"], existing_settings)
-                
-                # Verify file was written correctly
-                time.sleep(0.2)  # Small delay to ensure file is written
-                
-                if not os.path.exists(paths["settings"]):
-                    show_snack("Error: Settings file not created", "red")
-                    return
                 
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
                 
                 # Regenerate the Excel report to show the updated markups
-                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                if state["saved_elevations"]:
                     try:
                         # Generate to a temporary location first, then copy to main project file
                         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
                         generate_excel_report(
                             temp_report_path, 
-                            paths["elevations"], 
-                            paths["materials"],
+                            temp_paths["elevations"], 
+                            temp_paths["materials"],
                             "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
                             None, False, None, None, mode="export_all",
-                            summary_settings_path=paths["settings"]
+                            summary_settings_path=temp_paths["settings"]
                         )
+                        sync_from_temp_files(state["current_project"], temp_paths)
                         
                         # Copy the generated report to the main project Excel file location
+                        paths = get_project_paths(state["current_project"])
                         if os.path.exists(temp_report_path):
                             # Ensure the directory exists
                             excel_dir = os.path.dirname(paths["excel"])
@@ -2679,9 +2658,10 @@ def main(page: ft.Page):
                     except Exception as report_err:
                         error_msg = f"Settings saved but report update failed: {str(report_err)}"
                         print(f"[ERROR] {error_msg}")
-                        import traceback
                         traceback.print_exc()
                         show_snack("Settings saved, but report update failed", "orange")
+                        if temp_paths:
+                            cleanup_temp_files(temp_paths)
                 else:
                     if has_percentages:
                         show_snack("Markup settings saved", "green")
@@ -2694,8 +2674,11 @@ def main(page: ft.Page):
                 print(f"[ERROR] {error_msg}")
                 traceback.print_exc()
                 show_snack(error_msg, "red")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
         
         def save_elevation_summary_settings(e):
+            temp_paths = None
             try:
                 settings = {
                     "show_elevation_names": inputs.get("show_elevation_names", ft.Checkbox()).value if inputs.get("show_elevation_names") else False,
@@ -2710,21 +2693,24 @@ def main(page: ft.Page):
                 save_project_settings(state["current_project"], existing_settings)
                 
                 # Regenerate report if elevations exist
-                paths = get_project_paths(state["current_project"])
-                if os.path.exists(paths["elevations"]) and state["saved_elevations"]:
+                if state["saved_elevations"]:
                     try:
                         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
                         generate_excel_report(
                             temp_report_path, 
-                            paths["elevations"], 
-                            paths["materials"],
+                            temp_paths["elevations"], 
+                            temp_paths["materials"],
                             "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 
                             None, False, None, None, mode="export_all",
-                            summary_settings_path=paths["settings"]
+                            summary_settings_path=temp_paths["settings"]
                         )
+                        sync_from_temp_files(state["current_project"], temp_paths)
+                        
+                        paths = get_project_paths(state["current_project"])
                         if os.path.exists(temp_report_path):
                             excel_dir = os.path.dirname(paths["excel"])
                             if excel_dir:
@@ -2737,6 +2723,8 @@ def main(page: ft.Page):
                         show_snack("Elevation summary settings saved and report updated", "green")
                     except Exception as report_err:
                         show_snack("Settings saved, but report update failed", "orange")
+                        if temp_paths:
+                            cleanup_temp_files(temp_paths)
                 else:
                     show_snack("Elevation summary settings saved", "green")
                 
@@ -2746,6 +2734,8 @@ def main(page: ft.Page):
                 print(f"[ERROR] {error_msg}")
                 traceback.print_exc()
                 show_snack(error_msg, "red")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
         
         # Combined Summary Section (Miscellaneous Cost + Markups)
         # Load saved settings first

@@ -5,6 +5,7 @@ flet
 reportlab
 scikit-learn
 numpy
+supabase
 
 
 # To compile to EXE:
