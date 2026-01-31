@@ -1,5 +1,5 @@
 import flet as ft
-import json, os, sys, datetime, base64, io, time, traceback, shutil
+import json, os, re, sys, datetime, base64, io, time, traceback, shutil
 
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
@@ -276,12 +276,13 @@ def main(page: ft.Page):
             "settings": f"{base}_Settings.json"
         }
     
-    def prepare_temp_files_for_excel(project_name):
-        """Write database data to temp JSON files for Excel generator, then clean up after."""
+    def prepare_temp_files_for_excel(project_name, elevations_override=None):
+        """Write database data to temp JSON files for Excel generator. Use elevations_override when provided (e.g. fresh save) to avoid DB read lag."""
         paths = get_project_paths(project_name)
         
-        # Write elevations to temp file
-        elevations = db.get_elevations(project_name)
+        # Write elevations to temp file - prefer in-memory data when provided to ensure latest state
+        elevations = elevations_override if elevations_override is not None else db.get_elevations(project_name)
+        os.makedirs(os.path.dirname(paths["elevations"]) or ".", exist_ok=True)
         with open(paths["elevations"], 'w') as f:
             json.dump(elevations, f, indent=4)
         
@@ -1593,23 +1594,39 @@ def main(page: ft.Page):
 
     def build_workspace_view():
         # --- Event Handlers ---
+        def update_door_only_visibility(e):
+            """When door_only checked: hide system, finish, quantity, dimensions, bays. Still requires elevation name."""
+            door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+            if inputs.get("door_only_rest_container"):
+                inputs["door_only_rest_container"].visible = not door_only
+            if inputs.get("bay_diagram_container"):
+                inputs["bay_diagram_container"].visible = not door_only
+            if not door_only:
+                update_bay_visibility(e)
+            if page.views:
+                page.update()
+
         def update_bay_visibility(e):
             # Guard against unmounted inputs
             if not inputs.get("bays_wide") or not inputs["bays_wide"].parent:
                 return
 
+            door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
             is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
-            inputs["bays_wide"].parent.visible = is_yes45
-            inputs["bays_tall"].parent.visible = is_yes45
-            if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45
-            if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45
+            show_bays = is_yes45 and not door_only
+            if inputs.get("bay_config_container"):
+                inputs["bay_config_container"].visible = show_bays
+            inputs["bays_wide"].parent.visible = show_bays
+            inputs["bays_tall"].parent.visible = show_bays
+            if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = show_bays
+            if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = show_bays
             
-            if is_yes45:
+            if is_yes45 and not door_only:
                 update_dynamic_bay_inputs(None)
                 # Auto-refresh bay diagram after updating inputs
                 auto_refresh_bay_diagram()
             else:
-                # Hide bay diagram if not YES 45TU
+                # Hide bay diagram if not YES 45TU or door-only
                 if inputs.get("bay_diagram_container"):
                     inputs["bay_diagram_container"].visible = False
             
@@ -1969,6 +1986,9 @@ def main(page: ft.Page):
                 inputs["total_cost_per_elev_checkbox"].value = data.get("show_total_cost_per_elevation", False)
             if inputs.get("discounted_cost_per_elev_checkbox"):
                 inputs["discounted_cost_per_elev_checkbox"].value = data.get("show_discounted_cost_per_elevation", False)
+            if inputs.get("door_only_checkbox"):
+                inputs["door_only_checkbox"].value = data.get("door_only", False)
+                update_door_only_visibility(None)  # Hide rest of form when door_only
             update_qty_per_elev_visibility(None)  # Update visibility based on count
             
             # Load legacy CSV if exists, else populate dynamic inputs?
@@ -2026,6 +2046,9 @@ def main(page: ft.Page):
                 inputs["discounted_cost_per_elev_checkbox"].value = False
             if inputs.get("cost_per_elev_container"):
                 inputs["cost_per_elev_container"].visible = False
+            if inputs.get("door_only_checkbox"):
+                inputs["door_only_checkbox"].value = False
+            update_door_only_visibility(None)  # Show full form again
             
             # Hide bay diagram preview
             if inputs.get("bay_diagram_container"):
@@ -2165,17 +2188,35 @@ def main(page: ft.Page):
                 elev = inputs["type"].value.strip() if inputs["type"].value else ""
                 if not elev: raise ValueError("Elevation Name Required")
                 
-                if not inputs["count"].value:
-                    raise ValueError("Quantity is required")
-                total = int(inputs["count"].value)
-                
-                if not inputs["width"].value:
-                    raise ValueError("Opening Width is required")
-                w = float(inputs["width"].value)
-                
-                if not inputs["height"].value:
-                    raise ValueError("Opening Height is required")
-                h = float(inputs["height"].value)
+                door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+
+                if door_only:
+                    if not state["current_doors"]:
+                        raise ValueError("Door only: At least one door is required")
+                    total = 1
+                    finish = state["finish_options"][0] if state["finish_options"] else "Clear"
+                    system = "Other"
+                    # Derive w, h from first door size (e.g. "3' X 7'" -> 36, 84)
+                    first_door = state["current_doors"][0]
+                    size_str = first_door.get("size", "3' X 7'")
+                    m = re.search(r"(\d+)'\s*[xX]\s*(\d+)'", size_str)
+                    if m:
+                        w = float(m.group(1)) * 12
+                        h = float(m.group(2)) * 12
+                    else:
+                        w, h = 36.0, 84.0
+                else:
+                    if not inputs["count"].value:
+                        raise ValueError("Quantity is required")
+                    total = int(inputs["count"].value)
+                    if not inputs["width"].value:
+                        raise ValueError("Opening Width is required")
+                    w = float(inputs["width"].value)
+                    if not inputs["height"].value:
+                        raise ValueError("Opening Height is required")
+                    h = float(inputs["height"].value)
+                    finish = inputs["finish"].value
+                    system = inputs["system"].value
                 
                 # Simple calculations for preview/saving
                 sqft = calculate_rectangle_area(w/12, h/12)
@@ -2185,10 +2226,10 @@ def main(page: ft.Page):
                 show_qty_per_elev = inputs.get("qty_per_elev_checkbox", ft.Checkbox()).value if inputs.get("qty_per_elev_checkbox") else False
                 show_total_cost_per_elev = inputs.get("total_cost_per_elev_checkbox", ft.Checkbox()).value if inputs.get("total_cost_per_elev_checkbox") else False
                 show_discounted_cost_per_elev = inputs.get("discounted_cost_per_elev_checkbox", ft.Checkbox()).value if inputs.get("discounted_cost_per_elev_checkbox") else False
-                
+
                 data = {
-                    "system": inputs["system"].value,
-                    "finish": inputs["finish"].value,
+                    "system": system,
+                    "finish": finish,
                     "total_count": total,
                     "opening_width_inches": w,
                     "opening_height_inches": h,
@@ -2198,10 +2239,19 @@ def main(page: ft.Page):
                     "total_perimeter_ft": perim * total,
                     "show_qty_per_elevation": show_qty_per_elev,
                     "show_total_cost_per_elevation": show_total_cost_per_elev,
-                    "show_discounted_cost_per_elevation": show_discounted_cost_per_elev
+                    "show_discounted_cost_per_elevation": show_discounted_cost_per_elev,
+                    "door_only": door_only
                 }
 
-                if data["system"] == "YES 45TU FRONT SET(OG)":
+                if door_only:
+                    if not state["current_doors"]:
+                        raise ValueError("Door only: At least one door is required")
+                    data["bays_wide"] = 0
+                    data["bays_tall"] = 0
+                    data["custom_bay_widths"] = []
+                    data["custom_bay_heights"] = []
+                    data["calculated_outputs"] = []
+                elif data["system"] == "YES 45TU FRONT SET(OG)":
                     if not inputs["bays_wide"].value:
                         raise ValueError("Bays Wide is required for YES 45TU FRONT SET(OG)")
                     if not inputs["bays_tall"].value:
@@ -2328,8 +2378,8 @@ def main(page: ft.Page):
                 
                 # Trigger Excel Gen (silent or with notif)
                 try:
-                    # Prepare temp files for Excel generator
-                    paths = prepare_temp_files_for_excel(state["current_project"])
+                    # Use in-memory elevations to ensure door-only and all data is included (avoid DB read lag)
+                    paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state["saved_elevations"])
                     
                     generate_excel_report(
                         excel_path=paths["excel"], 
@@ -2342,7 +2392,7 @@ def main(page: ft.Page):
                         bays_wide=data.get("bays_wide", 0), 
                         bays_tall=data.get("bays_tall", 0),
                         opening_width=w, 
-                        opening_height=h, 
+                        opening_height=h,
                         sqft_per_type=sqft, 
                         total_sqft=data["total_sqft"], 
                         perimeter_ft=perim, 
@@ -2351,7 +2401,8 @@ def main(page: ft.Page):
                         doors=state["current_doors"],
                         custom_bay_widths=data.get("custom_bay_widths", []), 
                         custom_bay_heights=data.get("custom_bay_heights", []),
-                        summary_settings_path=paths["settings"]
+                        summary_settings_path=paths["settings"],
+                        door_only=data.get("door_only", False)
                     )
                     
                     # Sync changes back to database and cleanup temp files
@@ -3418,57 +3469,68 @@ def main(page: ft.Page):
         
         form_col = ft.Column([
             ft.Text("ELEVATION DETAILS", size=14, weight="bold", color=COLOR_ACCENT),
-            ft.Row([create_dropdown("System", "system", state["system_options"], on_change=update_bay_visibility), 
-                   create_dropdown("Finish", "finish", state["finish_options"])]),
-            ft.Row([create_input_field("Elevation Type (Name)", "type"), create_input_field("Quantity", "count", on_change=update_qty_per_elev_visibility)]),
-            
-            # Quantity Per Elevation Toggle (shown only when count > 1)
-            assign_ref("qty_per_elev_container", ft.Container(
-                content=ft.Row([qty_per_elev_checkbox]),
-                visible=False,
-                margin=ft.margin.only(top=5, bottom=5)
+            # Door only at top - when checked, hides rest of form (still requires elevation name)
+            assign_ref("door_only_checkbox", ft.Checkbox(
+                label="Door only (no bays) — still requires elevation name",
+                value=False,
+                fill_color=COLOR_ACCENT,
+                on_change=update_door_only_visibility
             )),
-            
-            # Cost Per Elevation Toggles (shown only when count > 1)
-            assign_ref("cost_per_elev_container", ft.Container(
-                content=ft.Column([
-                    total_cost_per_elev_checkbox,
-                    discounted_cost_per_elev_checkbox
-                ], spacing=5),
-                visible=False,
-                margin=ft.margin.only(top=5, bottom=5)
-            )),
-            
-            # Dimensions
-            ft.Container(content=ft.Column([
-                ft.Text("DIMENSIONS", size=12, weight="bold", color=COLOR_TEXT_DIM),
-                ft.Row([
-                    create_input_field("Opening Width (\")", "width", on_change=lambda e: auto_refresh_bay_diagram()), 
-                    create_input_field("Opening Height (\")", "height", on_change=lambda e: auto_refresh_bay_diagram())
-                ]),
-            ]), margin=ft.margin.only(top=10)),
+            ft.Row([create_input_field("Elevation Type (Name)", "type")]),
 
-            # Bays (Hidden by default if not Yes45)
-            ft.Container(content=ft.Column([
-                ft.Text("BAY CONFIGURATION", size=12, weight="bold", color=COLOR_TEXT_DIM),
-                ft.Row([
-                    create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram())), 
-                    create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram()))
-                ]),
-            ]), margin=ft.margin.only(top=10)),
-            
-            # Containers for dynamic inputs
-            assign_ref("custom_w_container", ft.Container(
-                content=inputs.setdefault("custom_w_col", ft.Column([], spacing=10)),
-                visible=False
-            )),
-            assign_ref("custom_h_container", ft.Container(
-                content=inputs.setdefault("custom_h_col", ft.Column([], spacing=10)),
-                visible=False
-            )),
-            
+            # Rest of form - hidden when door_only
+            assign_ref("door_only_rest_container", ft.Column([
+                ft.Row([create_dropdown("System", "system", state["system_options"], on_change=update_bay_visibility), 
+                       create_dropdown("Finish", "finish", state["finish_options"])]),
+                ft.Row([create_input_field("Quantity", "count", on_change=update_qty_per_elev_visibility)]),
+                
+                # Quantity Per Elevation Toggle (shown only when count > 1)
+                assign_ref("qty_per_elev_container", ft.Container(
+                    content=ft.Row([qty_per_elev_checkbox]),
+                    visible=False,
+                    margin=ft.margin.only(top=5, bottom=5)
+                )),
+                
+                # Cost Per Elevation Toggles (shown only when count > 1)
+                assign_ref("cost_per_elev_container", ft.Container(
+                    content=ft.Column([
+                        total_cost_per_elev_checkbox,
+                        discounted_cost_per_elev_checkbox
+                    ], spacing=5),
+                    visible=False,
+                    margin=ft.margin.only(top=5, bottom=5)
+                )),
+                
+                # Dimensions
+                ft.Container(content=ft.Column([
+                    ft.Text("DIMENSIONS", size=12, weight="bold", color=COLOR_TEXT_DIM),
+                    ft.Row([
+                        create_input_field("Opening Width (\")", "width", on_change=lambda e: auto_refresh_bay_diagram()), 
+                        create_input_field("Opening Height (\")", "height", on_change=lambda e: auto_refresh_bay_diagram())
+                    ]),
+                ]), margin=ft.margin.only(top=10)),
 
-            # Door Manager (below bay configurations)
+                # Bays (Hidden by default if not Yes45 or door-only)
+                assign_ref("bay_config_container", ft.Container(content=ft.Column([
+                    ft.Text("BAY CONFIGURATION", size=12, weight="bold", color=COLOR_TEXT_DIM),
+                    ft.Row([
+                        create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram())), 
+                        create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram()))
+                    ]),
+                ]), margin=ft.margin.only(top=10))),
+                
+                # Containers for dynamic inputs
+                assign_ref("custom_w_container", ft.Container(
+                    content=inputs.setdefault("custom_w_col", ft.Column([], spacing=10)),
+                    visible=False
+                )),
+                assign_ref("custom_h_container", ft.Container(
+                    content=inputs.setdefault("custom_h_col", ft.Column([], spacing=10)),
+                    visible=False
+                )),
+            ], spacing=0)),
+
+            # Door Manager (always visible)
             door_col,
             
             # Create/Update/Delete buttons (below door manager, very close)
@@ -3572,15 +3634,19 @@ def main(page: ft.Page):
         # Instead, we just set the initial visibility state of the controls.
         
         is_yes45_init = inputs["system"].value == "YES 45TU FRONT SET(OG)"
+        door_only_init = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+        show_bays_init = is_yes45_init and not door_only_init
         
         # Safely set initial visibility on containers if they exist
+        if inputs.get("bay_config_container"):
+            inputs["bay_config_container"].visible = show_bays_init
         if inputs.get("bays_wide") and inputs["bays_wide"].parent:
-             inputs["bays_wide"].parent.visible = is_yes45_init
+             inputs["bays_wide"].parent.visible = show_bays_init
         if inputs.get("bays_tall") and inputs["bays_tall"].parent:
-             inputs["bays_tall"].parent.visible = is_yes45_init
+             inputs["bays_tall"].parent.visible = show_bays_init
              
-        if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = is_yes45_init
-        if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = is_yes45_init
+        if inputs.get("custom_w_container"): inputs["custom_w_container"].visible = show_bays_init
+        if inputs.get("custom_h_container"): inputs["custom_h_container"].visible = show_bays_init
         # Bay diagram visibility will be handled by auto_refresh_bay_diagram
         
         if is_yes45_init:

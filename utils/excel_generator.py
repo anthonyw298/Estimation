@@ -20,22 +20,28 @@ def _get_multiplier(running_grand_total):
     return 0.614 if running_grand_total < 50000 else 0.572
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
-    """Autofits columns in the worksheet."""
+    """Autofits columns in the worksheet. Ensures minimum width for currency columns to prevent ######## display."""
     end_row = end_row if end_row is not None else ws.max_row
     for col_idx in range(start_col, end_col + 1):
         col_letter = get_column_letter(col_idx)
         max_len = 0
+        has_numbers = False
         for r in range(start_row, end_row + 1):
-            cell_value = ws.cell(row=r, column=col_idx).value
+            cell = ws.cell(row=r, column=col_idx)
+            cell_value = cell.value
             if cell_value is not None:
                 max_len = max(max_len, len(str(cell_value)))
+                if isinstance(cell_value, (int, float)) or (cell.number_format and '$' in str(cell.number_format).upper()):
+                    has_numbers = True
+        # Currency/number columns need min width 14 to prevent ######## in Excel
+        if has_numbers:
+            max_len = max(max_len, 12)
         current_width_obj = ws.column_dimensions[col_letter]
         current_width = current_width_obj.width if current_width_obj.width is not None else 0.0
-        if col_idx == 5: # Column E (Description)
-            if max_len > current_width:
-                ws.column_dimensions[col_letter].width = max_len
-        else: # For all other columns
-            ws.column_dimensions[col_letter].width = max_len + 2
+        if col_idx == 5:  # Column E (Description)
+            ws.column_dimensions[col_letter].width = max(max_len, current_width)
+        else:
+            ws.column_dimensions[col_letter].width = max(max_len + 2, 14 if has_numbers else 0)
 
 def _clean_trailing_blank_rows(ws, start_row):
     """Deletes blank rows from the worksheet starting from a given row."""
@@ -1372,10 +1378,12 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=overview_start_row, column=overview_start_col + 2).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     ws.cell(row=overview_start_row, column=overview_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     
-    # List Price row
+    # List Price row (ensure values are numeric for display)
+    grand_original_safe = grand_original_total if grand_original_total is not None else 0.0
+    final_discounted_safe = final_discounted_total if final_discounted_total is not None else 0.0
     ws.cell(row=overview_start_row+1, column=overview_start_col, value="List Price Total:")
     ws.cell(row=overview_start_row+1, column=overview_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+1, column=overview_start_col + 2, value=grand_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row+1, column=overview_start_col + 2, value=grand_original_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=overview_start_row+1, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
     ws.cell(row=overview_start_row+1, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
     
@@ -1383,7 +1391,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=overview_start_row+2, column=overview_start_col, value="Discounted Total:")
     ws.cell(row=overview_start_row+2, column=overview_start_col).font = Font(bold=True)
     ws.cell(row=overview_start_row+2, column=overview_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+2, column=overview_start_col + 2, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row+2, column=overview_start_col + 2, value=final_discounted_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=overview_start_row+2, column=overview_start_col + 2).font = Font(bold=True)
     ws.cell(row=overview_start_row+2, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
     ws.cell(row=overview_start_row+2, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
@@ -1404,6 +1412,10 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=overview_start_row+4, column=overview_start_col + 2).border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
     
     overview_end_row = overview_start_row + 4
+    
+    # Ensure value column is wide enough for currency (prevents "########" display)
+    value_col_letter = get_column_letter(overview_start_col + 2)
+    ws.column_dimensions[value_col_letter].width = max(ws.column_dimensions[value_col_letter].width or 0, 14)
     
     # PIE CHART will be added after miscellaneous and markup totals are calculated
 
@@ -1872,7 +1884,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # ============================================================================
     
     final_total_row = markup_end_row + 2
-    final_total_amount = final_discounted_total + summary_total + markup_total
+    final_total_amount = final_discounted_safe + summary_total + markup_total
     
     # Header row with dark background (shifted right if elevation summary exists)
     ws.cell(row=final_total_row, column=category_start_col, value="PROJECT TOTAL").font = Font(bold=True, size=11, color="FFFFFF")
@@ -1892,7 +1904,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=final_total_row, column=category_start_col).fill = light_fill
     ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
     ws.cell(row=final_total_row, column=category_start_col + 1).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_discounted_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
     ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
     ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
@@ -1925,6 +1937,10 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
     ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
     ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+    
+    # Ensure value column is wide enough for currency (prevents "########" display)
+    total_value_col = get_column_letter(category_start_col + 2)
+    ws.column_dimensions[total_value_col].width = max(ws.column_dimensions[total_value_col].width or 0, 14)
     
     # ============================================================================
     # PIE CHART - Cost Distribution (placed at specific location)
@@ -1980,7 +1996,8 @@ def generate_excel_report(
     bays_wide, bays_tall, opening_width, opening_height,
     sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
     calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None, summary_settings_path=None
+    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None, summary_settings_path=None,
+    door_only=False
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs."""
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 9
@@ -2075,7 +2092,7 @@ def generate_excel_report(
             old_show_discounted_cost_per_elev = current_saved_elevations[elevation_type].get('show_discounted_cost_per_elevation', False)
 
         current_saved_elevations[elevation_type] = {
-            "system": system_input, "finish": finish_input, "total_count": total_count,
+            "system": "Door Only" if door_only else system_input, "finish": finish_input, "total_count": total_count,
             "bays_wide": bays_wide, "bays_tall": bays_tall, "opening_width_inches": opening_width,
             "opening_height_inches": opening_height, "sqft_per_type": sqft_per_type, "total_sqft": total_sqft,
             "perimeter_ft": perimeter_ft, "total_perimeter_ft": total_perimeter_ft,
@@ -2085,7 +2102,8 @@ def generate_excel_report(
             "custom_bay_heights": custom_bay_heights or [],
             "show_qty_per_elevation": old_show_qty_per_elev,
             "show_total_cost_per_elevation": old_show_total_cost_per_elev,
-            "show_discounted_cost_per_elevation": old_show_discounted_cost_per_elev
+            "show_discounted_cost_per_elevation": old_show_discounted_cost_per_elev,
+            "door_only": door_only
         }
 
         try:
@@ -2144,21 +2162,29 @@ def generate_excel_report(
             custom_bay_widths_str = ", ".join([f"{w:.2f} in" for w in elev_data.get('custom_bay_widths', [])]) if elev_data.get('custom_bay_widths') else "Equal distribution"
             custom_bay_heights_str = ", ".join([f"{h:.2f} in" for h in elev_data.get('custom_bay_heights', [])]) if elev_data.get('custom_bay_heights') else "Equal distribution"
 
+            # Safe formatting for potentially missing values (e.g. door-only elevations)
+            _ow = elev_data.get('opening_width_inches')
+            _oh = elev_data.get('opening_height_inches')
+            _sqft = elev_data.get('sqft_per_type')
+            _tsqft = elev_data.get('total_sqft')
+            _perim = elev_data.get('perimeter_ft')
+            _tperim = elev_data.get('total_perimeter_ft')
+            system_display = "Door Only" if elev_data.get("door_only") else (elev_data.get("system") or "N/A")
             input_data = [
-                ("System Input", elev_data.get("system")),
-                ("Finish", elev_data.get("finish")),
+                ("System Input", system_display),
+                ("Finish", elev_data.get("finish") or "N/A"),
                 ("Elevation Type", elev_name),
                 ("Total Count", elev_data.get("total_count")),
                 ("Bays Wide", elev_data.get("bays_wide")),
                 ("Bays Tall", elev_data.get("bays_tall")),
                 ("Custom Bay Widths", custom_bay_widths_str),
                 ("Custom Bay Heights", custom_bay_heights_str),
-                ("Opening Width", f"{elev_data.get('opening_width_inches'):.2f} in"),
-                ("Opening Height", f"{elev_data.get('opening_height_inches'):.2f} in"),
-                ("Sq Ft per Type", f"{elev_data.get('sqft_per_type'):.2f} sqft"),
-                ("Total Sq Ft", f"{elev_data.get('total_sqft'):.2f} sqft"),
-                ("Perimeter Ft", f"{elev_data.get('perimeter_ft'):.2f} ft"),
-                ("Total Perimeter Ft", f"{elev_data.get('total_perimeter_ft'):.2f} ft"),
+                ("Opening Width", f"{_ow:.2f} in" if _ow is not None else "N/A"),
+                ("Opening Height", f"{_oh:.2f} in" if _oh is not None else "N/A"),
+                ("Sq Ft per Type", f"{_sqft:.2f} sqft" if _sqft is not None else "N/A"),
+                ("Total Sq Ft", f"{_tsqft:.2f} sqft" if _tsqft is not None else "N/A"),
+                ("Perimeter Ft", f"{_perim:.2f} ft" if _perim is not None else "N/A"),
+                ("Total Perimeter Ft", f"{_tperim:.2f} ft" if _tperim is not None else "N/A"),
                 ("Doors", _format_door_summary(elev_data.get("calculated_outputs", [])))
             ]
 
@@ -2324,7 +2350,7 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            profile_totals_row = next_row_after_profiles - 1  # Totals row is one before next_row
+            profile_totals_row = (next_row_after_profiles - 1) if profiles_for_section else None
 
             next_row_after_accessories, impacts_a, accessory_totals = _write_output_section(
                 ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish,
@@ -2333,7 +2359,7 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            accessory_totals_row = next_row_after_accessories - 1
+            accessory_totals_row = (next_row_after_accessories - 1) if accessories_for_section else None
 
             next_row_after_gaskets, impacts_g, gasket_totals = _write_output_section(
                 ws, "GASKETS", gaskets_for_section, COL_E, current_elevation_finish,
@@ -2342,7 +2368,7 @@ def generate_excel_report(
                 show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
                 show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
             )
-            gasket_totals_row = next_row_after_gaskets - 1
+            gasket_totals_row = (next_row_after_gaskets - 1) if gaskets_for_section else None
 
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
             newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
@@ -2479,25 +2505,25 @@ def generate_excel_report(
                 cell = ws.cell(row=row, column=col)
                 return cell.value if cell.value is not None else 0.0
             
-            # Profile Costs - read from column L (per elevation) and column K (total)
-            profile_cost_per_elev = read_cell_value(profile_totals_row, col_l) if col_l else read_cell_value(profile_totals_row, col_k) / total_count
-            profile_total_cost = read_cell_value(profile_totals_row, col_k)
+            # Profile Costs - read from column L (per elevation) and column K (total). Use 0 for door-only (no profiles).
+            profile_cost_per_elev = read_cell_value(profile_totals_row, col_l) if (profile_totals_row and col_l) else (read_cell_value(profile_totals_row, col_k) / total_count if profile_totals_row else 0.0)
+            profile_total_cost = read_cell_value(profile_totals_row, col_k) if profile_totals_row else 0.0
             ws.cell(row=cost_summary_row, column=header_col, value="PROFILE COSTS")
             ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=profile_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=profile_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
-            # Accessory Costs
-            accessory_cost_per_elev = read_cell_value(accessory_totals_row, col_l) if col_l else read_cell_value(accessory_totals_row, col_k) / total_count
-            accessory_total_cost = read_cell_value(accessory_totals_row, col_k)
+            # Accessory Costs - Use 0 for door-only (no accessories).
+            accessory_cost_per_elev = read_cell_value(accessory_totals_row, col_l) if (accessory_totals_row and col_l) else (read_cell_value(accessory_totals_row, col_k) / total_count if accessory_totals_row else 0.0)
+            accessory_total_cost = read_cell_value(accessory_totals_row, col_k) if accessory_totals_row else 0.0
             ws.cell(row=cost_summary_row, column=header_col, value="ACCESSORY COSTS")
             ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=accessory_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
             
-            # Gasket Costs
-            gasket_cost_per_elev = read_cell_value(gasket_totals_row, col_l) if col_l else read_cell_value(gasket_totals_row, col_k) / total_count
-            gasket_total_cost = read_cell_value(gasket_totals_row, col_k)
+            # Gasket Costs - Use 0 for door-only (no gaskets).
+            gasket_cost_per_elev = read_cell_value(gasket_totals_row, col_l) if (gasket_totals_row and col_l) else (read_cell_value(gasket_totals_row, col_k) / total_count if gasket_totals_row else 0.0)
+            gasket_total_cost = read_cell_value(gasket_totals_row, col_k) if gasket_totals_row else 0.0
             ws.cell(row=cost_summary_row, column=header_col, value="GASKET COSTS")
             ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=gasket_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=gasket_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -2507,8 +2533,8 @@ def generate_excel_report(
             door_cost_per_elev = read_cell_value(door_totals_row, col_l) if (door_totals_row and col_l) else (read_cell_value(door_totals_row, col_k) / total_count if door_totals_row else 0.0)
             door_total_cost = read_cell_value(door_totals_row, col_k) if door_totals_row else 0.0
             
-            # Only display door costs if there are actually doors (total cost > 0)
-            if door_totals_row and door_total_cost > 0:
+            # Display door costs when we have doors (door-only or elevation with doors)
+            if door_totals_row:
                 ws.cell(row=cost_summary_row, column=header_col, value="DOOR COSTS")
                 ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=door_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=door_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
@@ -2540,9 +2566,9 @@ def generate_excel_report(
             cost_summary_row += 1
             
             # Total Costs - sum from column L (per elevation) and column K (total)
-            # Use door costs only if doors exist (door_totals_row is not None and door_total_cost > 0)
-            door_cost_for_total = door_cost_per_elev if (door_totals_row and door_total_cost > 0) else 0.0
-            door_total_for_total = door_total_cost if (door_totals_row and door_total_cost > 0) else 0.0
+            # Use door costs when doors exist (door-only or elevation with doors)
+            door_cost_for_total = door_cost_per_elev if door_totals_row else 0.0
+            door_total_for_total = door_total_cost if door_totals_row else 0.0
             
             total_cost_per_elev = (profile_cost_per_elev + accessory_cost_per_elev + gasket_cost_per_elev + 
                                    door_cost_for_total + glass_cost_per_elev + fabrication_cost_per_elev)
