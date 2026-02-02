@@ -16,14 +16,8 @@ The Estimation Script allows users to:
 
 ---
 
-##  Installation
+##  To Run
 
-```bash
-git clone https://github.com/anthonyw298/Estimation.git
-cd Estimation
-
-python -m venv venv           # optional
-venv\Scripts\activate      # Windows
-
-pip install -r requirements.txt
+cd /Users/anthonywan/Estimation
+source venv/bin/activate
 python main.py
