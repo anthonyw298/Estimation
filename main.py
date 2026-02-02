@@ -2166,7 +2166,7 @@ def main(page: ft.Page):
         def save_elevation_action(e):
             is_update = inputs["save_btn"].text == "UPDATE ELEVATION"
             try:
-                # Auto-save miscellaneous cost settings before generating report
+                # Auto-save addition cost settings before generating report
                 existing_settings = load_project_settings(state["current_project"])
                 misc_settings = {
                     "overhead_materials_pct": get_input_pct("overhead_materials_pct"),
@@ -2692,7 +2692,7 @@ def main(page: ft.Page):
                     "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
                 ]}
                 
-                # Load existing settings and merge with miscellaneous settings to preserve markups
+                # Load existing settings and merge with addition cost settings to preserve markups
                 existing_settings = load_project_settings(state["current_project"])
                 existing_settings.update(settings)
                 
@@ -2702,7 +2702,7 @@ def main(page: ft.Page):
                 # Check if any percentages are > 0
                 has_percentages = any(pct > 0 for pct in settings.values())
                 
-                # Regenerate the Excel report to show the updated miscellaneous summary
+                # Regenerate the Excel report to show the updated addition cost summary
                 if state["saved_elevations"]:
                     try:
                         # Generate to a temporary location first, then copy to main project file
@@ -2738,7 +2738,7 @@ def main(page: ft.Page):
                             except:
                                 pass
                         if has_percentages:
-                            show_snack("Miscellaneous cost settings saved and report updated. Please close and reopen Excel to see changes.", "green")
+                            show_snack("Additional cost settings saved and report updated. Please close and reopen Excel to see changes.", "green")
                         else:
                             show_snack("Settings saved (all percentages are 0%)", "orange")
                     except Exception as report_err:
@@ -2750,7 +2750,7 @@ def main(page: ft.Page):
                             cleanup_temp_files(temp_paths)
                 else:
                     if has_percentages:
-                        show_snack("Miscellaneous cost settings saved", "green")
+                        show_snack("Additional cost settings saved", "green")
                     else:
                         show_snack("Settings saved (all percentages are 0%)", "orange")
                 
@@ -2902,14 +2902,14 @@ def main(page: ft.Page):
                 if temp_paths:
                     cleanup_temp_files(temp_paths)
         
-        # Combined Summary Section (Miscellaneous Cost + Markups)
+        # Combined Summary Section (Addition Cost + Markups)
         # Load saved settings first
         project_settings = load_project_settings(state["current_project"])
         
-        # Miscellaneous Cost Section
+        # Addition Cost Section
         misc_section = ft.Column([
             ft.Row([
-                ft.Text("MISCELLANEOUS COST SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                ft.Text("ADDITIONAL COST SETTINGS", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
                 ft.ElevatedButton(
                     "SAVE", 
                     bgcolor=COLOR_ACCENT, 

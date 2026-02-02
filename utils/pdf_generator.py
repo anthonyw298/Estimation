@@ -99,7 +99,7 @@ def is_section_header(cell_value, cell=None):
         'PROFIT ON WAGES', 'PLANNING / TECHNICAL OFFICE', 'PLANNING/TECHNICAL OFFICE',
         'JOINTS FABRICATION LABOR', 'FABRICATION LABOR',
         'LIST PRICE TOTAL', 'DISCOUNTED TOTAL', 'RESIDUAL/WASTE COST',
-        'WASTE PERCENTAGE', 'MISCELLANEOUS', 'MARKUPS',
+        'WASTE PERCENTAGE', 'ADDITIONAL', 'MARKUPS',
         'GLASS AREA', 'GLASS AREA (ADJUSTED)'
     ]
     
@@ -109,7 +109,7 @@ def is_section_header(cell_value, cell=None):
             return False
     
     # Special section headers that should always be treated as headers (must have colored background)
-    special_section_headers = ['GRAND TOTAL', 'COST OVERVIEW', 'MISCELLANEOUS COSTS', 
+    special_section_headers = ['GRAND TOTAL', 'COST OVERVIEW', 'ADDITIONAL COSTS', 
                                'MARKUPS / PROFIT', 'MARKUPS/PROFIT', 'PROJECT TOTAL']
     
     # Check if this is a special section header with bold + colored styling
@@ -138,7 +138,7 @@ def is_section_header(cell_value, cell=None):
     ]
     
     # Only treat as section header if it matches a section keyword AND has colored background
-    # This prevents items like "MISCELLANEOUS" or "MARKUPS" from being detected as headers
+    # This prevents items like "ADDITIONAL" or "MARKUPS" from being detected as headers
     if any(kw in cell_str for kw in section_keywords) and len(str(cell_value)) < 60 and is_colored:
         return True
     
@@ -430,7 +430,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
             row_data = []
             row_cells = []
             row_bold_flags = []  # Track which cells are bold
-            # Read more columns to ensure we get column C (index 2) for MISCELLANEOUS COSTS
+            # Read more columns to ensure we get column C (index 2) for ADDITIONAL COSTS
             for col_idx in range(1, min(max_col_summary + 1, 10)):
                 cell = ws_summary.cell(row=row_idx, column=col_idx)
                 value = format_cell_value(cell.value, cell)
@@ -477,7 +477,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                         current_summary_section = None
                         continue
                 
-                # For summary sections (COST OVERVIEW, MISCELLANEOUS, etc.), set up Item/Value headers
+                # For summary sections (COST OVERVIEW, ADDITIONAL, etc.), set up Item/Value headers
                 # Check if next row is a table header, if not, default to Item/Value
                 if row_idx + 1 <= max_row_summary:
                     next_row_data = []
@@ -490,7 +490,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 continue
             
             # For Summary sheet, only treat as table header if we're NOT in an Item/Value section
-            # Item/Value sections (COST OVERVIEW, MISCELLANEOUS, etc.) already have headers set
+            # Item/Value sections (COST OVERVIEW, ADDITIONAL, etc.) already have headers set
             # and should continue until the next section header
             is_item_value_section = (current_headers and len(current_headers) == 2 and 
                                      current_headers[0].upper() == 'ITEM' and 
@@ -527,7 +527,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                     value = ""
                     value_bold = False
                     value_excel_col = -1
-                    # Try column C (3) first (MISCELLANEOUS COSTS stores values in column C)
+                    # Try column C (3) first (ADDITIONAL COSTS stores values in column C)
                     # Check row_data first (simpler, already formatted)
                     if len(row_data) > 2 and row_data[2] and str(row_data[2]).strip():
                         value = row_data[2]
@@ -574,7 +574,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                                 value_bold = False
                     
                     # Always add row if we have a label (even if value is empty, it's still a valid row)
-                    # This ensures all rows in a section are captured (e.g., all 7 MISCELLANEOUS items, all 4 COST OVERVIEW rows)
+                    # This ensures all rows in a section are captured (e.g., all 7 ADDITIONAL items, all 4 COST OVERVIEW rows)
                     if label and str(label).strip():  
                         current_table.append([(label, label_bold), (value, value_bold)])
                 else:
@@ -606,7 +606,7 @@ def excel_to_pdf(excel_path, pdf_path, include_logo=True):
                 value_bold = False
                 value_excel_col = -1
                 
-                # Try column C (3) first (MISCELLANEOUS COSTS stores values in column C)
+                # Try column C (3) first (ADDITIONAL COSTS stores values in column C)
                 # Check row_data first (simpler, already formatted)
                 if len(row_data) > 2 and row_data[2] and str(row_data[2]).strip():
                     value = row_data[2]

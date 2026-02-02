@@ -55,7 +55,7 @@ def _clean_trailing_blank_rows(ws, start_row):
 
 def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost):
     """
-    Creates a pie chart showing cost breakdown: Materials, Miscellaneous, Markups, and Residual.
+    Creates a pie chart showing cost breakdown: Materials, Additional, Markups, and Residual.
     Returns a PIL Image object that can be inserted into Excel.
     """
     try:
@@ -108,7 +108,7 @@ def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
     
     # Colors for each segment
     material_color = '#4472C4'  # Blue for materials
-    misc_color = '#548235'      # Green for miscellaneous
+    misc_color = '#548235'      # Green for addition cost
     markup_color = '#7030A0'    # Purple for markups/profit
     residual_color = '#ED7D31'  # Orange for residual/waste
     
@@ -117,7 +117,7 @@ def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
     if material_cost > 0:
         segments.append(('Active Materials', material_cost, material_pct, material_color))
     if misc_cost > 0:
-        segments.append(('Miscellaneous', misc_cost, misc_pct, misc_color))
+        segments.append(('Additional', misc_cost, misc_pct, misc_color))
     if markup_cost > 0:
         segments.append(('Profit/Markups', markup_cost, markup_pct, markup_color))
     if residual_cost > 0:
@@ -144,7 +144,7 @@ def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
     
     legend_items = [
         ('Active Materials', material_cost, material_pct, material_color),
-        ('Miscellaneous', misc_cost, misc_pct, misc_color),
+        ('Additional', misc_cost, misc_pct, misc_color),
         ('Profit/Markups', markup_cost, markup_pct, markup_color),
         ('Residual/Waste', residual_cost, residual_pct, residual_color)
     ]
@@ -1417,18 +1417,18 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     value_col_letter = get_column_letter(overview_start_col + 2)
     ws.column_dimensions[value_col_letter].width = max(ws.column_dimensions[value_col_letter].width or 0, 14)
     
-    # PIE CHART will be added after miscellaneous and markup totals are calculated
+    # PIE CHART will be added after addition cost and markup totals are calculated
 
     # ============================================================================
-    # MISCELLANEOUS COST - Stacked vertically below Cost Overview
+    # ADDITIONAL COST - Stacked vertically below Cost Overview
     # ============================================================================
     
     # Start with spacing after the cost overview box
     section_start_row = overview_end_row + 2
     misc_start_row = section_start_row
     
-    # MISCELLANEOUS COST Header (shifted right if elevation summary exists)
-    ws.cell(row=section_start_row, column=category_start_col, value="MISCELLANEOUS COSTS").font = Font(bold=True, size=11, color="FFFFFF")
+    # ADDITIONAL COST Header (shifted right if elevation summary exists)
+    ws.cell(row=section_start_row, column=category_start_col, value="ADDITIONAL COSTS").font = Font(bold=True, size=11, color="FFFFFF")
     ws.cell(row=section_start_row, column=category_start_col).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
     ws.cell(row=section_start_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
     ws.cell(row=section_start_row, column=category_start_col + 1).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
@@ -1488,7 +1488,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 print(f"   [OK] Found file, trying to read: {path_to_try}")
                 with open(path_to_try, 'r') as f:
                     settings_data = json.load(f)
-                    # Miscellaneous percentages
+                    # Additional cost percentages
                     summary_pcts = {
                         "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
                         "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
@@ -1659,9 +1659,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
 
     # Calculate base amount: use discounted total only
     base_amount = final_discounted_total
-    print(f"[SUMMARY] Miscellaneous Cost section - Base amount (discounted total): ${base_amount:.2f}")
+    print(f"[SUMMARY] Additional Cost section - Base amount (discounted total): ${base_amount:.2f}")
     
-    # ========== STEP 1: Collect all MISCELLANEOUS items ==========
+    # ========== STEP 1: Collect all ADDITIONAL COST items ==========
     summary_total = 0.0
     misc_items_list = []
     for label, pct in summary_pcts.items():
@@ -1672,7 +1672,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             print(f"   {label}: {pct}% = ${amount:.2f}")
     
     # ========== STEP 2: Collect all MARKUP items ==========
-    # Get markup percentages from project settings file (same file as miscellaneous)
+    # Get markup percentages from project settings file (same file as addition cost)
     markup_pcts = {
         "Profit on Material": 0.0,
         "Profit on Waste": 0.0,
@@ -1682,7 +1682,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         "Commission": 0.0
     }
     
-    # Load markup percentages from settings file (use same file as miscellaneous settings)
+    # Load markup percentages from settings file (use same file as addition cost settings)
     markup_settings_loaded = False
     for path_to_try_markup in unique_paths:
         if os.path.exists(path_to_try_markup):
@@ -1770,7 +1770,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         markup_items_list.append(("Commission", amount))
         print(f"   Commission: {markup_pcts['Commission']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
     
-    # ========== STEP 3: Write MISCELLANEOUS items (shifted right if elevation summary exists) ==========
+    # ========== STEP 3: Write ADDITIONAL COST items (shifted right if elevation summary exists) ==========
     misc_items_start_row = summary_section_row
     
     for i, (label, amount) in enumerate(misc_items_list):
@@ -1790,7 +1790,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     else:
         misc_items_end_row = misc_items_start_row + len(misc_items_list) - 1
     
-    # Miscellaneous SUBTOTAL
+    # Additional cost SUBTOTAL
     misc_subtotal_row = misc_items_end_row + 1
     ws.cell(row=misc_subtotal_row, column=category_start_col, value="SUBTOTAL").font = Font(bold=True)
     ws.cell(row=misc_subtotal_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
@@ -1801,9 +1801,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=misc_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
     
     misc_end_row = misc_subtotal_row
-    print(f"[OK] Miscellaneous Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
+    print(f"[OK] Additional Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
     
-    # ========== STEP 4: Write MARKUPS HEADER (below Miscellaneous) ==========
+    # ========== STEP 4: Write MARKUPS HEADER (below Additional Cost) ==========
     markup_start_row = misc_end_row + 2
     
     ws.cell(row=markup_start_row, column=category_start_col, value="MARKUPS / PROFIT").font = Font(bold=True, size=11, color="FFFFFF")
@@ -1909,9 +1909,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
     ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
     
-    # Miscellaneous Total row
+    # Additional cost Total row
     final_total_row += 1
-    ws.cell(row=final_total_row, column=category_start_col, value="+ Miscellaneous:")
+    ws.cell(row=final_total_row, column=category_start_col, value="+ Additional:")
     ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
     ws.cell(row=final_total_row, column=category_start_col + 2, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
     ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
@@ -1945,7 +1945,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # ============================================================================
     # PIE CHART - Cost Distribution (placed at specific location)
     # ============================================================================
-    # Add pie chart showing full cost breakdown: Materials, Miscellaneous, Markups, Residual
+    # Add pie chart showing full cost breakdown: Materials, Additional, Markups, Residual
     # Place it at row 40, column G (column 7)
     pie_chart_col = 7  # Column G
     pie_chart_row = 40  # Row 40
@@ -1956,11 +1956,11 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     try:
         _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
         print(f"[OK] Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
-        print(f"   Active Materials: ${active_material_cost:.2f}, Misc: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
+        print(f"   Active Materials: ${active_material_cost:.2f}, Additional: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
     except Exception as e:
         print(f"[WARNING] Could not add pie chart: {e}")
     
-    print(f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (miscellaneous) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
+    print(f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (addition) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
     print(f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")
     print(f"[INFO] Final total written to row {final_total_row}")
     
@@ -2392,7 +2392,7 @@ def generate_excel_report(
             fabrication_totals_rows = []
 
             for item in other_items_for_section:
-                item_type = item.get('type', 'MISCELLANEOUS ITEMS').upper()
+                item_type = item.get('type', 'ADDITIONAL ITEMS').upper()
                 grouped_other_misc.setdefault(item_type, []).append(item)
 
             for grp_title, grp_items in grouped_other_misc.items():
