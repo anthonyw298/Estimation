@@ -3508,7 +3508,7 @@ def main(page: ft.Page):
                         create_input_field("Opening Width (\")", "width", on_change=lambda e: auto_refresh_bay_diagram()), 
                         create_input_field("Opening Height (\")", "height", on_change=lambda e: auto_refresh_bay_diagram())
                     ]),
-                ]), margin=ft.margin.only(top=10)),
+                ]), margin=ft.margin.only(top=18)),
 
                 # Bays (Hidden by default if not Yes45 or door-only)
                 assign_ref("bay_config_container", ft.Container(content=ft.Column([
@@ -3517,7 +3517,7 @@ def main(page: ft.Page):
                         create_input_field("Bays Wide", "bays_wide", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram())), 
                         create_input_field("Bays Tall", "bays_tall", numeric=True, on_change=lambda e: (update_dynamic_bay_inputs(e), auto_refresh_bay_diagram()))
                     ]),
-                ]), margin=ft.margin.only(top=10))),
+                ]), margin=ft.margin.only(top=18))),
                 
                 # Containers for dynamic inputs
                 assign_ref("custom_w_container", ft.Container(
@@ -3528,7 +3528,7 @@ def main(page: ft.Page):
                     content=inputs.setdefault("custom_h_col", ft.Column([], spacing=10)),
                     visible=False
                 )),
-            ], spacing=0)),
+            ], spacing=12)),
 
             # Door Manager (always visible)
             door_col,
@@ -3540,9 +3540,9 @@ def main(page: ft.Page):
                     assign_ref("duplicate_btn", ft.IconButton(ft.Icons.CONTENT_COPY, icon_color=COLOR_ACCENT, tooltip="Duplicate Elevation", on_click=duplicate_elevation_action, visible=False)),
                     ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color="red", tooltip="Delete Elevation", on_click=delete_elevation_action)
                 ]),
-                margin=ft.margin.only(top=2)
+                margin=ft.margin.only(top=16)
             )
-        ], scroll=ft.ScrollMode.AUTO, expand=True)
+        ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=16)
 
         # Right Col: Bay Diagram (Full Right Half)
         bay_diagram_image = inputs.setdefault("bay_diagram_image", ft.Image(
