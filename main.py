@@ -3744,6 +3744,10 @@ def main(page: ft.Page):
     page.go(page.route)
 
 if __name__ == "__main__":
+    # On macOS, avoid Unix socket permission errors by using TCP (desktop app still opens as native window)
+    if os.name != "nt":
+        from flet.utils import get_free_tcp_port
+        os.environ.setdefault("FLET_SERVER_PORT", str(get_free_tcp_port()))
     # Get the correct assets directory path (works for both dev and PyInstaller)
     assets_dir_path = get_assets_dir()
     ft.app(target=main, assets_dir=assets_dir_path)

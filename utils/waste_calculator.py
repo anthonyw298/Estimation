@@ -456,11 +456,12 @@ def _generate_bay_width_suggestion(material: Dict, elevations_data: Dict, stock_
         avg_waste_per_bay = waste_qty / len(bay_widths_ft) if bay_widths_ft else 0
         
         if waste_pct > 20 and avg_waste_per_bay > 0.5:
-            # Suggest specific bay width adjustments
+            # Suggest specific bay width adjustments (precompute to avoid backslash in f-string)
+            bay_widths_str = ", ".join([f'{w:.1f}"' for w in bay_widths_inches[:5]])
             suggestion = {
                 "priority": "high" if waste_pct > 30 else "medium",
                 "category": "Bay Width Optimization",
-                "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Current bay widths: {', '.join([f'{w:.1f}\"' for w in bay_widths_inches[:5]])}. Average waste per bay: {avg_waste_per_bay:.2f}ft. Consider adjusting bay widths to better utilize {stock_length_ft:.0f}ft stock lengths. For example, try distributing widths more evenly or adjusting individual bays by +/-2-3\" to reduce leftover pieces.",
+                "message": f"{material.get('description', 'Unknown')}{finish_text} in '{top_elev['name']}' has {waste_pct:.1f}% waste (${waste_cost:.2f}). Current bay widths: {bay_widths_str}. Average waste per bay: {avg_waste_per_bay:.2f}ft. Consider adjusting bay widths to better utilize {stock_length_ft:.0f}ft stock lengths. For example, try distributing widths more evenly or adjusting individual bays by +/-2-3\" to reduce leftover pieces.",
                 "estimated_savings": waste_cost * 0.25
             }
             return suggestion
@@ -586,6 +587,7 @@ def _calculate_optimal_cuts_for_leftover(leftover_ft: float, stock_length_ft: fl
                 waste = leftover_ft - total
                 
                 if waste >= 0 and waste < 0.5:
+                    cuts_desc = " + ".join([f'{c:.2f}ft ({c*12:.1f}")' for c in cuts_3])
                     optimal_cuts.append({
                         'cuts': cuts_3,
                         'cuts_inches': [c * 12 for c in cuts_3],
@@ -593,7 +595,7 @@ def _calculate_optimal_cuts_for_leftover(leftover_ft: float, stock_length_ft: fl
                         'total_inches': total * 12,
                         'waste': waste,
                         'utilization': (total / leftover_ft) * 100,
-                        'description': f'Three cuts: {" + ".join([f"{c:.2f}ft ({c*12:.1f}\")" for c in cuts_3])} = {total:.2f}ft'
+                        'description': f'Three cuts: {cuts_desc} = {total:.2f}ft'
                     })
     
     # Four cuts - dynamic calculation
@@ -616,6 +618,7 @@ def _calculate_optimal_cuts_for_leftover(leftover_ft: float, stock_length_ft: fl
                 waste = leftover_ft - total
                 
                 if waste >= 0 and waste < 0.5:
+                    cuts_4_desc = " + ".join([f'{c:.2f}ft ({c*12:.1f}")' for c in cuts_4[:2]])
                     optimal_cuts.append({
                         'cuts': cuts_4,
                         'cuts_inches': [c * 12 for c in cuts_4],
@@ -623,7 +626,7 @@ def _calculate_optimal_cuts_for_leftover(leftover_ft: float, stock_length_ft: fl
                         'total_inches': total * 12,
                         'waste': waste,
                         'utilization': (total / leftover_ft) * 100,
-                        'description': f'Four cuts: {" + ".join([f"{c:.2f}ft ({c*12:.1f}\")" for c in cuts_4[:2]])} + ... = {total:.2f}ft'
+                        'description': f'Four cuts: {cuts_4_desc} + ... = {total:.2f}ft'
                     })
     
     # Sort by utilization (best first) and limit to top 5
