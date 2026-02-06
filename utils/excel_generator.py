@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, numbers, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
@@ -13,11 +14,65 @@ from data.part_number import PART_NUMBER_MAP
 from data.parts_data import parts_data
 from utils.formulas import calculate_door_info
 
+# --- Diagram helpers (doors) ---
+def _parse_door_size_inches(size_str):
+    """Parse door size string (e.g. \"3' X 7'\") to (width_inches, height_inches)."""
+    if not size_str:
+        return 36.0, 84.0
+    m = re.search(r"(\d+)'\s*[xX]\s*(\d+)'", str(size_str))
+    if m:
+        return float(m.group(1)) * 12.0, float(m.group(2)) * 12.0
+    return 36.0, 84.0
+
+def _door_spans_for_diagram(doors, opening_width):
+    """Yield (left_in, right_in, door_h_in) for each door instance for drawing on bay diagram."""
+    for door in (doors or []):
+        size_str = door.get("size", "")
+        count = door.get("count", 1)
+        dw, dh = _parse_door_size_inches(size_str)
+        xs = []
+        if count == 1:
+            x_in = door.get("x_in")
+            if x_in is not None:
+                try:
+                    xs.append(float(x_in))
+                except (TypeError, ValueError):
+                    pass
+        else:
+            for x in (door.get("x_positions") or [])[:count]:
+                if x is not None:
+                    try:
+                        xs.append(float(x))
+                    except (TypeError, ValueError):
+                        pass
+        for x_center in xs:
+            left_in = max(0, min(x_center - dw / 2, opening_width))
+            right_in = max(0, min(x_center + dw / 2, opening_width))
+            yield left_in, right_in, dh
+
 # --- Helper Functions ---
 
 def _get_multiplier(running_grand_total):
     """Returns multiplier based on running grand total."""
     return 0.614 if running_grand_total < 50000 else 0.572
+
+def _autofit_columns_by_longest_word(ws, start_col, end_col, start_row, end_row):
+    """Fit columns to the longest word in any cell. Keeps columns tight so values aren't pushed far right."""
+    for col_idx in range(start_col, end_col + 1):
+        col_letter = get_column_letter(col_idx)
+        max_word_len = 0
+        max_full_len = 0
+        for r in range(start_row, end_row + 1):
+            cell_value = ws.cell(row=r, column=col_idx).value
+            if cell_value is not None:
+                s = str(cell_value).strip()
+                max_full_len = max(max_full_len, len(s))
+                for word in s.split():
+                    max_word_len = max(max_word_len, len(word))
+        if max_word_len > 0:
+            # Use longest word + 2, but ensure we don't truncate (use full len for short values)
+            width = max(max_word_len + 2, min(max_full_len + 1, 20))
+            ws.column_dimensions[col_letter].width = width
 
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
     """Autofits columns in the worksheet. Ensures minimum width for currency columns to prevent ######## display."""
@@ -193,9 +248,10 @@ def _add_pie_chart_to_excel(ws, start_row, start_col, material_cost, misc_cost, 
     
     return start_row + 2
 
-def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
+def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None, doors=None):
     """
     Creates a visual blueprint diagram of the bay distribution.
+    If doors is provided, draws green door bands (to scale) on the diagram.
     Returns a PIL Image object that can be inserted into Excel.
     """
     try:
@@ -205,12 +261,11 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
         print("PIL/Pillow not available, skipping diagram generation")
         return None
     
-    # Diagram dimensions - smaller to fit in columns A-C without overlapping
     diagram_width = 400
     diagram_height = 300
-    margin = 30
-    
-    # Calculate bay dimensions
+    margin = 20  # Reduced for tighter spacing when door is present
+    if doors:
+        margin = 15  # Even tighter when doors are drawn
     if custom_bay_widths and len(custom_bay_widths) == bays_wide:
         bay_widths = custom_bay_widths
     else:
@@ -224,28 +279,23 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
     if not bay_widths or not bay_heights:
         return None
     
-    # Create image
     img = Image.new('RGB', (diagram_width, diagram_height), color='white')
     draw = ImageDraw.Draw(img)
     
-    # Calculate scaling to fit in diagram
     max_display_width = diagram_width - 2 * margin
-    max_display_height = diagram_height - 2 * margin - 60  # Space for labels
+    max_display_height = diagram_height - 2 * margin - 60
     
-    # Scale to fit
     total_width = sum(bay_widths)
     total_height = sum(bay_heights)
     scale_x = max_display_width / total_width if total_width > 0 else 1
     scale_y = max_display_height / total_height if total_height > 0 else 1
-    scale = min(scale_x, scale_y)  # Maintain aspect ratio
+    scale = min(scale_x, scale_y)
     
-    # Calculate starting position (centered)
     scaled_total_width = total_width * scale
     scaled_total_height = total_height * scale
     start_x = margin + (max_display_width - scaled_total_width) / 2
-    start_y = margin + 30  # Space for title
+    start_y = margin + 30
     
-    # Draw title - smaller fonts to prevent overlap
     try:
         font_large = ImageFont.truetype("arial.ttf", 12)
         font_small = ImageFont.truetype("arial.ttf", 8)
@@ -259,28 +309,23 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
     
     draw.text((diagram_width // 2, 10), "Bay Distribution Layout", fill='black', anchor='mm', font=font_large)
     
-    # Draw grid lines and bays
     current_x = start_x
     current_y = start_y
     
-    # Draw vertical lines (bay width separators)
     for i, width in enumerate(bay_widths):
         if i > 0:
             draw.line([(current_x, start_y), (current_x, start_y + scaled_total_height)], fill='gray', width=2)
         current_x += width * scale
     
-    # Draw horizontal lines (bay height separators)
     current_x = start_x
     for i, height in enumerate(bay_heights):
         if i > 0:
             draw.line([(start_x, current_y), (start_x + scaled_total_width, current_y)], fill='gray', width=2)
         current_y += height * scale
     
-    # Draw outer border
     draw.rectangle([start_x, start_y, start_x + scaled_total_width, start_y + scaled_total_height], 
                    outline='black', width=3)
     
-    # Draw bay labels
     current_x = start_x
     current_y = start_y
     bay_num = 1
@@ -288,29 +333,40 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
     for row in range(bays_tall):
         current_x = start_x
         for col in range(bays_wide):
-            # Calculate center of bay
             bay_center_x = current_x + (bay_widths[col] * scale) / 2
             bay_center_y = current_y + (bay_heights[row] * scale) / 2
-            
-            # Draw bay number - smaller spacing to prevent overlap
             draw.text((bay_center_x, bay_center_y - 6), f"B{bay_num}", fill='black', anchor='mm', font=font_small)
-            
-            # Draw dimensions - smaller spacing
             dim_text = f"{bay_widths[col]:.1f}\" x {bay_heights[row]:.1f}\""
             draw.text((bay_center_x, bay_center_y + 6), dim_text, fill='black', anchor='mm', font=font_small)
-            
             current_x += bay_widths[col] * scale
             bay_num += 1
         current_y += bay_heights[row] * scale
     
-    # Draw overall dimensions
+    # Draw door bands (green) when doors provided — use total_width for alignment with bay grid
+    width_ref = total_width if total_width > 0 else opening_width
+    if doors and width_ref > 0 and opening_height > 0 and scaled_total_width > 0 and scaled_total_height > 0:
+        for left_in, right_in, door_h_in in _door_spans_for_diagram(doors, opening_width):
+            if right_in <= left_in:
+                continue
+            px_left = start_x + (left_in / width_ref) * scaled_total_width
+            px_right = start_x + (right_in / width_ref) * scaled_total_width
+            door_h_px = (door_h_in / opening_height) * scaled_total_height
+            px_bottom = start_y + scaled_total_height
+            px_top = px_bottom - door_h_px
+            draw.rectangle(
+                [px_left, px_top, px_right, px_bottom],
+                outline='#2E7D32',
+                width=2,
+                fill='#A5D6A7'
+            )
+    
     dim_text = f"Total: {opening_width:.1f}\" W x {opening_height:.1f}\" H"
     draw.text((diagram_width // 2, diagram_height - 20), dim_text, fill='black', anchor='mm', font=font_small)
     
     return img
 
-def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
-    """Adds a bay distribution diagram to the Excel worksheet."""
+def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None, doors=None):
+    """Adds a bay distribution diagram to the Excel worksheet. If doors provided, includes green door bands."""
     if bays_wide == 0 or bays_tall == 0:
         return start_row
     
@@ -318,8 +374,7 @@ def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width
         from openpyxl.drawing.image import Image as OpenpyxlImage
         import io
         
-        # Create the diagram
-        diagram_img = _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths, custom_bay_heights)
+        diagram_img = _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths, custom_bay_heights, doors=doors)
         
         if diagram_img:
             # Save to bytes
@@ -327,29 +382,120 @@ def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width
             diagram_img.save(img_bytes, format='PNG')
             img_bytes.seek(0)
             
-            # Add to Excel - position in column A, spanning A-C but not overlapping column D
             img = OpenpyxlImage(img_bytes)
-            # Resize image: fit within columns A-C (max width ~360 pixels to stay within 3 columns)
-            # Original width was 180 pixels, so we'll use a width that fits in A-C
             original_width = img.width
             original_height = img.height
-            # Maximum width to fit in columns A-C (approximately 360 pixels for 3 columns at width 20 each)
-            max_width = 360
-            img.width = min(450, max_width)  # Use larger size but cap at max_width to stay in A-C
-            img.height = int(original_height * (img.width / original_width))  # Maintain aspect ratio
+            img.width = min(original_width, _DIAGRAM_MAX_WIDTH)
+            img.height = int(original_height * (img.width / original_width))
             img.anchor = f'A{start_row}'  # Place starting in column A
             ws.add_image(img)
             
             # Return the row after the image (estimate image height)
             # Image height in rows (approximately 1 row per 15 pixels at default row height)
-            estimated_rows = max(15, int(img.height / 15))
-            return start_row + estimated_rows + 2
+            estimated_rows = max(15, int(img.height / _DIAGRAM_ROW_HEIGHT_PX))
+            return start_row + estimated_rows + _EXTRA_ROWS_AFTER_IMAGE
     except Exception as e:
         print(f"Error creating bay diagram: {e}")
-        # If diagram creation fails, just add a text note
         ws.cell(row=start_row, column=3, value="Bay diagram could not be generated")
     
     return start_row + 2
+
+# Consistent diagram sizing for Excel (columns A-C)
+_DIAGRAM_MAX_WIDTH = 280  # Slightly smaller
+_DIAGRAM_ROW_HEIGHT_PX = 15
+_EXTRA_ROWS_AFTER_IMAGE = 1
+# Door-only: same column, stacked up/down, as close as possible
+_DOOR_DIAGRAM_GAP_ROWS = 0  # Minimal gap between stacked diagrams
+
+def _create_door_only_diagram_single(dw_in, dh_in, label):
+    """Create a single door-only diagram image (one door, to scale). Returns PIL Image or None."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    diagram_width = 400
+    diagram_height = 300
+    margin = 50
+    max_display_w = diagram_width - 2 * margin
+    max_display_h = diagram_height - 2 * margin - 50
+    ref_height = 96.0
+    scale = max_display_h / ref_height
+    if dw_in * scale > max_display_w:
+        scale = max_display_w / dw_in
+    scaled_w = dw_in * scale
+    scaled_h = dh_in * scale
+    start_x = margin + (max_display_w - scaled_w) / 2
+    start_y = margin + 30
+    img = Image.new('RGB', (diagram_width, diagram_height), color='white')
+    draw = ImageDraw.Draw(img)
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 12)
+        font_small = ImageFont.truetype("arial.ttf", 8)
+    except:
+        try:
+            font_large = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 12)
+            font_small = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 8)
+        except:
+            font_large = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+    draw.text((diagram_width // 2, 10), "Door Only — To Scale", fill='black', anchor='mm', font=font_large)
+    draw.rectangle(
+        [start_x, start_y, start_x + scaled_w, start_y + scaled_h],
+        outline='#2E7D32',
+        width=2,
+        fill='#A5D6A7'
+    )
+    cx = start_x + scaled_w / 2
+    cy = start_y + scaled_h / 2
+    dim_txt = f"{dw_in:.0f}\" x {dh_in:.0f}\""
+    draw.text((cx, cy - 6), dim_txt, fill='black', anchor='mm', font=font_small)
+    draw.text((cx, cy + 6), label, fill='gray', anchor='mm', font=font_small)
+    draw.text((diagram_width // 2, diagram_height - 18), dim_txt, fill='black', anchor='mm', font=font_small)
+    return img
+
+def _door_only_unique_by_kind(doors):
+    """Return one diagram per unique door size (dw, dh). Deduplicates by kind."""
+    seen = set()
+    out = []
+    for door in (doors or []):
+        size_str = door.get("size", "")
+        dw, dh = _parse_door_size_inches(size_str)
+        key = (round(dw, 1), round(dh, 1))
+        if key not in seen:
+            seen.add(key)
+            label = f"{dw:.0f}\" x {dh:.0f}\""
+            out.append((dw, dh, label))
+    return out
+
+def _add_door_only_diagrams_to_excel(ws, start_row, doors):
+    """Add door-only diagram(s): one per unique kind, same column, stacked up/down, as close as possible."""
+    try:
+        from openpyxl.drawing.image import Image as OpenpyxlImage
+        import io
+    except ImportError:
+        return start_row + 2
+    instances = _door_only_unique_by_kind(doors)
+    if not instances:
+        return start_row
+    current_row = start_row
+    for idx, (dw, dh, label) in enumerate(instances):
+        if idx > 0:
+            current_row += _DOOR_DIAGRAM_GAP_ROWS
+        diagram_img = _create_door_only_diagram_single(dw, dh, label)
+        if diagram_img:
+            img_bytes = io.BytesIO()
+            diagram_img.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+            img = OpenpyxlImage(img_bytes)
+            img.width = min(diagram_img.width, _DIAGRAM_MAX_WIDTH)
+            img.height = int(diagram_img.height * (img.width / diagram_img.width))
+            img.anchor = f'A{current_row}'
+            ws.add_image(img)
+            estimated_rows = max(12, int(img.height / _DIAGRAM_ROW_HEIGHT_PX))
+            current_row += estimated_rows
+        else:
+            current_row += 2
+    return current_row + _EXTRA_ROWS_AFTER_IMAGE
 
 def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier, show_qty_per_elevation=False, total_count=1, show_total_cost_per_elevation=False, show_discounted_cost_per_elevation=False):
     """Writes a section of calculated outputs to the worksheet."""
@@ -2207,7 +2353,7 @@ def generate_excel_report(
             
             # Add bay distribution diagram if custom bays are used
             if elev_data.get("bays_wide") and elev_data.get("bays_tall"):
-                diagram_row = current_excel_row + len(input_data) + 3  # Moved up (reduced from 6 to 3)
+                diagram_row = current_excel_row + len(input_data) + 2  # Tighter spacing
                 custom_widths = elev_data.get('custom_bay_widths', [])
                 custom_heights = elev_data.get('custom_bay_heights', [])
                 
@@ -2221,12 +2367,7 @@ def generate_excel_report(
                 note_cell.font = Font(size=12)
                 note_cell.alignment = Alignment(horizontal='left', vertical='top')
                 
-                # Set column widths to accommodate diagram (A-C) without overlapping column D
-                ws.column_dimensions['A'].width = 20
-                ws.column_dimensions['B'].width = 20
-                ws.column_dimensions['C'].width = 20
-                
-                # Add the diagram
+                # Add the diagram (include green door bands when doors present)
                 _add_bay_diagram_to_excel(
                     ws, 
                     diagram_row,
@@ -2235,8 +2376,15 @@ def generate_excel_report(
                     elev_data.get('opening_width_inches', 0),
                     elev_data.get('opening_height_inches', 0),
                     custom_widths if custom_widths else None,
-                    custom_heights if custom_heights else None
+                    custom_heights if custom_heights else None,
+                    doors=elev_data.get("doors")
                 )
+            elif elev_data.get("door_only") and elev_data.get("doors"):
+                # Door-only elevation: add diagram(s) — adjacent (side-by-side) in same row
+                diagram_row = current_excel_row + len(input_data) + 2  # Tighter spacing
+                label_cell = ws.cell(row=diagram_row - 2, column=COL_A, value="Door Only Diagram(s)")
+                label_cell.font = Font(bold=True, size=12)
+                _add_door_only_diagrams_to_excel(ws, diagram_row, elev_data.get("doors"))
             
             output_section_current_row = 1
             profiles_for_section, accessories_for_section, gaskets_for_section, doors_for_section, other_items_for_section = [], [], [], [], []
@@ -2601,6 +2749,8 @@ def generate_excel_report(
                 max_col += 1  # Discounted Total List Cost Per Elevation (column 12)
             
             _autofit_columns(ws, COL_A, max_col, 1, ws.max_row)
+            # Keep columns A,B tight (fit by longest word) so values aren't pushed far right
+            _autofit_columns_by_longest_word(ws, COL_A, COL_B, 1, min(25, ws.max_row))
             _clean_trailing_blank_rows(ws, 1)
 
     save_extra_materials(overall_current_extra_materials_state, private_extra_materials_path)

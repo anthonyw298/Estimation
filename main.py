@@ -69,9 +69,51 @@ COLOR_TEXT_DIM = "#B3B3B3" # Light grey for secondary text
 COLOR_INPUT_BG = "#2A2A2A" # Dark grey input background
 COLOR_ACCENT_LIGHT = "#D3D3D3"  # Light grey (matching logo side surfaces)
 
-def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None):
+def _parse_door_size_inches(size_str):
+    """Parse door size string (e.g. \"3' X 7'\") to (width_inches, height_inches)."""
+    if not size_str:
+        return 36.0, 84.0
+    m = re.search(r"(\d+)'\s*[xX]\s*(\d+)'", str(size_str))
+    if m:
+        return float(m.group(1)) * 12.0, float(m.group(2)) * 12.0
+    return 36.0, 84.0
+
+
+def _door_x_spans(doors, opening_width):
+    """Yield (left_in, right_in, label, door_height_in) for each door instance. X is center; span = [x - w/2, x + w/2]."""
+    for i, door in enumerate(doors or []):
+        size_str = door.get("size", "")
+        count = door.get("count", 1)
+        dw, dh = _parse_door_size_inches(size_str)
+        xs = []
+        if count == 1:
+            x_in = door.get("x_in")
+            if x_in is not None:
+                try:
+                    xs.append(float(x_in))
+                except (TypeError, ValueError):
+                    pass
+        else:
+            x_positions = door.get("x_positions") or []
+            for j in range(count):
+                if j < len(x_positions) and x_positions[j] is not None:
+                    try:
+                        xs.append(float(x_positions[j]))
+                    except (TypeError, ValueError):
+                        pass
+        for k, x_center in enumerate(xs):
+            left_in = x_center - dw / 2
+            right_in = x_center + dw / 2
+            left_in = max(0, min(left_in, opening_width))
+            right_in = max(0, min(right_in, opening_width))
+            label = f"D{i+1}" if len(xs) > 1 else "Door"
+            yield left_in, right_in, label, dh
+
+
+def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None, doors=None):
     """
     Creates a bay distribution diagram and returns it as a base64 string for Flet display.
+    If doors is provided (list of dicts with size, count, x_in or x_positions), draws door spans on X axis and shows length occupied.
     """
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -202,15 +244,119 @@ def create_bay_diagram_base64(bays_wide, bays_tall, opening_width, opening_heigh
             bay_num += 1
         current_y += bay_h
     
+    # Draw doors: each at its actual height (so 3x7 vs 3x8 show different heights), bottom-aligned
+    door_labels = []
+    if doors and opening_width > 0 and opening_height > 0 and scaled_total_width > 0 and scaled_total_height > 0:
+        for left_in, right_in, label, door_h_in in _door_x_spans(doors, opening_width):
+            if right_in <= left_in:
+                continue
+            px_left = start_x + (left_in / opening_width) * scaled_total_width
+            px_right = start_x + (right_in / opening_width) * scaled_total_width
+            # Door height in pixels (to scale: 3x7 shorter than 3x8)
+            door_h_px = (door_h_in / opening_height) * scaled_total_height
+            px_bottom = start_y + scaled_total_height
+            px_top = px_bottom - door_h_px
+            draw.rectangle(
+                [px_left, px_top, px_right, px_bottom],
+                outline='#4CAF50',
+                width=2,
+                fill='#2d5a2d'
+            )
+            door_labels.append(f"{label}: Length {left_in:.1f}\"-{right_in:.1f}\" occupied")
+    
     # Draw overall dimensions
+    y_bottom = diagram_height - 25
     dim_text = f"Total: {opening_width:.1f}\" W x {opening_height:.1f}\" H"
-    draw.text((diagram_width // 2, diagram_height - 25), dim_text, fill='#FFFFFF', anchor='mm', font=font_small)
+    draw.text((diagram_width // 2, y_bottom), dim_text, fill='#FFFFFF', anchor='mm', font=font_small)
+    
+    # Draw door length occupied lines below total
+    if door_labels:
+        y_bottom -= 14
+        for txt in door_labels:
+            draw.text((diagram_width // 2, y_bottom), txt, fill='#4CAF50', anchor='mm', font=font_small)
+            y_bottom -= 12
     
     # Convert to base64
     img_bytes = io.BytesIO()
     img.save(img_bytes, format='PNG')
     img_bytes.seek(0)
     return base64.b64encode(img_bytes.getvalue()).decode('utf-8')
+
+
+def _door_only_flatten(doors):
+    """Flatten doors to list of (dw, dh, label) per instance (one per physical door)."""
+    out = []
+    for i, door in enumerate(doors or []):
+        size_str = door.get("size", "")
+        count = door.get("count", 1)
+        dw, dh = _parse_door_size_inches(size_str)
+        for k in range(count):
+            out.append((dw, dh, f"Door {len(out) + 1}"))
+    return out
+
+
+def create_door_only_diagram_base64(doors, selected_index=0):
+    """
+    Door-only: one diagram per door. selected_index picks which door (0-based).
+    Draws that single door to scale (fixed px per inch so 3x7 vs 3x8 differ).
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    instances = _door_only_flatten(doors)
+    if not instances:
+        return None
+    idx = max(0, min(selected_index, len(instances) - 1))
+    dw, dh, label = instances[idx]
+    diagram_width = 450
+    diagram_height = 350
+    margin = 50
+    max_display_w = diagram_width - 2 * margin
+    max_display_h = diagram_height - 2 * margin - 50
+    ref_height_in = 96.0
+    scale = max_display_h / ref_height_in
+    if dw * scale > max_display_w:
+        scale = max_display_w / dw
+    scaled_w = dw * scale
+    scaled_h = dh * scale
+    start_x = margin + (max_display_w - scaled_w) / 2
+    start_y = margin + 30
+    img = Image.new('RGB', (diagram_width, diagram_height), color='#1A1A1A')
+    draw = ImageDraw.Draw(img)
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 14)
+        font_small = ImageFont.truetype("arial.ttf", 10)
+    except:
+        try:
+            font_large = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 14)
+            font_small = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", 10)
+        except:
+            font_large = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+    draw.text((diagram_width // 2, 15), "Door Only — To Scale", fill='#0073E6', anchor='mm', font=font_large)
+    draw.rectangle(
+        [start_x, start_y, start_x + scaled_w, start_y + scaled_h],
+        outline='#0073E6',
+        width=2
+    )
+    draw.rectangle(
+        [start_x, start_y, start_x + scaled_w, start_y + scaled_h],
+        outline='#4CAF50',
+        width=2,
+        fill='#2d5a2d'
+    )
+    cx = start_x + scaled_w / 2
+    cy = start_y + scaled_h / 2
+    dim_txt = f"{dw:.0f}\" x {dh:.0f}\""
+    draw.text((cx, cy - 6), dim_txt, fill='#FFFFFF', anchor='mm', font=font_small)
+    draw.text((cx, cy + 6), label, fill='#B3B3B3', anchor='mm', font=font_small)
+    draw.text((diagram_width // 2, diagram_height - 18), dim_txt, fill='#FFFFFF', anchor='mm', font=font_small)
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    return base64.b64encode(img_bytes.getvalue()).decode('utf-8')
+
 
 def main(page: ft.Page):
     page.title = "United Glass Estimation"
@@ -280,8 +426,16 @@ def main(page: ft.Page):
         """Write database data to temp JSON files for Excel generator. Use elevations_override when provided (e.g. fresh save) to avoid DB read lag."""
         paths = get_project_paths(project_name)
         
-        # Write elevations to temp file - prefer in-memory data when provided to ensure latest state
         elevations = elevations_override if elevations_override is not None else db.get_elevations(project_name)
+        # Ensure every elevation has "doors" for Excel diagrams (green box / door-only pics). Fill from DB if missing.
+        for elev_name, elev_data in list(elevations.items()):
+            if not elev_data.get("doors"):
+                try:
+                    doors_from_db = db.get_doors(project_name, elev_name)
+                    if doors_from_db:
+                        elev_data["doors"] = doors_from_db
+                except Exception:
+                    pass
         os.makedirs(os.path.dirname(paths["elevations"]) or ".", exist_ok=True)
         with open(paths["elevations"], 'w') as f:
             json.dump(elevations, f, indent=4)
@@ -1594,24 +1748,43 @@ def main(page: ft.Page):
 
     def build_workspace_view():
         # --- Event Handlers ---
-        def update_door_only_visibility(e):
-            """When door_only checked: hide system, finish, quantity, dimensions, bays. Still requires elevation name."""
-            door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+        def set_workspace_mode(mode):
+            """Switch between Elevation and Door only. mode is 'elevation' or 'door_only'."""
+            state["workspace_mode"] = mode
+            door_only = mode == "door_only"
             if inputs.get("door_only_rest_container"):
                 inputs["door_only_rest_container"].visible = not door_only
+            if inputs.get("door_x_pos_container"):
+                inputs["door_x_pos_container"].visible = not door_only  # Door only: no X, doors adjacent
             if inputs.get("bay_diagram_container"):
                 inputs["bay_diagram_container"].visible = not door_only
-            if not door_only:
-                update_bay_visibility(e)
+            if inputs.get("diagram_switcher_container"):
+                if door_only:
+                    inputs["diagram_switcher_container"].content = inputs["door_only_diagram_container"]
+                    refresh_door_only_diagram()
+                else:
+                    inputs["diagram_switcher_container"].content = inputs["bay_diagram_container"]
+                    update_bay_visibility(None)
+            elif not door_only:
+                update_bay_visibility(None)
+            if inputs.get("toggle_elevation_btn"):
+                inputs["toggle_elevation_btn"].style = ft.ButtonStyle(bgcolor=COLOR_ACCENT if not door_only else COLOR_SURFACE, color="white" if not door_only else COLOR_TEXT)
+            if inputs.get("toggle_door_only_btn"):
+                inputs["toggle_door_only_btn"].style = ft.ButtonStyle(bgcolor=COLOR_ACCENT if door_only else COLOR_SURFACE, color="white" if door_only else COLOR_TEXT)
             if page.views:
                 page.update()
+
+        def update_door_only_visibility(e):
+            """Sync from toggle buttons (called when toggle is clicked)."""
+            mode = state.get("workspace_mode", "elevation")
+            set_workspace_mode(mode)
 
         def update_bay_visibility(e):
             # Guard against unmounted inputs
             if not inputs.get("bays_wide") or not inputs["bays_wide"].parent:
                 return
 
-            door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+            door_only = state.get("workspace_mode") == "door_only"
             is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
             show_bays = is_yes45 and not door_only
             if inputs.get("bay_config_container"):
@@ -1912,11 +2085,12 @@ def main(page: ft.Page):
                 if len(custom_h) == bh and all(h is not None for h in custom_h):
                     final_custom_h = [h for h in custom_h]
                 
-                # Generate diagram
+                # Generate diagram (include doors so they show on diagram with length occupied)
                 diagram_b64 = create_bay_diagram_base64(
                     bw, bh, opening_w, opening_h,
                     custom_bay_widths=final_custom_w,
-                    custom_bay_heights=final_custom_h
+                    custom_bay_heights=final_custom_h,
+                    doors=state.get("current_doors") or []
                 )
                 
                 if diagram_b64 and inputs.get("bay_diagram_image"):
@@ -1943,6 +2117,61 @@ def main(page: ft.Page):
                     inputs["bay_diagram_container"].visible = False
                 if page.views:
                     page.update()
+
+        door_only_diagram_index = [0]  # which door (0-based) is shown; use list so refresh can update
+
+        def refresh_door_only_diagram():
+            """Refresh the door-only diagram (one door at a time; use index for which)."""
+            try:
+                doors = state.get("current_doors") or []
+                instances = _door_only_flatten(doors)
+                n = len(instances)
+                if not inputs.get("door_only_diagram_image"):
+                    return
+                if not n:
+                    door_only_diagram_index[0] = 0
+                    inputs["door_only_diagram_image"].src_base64 = ""
+                    inputs["door_only_diagram_image"].visible = False
+                    if inputs.get("door_only_diagram_container"):
+                        inputs["door_only_diagram_container"].visible = False
+                    if inputs.get("door_only_title_text"):
+                        inputs["door_only_title_text"].visible = False
+                    if inputs.get("door_only_nav_row"):
+                        inputs["door_only_nav_row"].visible = False
+                else:
+                    idx = max(0, min(door_only_diagram_index[0], n - 1))
+                    door_only_diagram_index[0] = idx
+                    b64 = create_door_only_diagram_base64(doors, idx)
+                    if b64:
+                        inputs["door_only_diagram_image"].src_base64 = b64
+                        inputs["door_only_diagram_image"].visible = True
+                        if inputs.get("door_only_diagram_container"):
+                            inputs["door_only_diagram_container"].visible = True
+                        if inputs.get("door_only_title_text"):
+                            inputs["door_only_title_text"].value = f"Door {idx + 1} of {n}"
+                            inputs["door_only_title_text"].visible = True
+                        if inputs.get("door_only_nav_row"):
+                            inputs["door_only_nav_row"].visible = n > 1
+                if page.views:
+                    page.update()
+            except Exception as ex:
+                import traceback
+                print(f"[Door-only diagram] error: {ex}")
+                traceback.print_exc()
+
+        def door_only_diagram_prev(e):
+            instances = _door_only_flatten(state.get("current_doors") or [])
+            if len(instances) <= 1:
+                return
+            door_only_diagram_index[0] = max(0, door_only_diagram_index[0] - 1)
+            refresh_door_only_diagram()
+
+        def door_only_diagram_next(e):
+            instances = _door_only_flatten(state.get("current_doors") or [])
+            if len(instances) <= 1:
+                return
+            door_only_diagram_index[0] = min(len(instances) - 1, door_only_diagram_index[0] + 1)
+            refresh_door_only_diagram()
 
         def on_elevation_load(e):
             elev_name = inputs["saved_elev"].value
@@ -1986,9 +2215,10 @@ def main(page: ft.Page):
                 inputs["total_cost_per_elev_checkbox"].value = data.get("show_total_cost_per_elevation", False)
             if inputs.get("discounted_cost_per_elev_checkbox"):
                 inputs["discounted_cost_per_elev_checkbox"].value = data.get("show_discounted_cost_per_elevation", False)
-            if inputs.get("door_only_checkbox"):
-                inputs["door_only_checkbox"].value = data.get("door_only", False)
-                update_door_only_visibility(None)  # Hide rest of form when door_only
+            if data.get("door_only", False):
+                set_workspace_mode("door_only")
+            else:
+                set_workspace_mode("elevation")
             update_qty_per_elev_visibility(None)  # Update visibility based on count
             
             # Load legacy CSV if exists, else populate dynamic inputs?
@@ -2046,9 +2276,7 @@ def main(page: ft.Page):
                 inputs["discounted_cost_per_elev_checkbox"].value = False
             if inputs.get("cost_per_elev_container"):
                 inputs["cost_per_elev_container"].visible = False
-            if inputs.get("door_only_checkbox"):
-                inputs["door_only_checkbox"].value = False
-            update_door_only_visibility(None)  # Show full form again
+            set_workspace_mode("elevation")
             
             # Hide bay diagram preview
             if inputs.get("bay_diagram_container"):
@@ -2064,15 +2292,33 @@ def main(page: ft.Page):
         def render_doors():
             door_list_col.controls.clear()
             for i, door in enumerate(state["current_doors"]):
-                hw_txt = ", ".join([k for k,v in door["hardware"].items() if v])
+                hw_txt = ", ".join([k for k, v in door["hardware"].items() if v])
+                span_txt = None
+                if door.get("x_in") is not None:
+                    dw, _ = _parse_door_size_inches(door.get("size", ""))
+                    left = door["x_in"] - dw / 2
+                    right = door["x_in"] + dw / 2
+                    span_txt = f"Length {left:.1f}\"-{right:.1f}\" occupied"
+                elif door.get("x_positions"):
+                    dw, _ = _parse_door_size_inches(door.get("size", ""))
+                    parts = []
+                    for x in door["x_positions"]:
+                        left = float(x) - dw / 2
+                        right = float(x) + dw / 2
+                        parts.append(f"{left:.1f}\"-{right:.1f}\"")
+                    span_txt = "Length " + ", ".join(parts) + " occupied" if parts else None
+                lines = [
+                    ft.Text(f"Door {i+1}", weight="bold", color=COLOR_TEXT),
+                    ft.Text(f"{door['size']} | {door['stile']} Stile | Qty: {door['count']}", size=12, color=COLOR_TEXT_DIM),
+                ]
+                if span_txt:
+                    lines.append(ft.Text(span_txt, size=11, color="#4CAF50"))
+                if hw_txt:
+                    lines.append(ft.Text(f"HW: {hw_txt}", size=10, color=COLOR_TEXT_DIM, italic=True))
                 door_list_col.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Column([
-                                ft.Text(f"Door {i+1}", weight="bold", color=COLOR_TEXT),
-                                ft.Text(f"{door['size']} | {door['stile']} Stile | Qty: {door['count']}", size=12, color=COLOR_TEXT_DIM),
-                                ft.Text(f"HW: {hw_txt}", size=10, color=COLOR_TEXT_DIM, italic=True) if hw_txt else ft.Container()
-                            ], expand=True),
+                            ft.Column(lines, expand=True),
                             ft.IconButton(ft.Icons.EDIT, icon_color="blue", on_click=lambda e, idx=i: edit_door(idx)),
                             ft.IconButton(ft.Icons.DELETE, icon_color="red", on_click=lambda e, idx=i: delete_door(idx)),
                         ]),
@@ -2087,24 +2333,23 @@ def main(page: ft.Page):
             inputs["door_size"].value = d['size']
             inputs["door_count"].value = str(d['count'])
             inputs["door_stile"].value = d['stile']
+            if d.get("x_in") is not None and inputs.get("door_x_pos"):
+                inputs["door_x_pos"].value = str(d["x_in"])
+            elif d.get("x_positions") and inputs.get("door_x_pos"):
+                inputs["door_x_pos"].value = ", ".join(str(x) for x in d["x_positions"])
+            else:
+                if inputs.get("door_x_pos"):
+                    inputs["door_x_pos"].value = ""
             for k, cb in hardware_cbs.items():
                 cb.value = d['hardware'].get(k, False)
             page.update()
 
         def delete_door(idx):
-            is_existing_elevation = inputs["saved_elev"].value is not None and inputs["saved_elev"].value != "" and inputs["saved_elev"].value != "New Elevation"
-            
             state["current_doors"].pop(idx)
             save_doors_action()
             render_doors()
-            
-            # Auto-update elevation if loaded
-            if is_existing_elevation:
-                try:
-                    save_elevation_action(None)
-                except Exception as e:
-                    print(f"Auto-update failed after door delete: {e}")
-            
+            if state.get("workspace_mode") == "door_only":
+                refresh_door_only_diagram()
             page.update()
 
         def save_doors_action():
@@ -2114,6 +2359,79 @@ def main(page: ft.Page):
                 save_doors(elev_name)
             else:
                 print("Warning: save_doors_action called but no elevation name in type input.")
+
+        def _spans_for_door(door, opening_width):
+            """Yield (left, right) in inches for each instance of this door."""
+            dw, dh = _parse_door_size_inches(door.get("size", ""))
+            count = door.get("count", 1)
+            xs = []
+            if count == 1:
+                x_in = door.get("x_in")
+                if x_in is not None:
+                    try:
+                        xs.append(float(x_in))
+                    except (TypeError, ValueError):
+                        pass
+            else:
+                for x in (door.get("x_positions") or [])[:count]:
+                    if x is not None:
+                        try:
+                            xs.append(float(x))
+                        except (TypeError, ValueError):
+                            pass
+            for x_center in xs:
+                left = x_center - dw / 2
+                right = x_center + dw / 2
+                yield left, right, dw, dh
+
+        def _auto_place_door_only(new_door):
+            """Set x_in or x_positions on new_door so it sits after existing doors (side by side, to scale)."""
+            gap = 2.0
+            cursor = 0.0
+            for d in state["current_doors"]:
+                dw, _ = _parse_door_size_inches(d.get("size", ""))
+                c = d.get("count", 1)
+                if c == 1 and d.get("x_in") is not None:
+                    cursor = float(d["x_in"]) + dw / 2 + gap
+                elif c > 1 and d.get("x_positions"):
+                    for x in d["x_positions"][:c]:
+                        if x is not None:
+                            cursor = float(x) + dw / 2 + gap
+                else:
+                    # No positions: assume placed side by side
+                    for _ in range(c):
+                        cursor += dw + gap
+            dw, _ = _parse_door_size_inches(new_door.get("size", ""))
+            count = new_door.get("count", 1)
+            if count == 1:
+                new_door["x_in"] = cursor + dw / 2
+            else:
+                pos = []
+                for _ in range(count):
+                    pos.append(cursor + dw / 2)
+                    cursor += dw + gap
+                new_door["x_positions"] = pos
+
+        def _check_door_placement(opening_w, opening_h, doors_to_check):
+            """Check no door exceeds opening and no overlaps. Returns (True, None) or (False, error_msg)."""
+            spans = []
+            for door in doors_to_check:
+                dw, dh = _parse_door_size_inches(door.get("size", ""))
+                if dh > opening_h:
+                    return False, f"Door height ({dh/12:.1f}\") exceeds opening height ({opening_h/12:.1f}\")."
+                for left, right, _dw, _dh in _spans_for_door(door, opening_w):
+                    if left < 0:
+                        return False, f"Door extends past left edge (X position too far left). Use center position so door stays within 0-{opening_w:.1f}\"."
+                    if right > opening_w:
+                        return False, f"Door extends past right edge (X position too far right). Use center within 0-{opening_w:.1f}\"."
+                    spans.append((left, right))
+            for i, (a1, a2) in enumerate(spans):
+                for j, (b1, b2) in enumerate(spans):
+                    if i >= j:
+                        continue
+                    if not (a2 <= b1 or b2 <= a1):
+                        return False, "Doors overlap on the X axis. Change X positions or opening width."
+            return True, None
 
         def modify_door(action):
             # Auto-save elevation if updating a door on an existing elevation
@@ -2132,13 +2450,65 @@ def main(page: ft.Page):
             except ValueError:
                 show_snack("Invalid door count")
                 return
-                
-            new_door = {
-                "size": inputs["door_size"].value,
-                "count": count,
-                "stile": inputs["door_stile"].value,
-                "hardware": {k: v.value for k,v in hardware_cbs.items()}
-            }
+            
+            # Parse X position(s) — optional in door_only mode (we auto-place)
+            door_only_mode = state.get("workspace_mode") == "door_only"
+            x_raw = (inputs.get("door_x_pos") and inputs["door_x_pos"].value) or ""
+            x_parts = [p.strip() for p in x_raw.split(",") if p.strip()]
+            x_values = []
+            for p in x_parts:
+                try:
+                    x_values.append(float(p))
+                except ValueError:
+                    pass
+            if count == 1:
+                if not door_only_mode and len(x_values) < 1:
+                    show_snack("X position (center, inches) is required so the door can be placed on the diagram.")
+                    return
+                new_door = {
+                    "size": inputs["door_size"].value,
+                    "count": count,
+                    "stile": inputs["door_stile"].value,
+                    "hardware": {k: v.value for k, v in hardware_cbs.items()},
+                    "x_in": x_values[0] if len(x_values) >= 1 else None
+                }
+            else:
+                if not door_only_mode and len(x_values) < count:
+                    show_snack(f"Enter {count} X positions (comma-separated) for center of each door.")
+                    return
+                new_door = {
+                    "size": inputs["door_size"].value,
+                    "count": count,
+                    "stile": inputs["door_stile"].value,
+                    "hardware": {k: v.value for k, v in hardware_cbs.items()},
+                    "x_positions": x_values[:count] if len(x_values) >= count else [None] * count
+                }
+            
+            # In door_only mode: auto-place if no X given
+            if door_only_mode:
+                _auto_place_door_only(new_door)
+            else:
+                # Validate against opening dimensions and existing doors (no overlap, no overflow)
+                try:
+                    opening_w = float(inputs["width"].value) if inputs.get("width") and inputs["width"].value else 0
+                    opening_h = float(inputs["height"].value) if inputs.get("height") and inputs["height"].value else 0
+                except (TypeError, ValueError):
+                    opening_w, opening_h = 0, 0
+                if opening_w <= 0 or opening_h <= 0:
+                    show_snack("Enter Opening Width and Height first so door placement can be validated.")
+                    return
+                if action == "add":
+                    doors_to_check = list(state["current_doors"]) + [new_door]
+                else:
+                    doors_to_check = list(state["current_doors"])
+                    if state["selected_door_index"] is not None and 0 <= state["selected_door_index"] < len(doors_to_check):
+                        doors_to_check[state["selected_door_index"]] = new_door
+                    else:
+                        doors_to_check = state["current_doors"] + [new_door]
+                ok, err = _check_door_placement(opening_w, opening_h, doors_to_check)
+                if not ok:
+                    show_snack(err, "red")
+                    return
             
             if action == "add":
                 state["current_doors"].append(new_door)
@@ -2147,20 +2517,20 @@ def main(page: ft.Page):
             
             render_doors()
             save_doors_action()
+            if door_only_mode:
+                refresh_door_only_diagram()
+            else:
+                auto_refresh_bay_diagram()
             
             # Clear door inputs - leave count blank
             inputs["door_count"].value = ""
-            for cb in hardware_cbs.values(): cb.value = False
+            if inputs.get("door_x_pos"):
+                inputs["door_x_pos"].value = ""
+            for cb in hardware_cbs.values():
+                cb.value = False
             state["selected_door_index"] = None
             
-            # Auto-update elevation if loaded
-            # Note: We trigger this AFTER the door list is updated in state["current_doors"]
-            if is_existing_elevation:
-                try:
-                    save_elevation_action(None)
-                except Exception as e:
-                    print(f"Auto-update failed: {e}")
-                    
+            # Don't call save_elevation_action here — it can cause a full refresh. Doors are already saved via save_doors_action().
             page.update()
 
         def save_elevation_action(e):
@@ -2188,7 +2558,7 @@ def main(page: ft.Page):
                 elev = inputs["type"].value.strip() if inputs["type"].value else ""
                 if not elev: raise ValueError("Elevation Name Required")
                 
-                door_only = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+                door_only = state.get("workspace_mode") == "door_only"
 
                 if door_only:
                     if not state["current_doors"]:
@@ -2361,6 +2731,8 @@ def main(page: ft.Page):
                 if state["current_doors"]:
                     door_items = calculate_door_info(state["current_doors"], finish=data["finish"], total_count=total)
                     data["calculated_outputs"].extend(door_items)
+                # Persist raw doors for Excel diagrams (bay diagram green boxes, door-only diagrams)
+                data["doors"] = list(state["current_doors"]) if state.get("current_doors") else []
 
                 state["saved_elevations"][elev] = data
                 
@@ -2550,7 +2922,7 @@ def main(page: ft.Page):
                 
                 # Regenerate the report to reflect deletion
                 try:
-                    temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                    temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                     generate_excel_report(
                         excel_path=temp_paths["excel"], 
                         elevations_json_path=temp_paths["elevations"], 
@@ -2598,7 +2970,8 @@ def main(page: ft.Page):
                 ]}
                 save_project_settings(state["current_project"], settings)
                 
-                temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                # Use in-memory elevations so Excel reflects all elevations (including door-only) as shown in app
+                temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 out = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
                 os.makedirs("reports", exist_ok=True)
@@ -2649,7 +3022,7 @@ def main(page: ft.Page):
                     ]}
                     save_project_settings(state["current_project"], settings)
                     
-                    temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                    temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                     generate_excel_report(
                         excel_path, temp_paths["elevations"], temp_paths["materials"],
                         "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
@@ -2710,7 +3083,7 @@ def main(page: ft.Page):
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
-                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                         generate_excel_report(
                             temp_report_path, 
                             temp_paths["elevations"], 
@@ -2789,7 +3162,7 @@ def main(page: ft.Page):
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
-                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                         generate_excel_report(
                             temp_report_path, 
                             temp_paths["elevations"], 
@@ -2864,7 +3237,7 @@ def main(page: ft.Page):
                         os.makedirs("reports", exist_ok=True)
                         temp_report_path = os.path.join("reports", f"{state['current_project']}_temp_{ts}.xlsx")
                         
-                        temp_paths = prepare_temp_files_for_excel(state["current_project"])
+                        temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
                         generate_excel_report(
                             temp_report_path, 
                             temp_paths["elevations"], 
@@ -3427,6 +3800,10 @@ def main(page: ft.Page):
         
         door_manager_content = ft.Column([
             ft.Row([create_dropdown("Size", "door_size", state["door_options"]), create_input_field("Count (Per Elevation)", "door_count")]),
+            assign_ref("door_x_pos_container", ft.Container(
+                content=create_input_field("X position (center, \") — one value or comma-separated for multiple", "door_x_pos"),
+                visible=True
+            )),
             create_dropdown("Style", "door_stile", state["stile_options"]),
             ft.Text("Hardware:", size=12, color=COLOR_TEXT_DIM),
             ft.Column([cb for cb in hardware_cbs.values()], spacing=0),
@@ -3467,15 +3844,22 @@ def main(page: ft.Page):
             door_manager_content_container
         ], spacing=0)
         
+        # Toggle: Elevation | Door only (changes the screen)
+        assign_ref("toggle_elevation_btn", ft.OutlinedButton(
+            "Elevation",
+            style=ft.ButtonStyle(bgcolor=COLOR_ACCENT, color="white"),
+            on_click=lambda e: set_workspace_mode("elevation")
+        ))
+        assign_ref("toggle_door_only_btn", ft.OutlinedButton(
+            "Door only",
+            style=ft.ButtonStyle(bgcolor=COLOR_SURFACE, color=COLOR_TEXT),
+            on_click=lambda e: set_workspace_mode("door_only")
+        ))
+        state["workspace_mode"] = "elevation"
+        
         form_col = ft.Column([
             ft.Text("ELEVATION DETAILS", size=14, weight="bold", color=COLOR_ACCENT),
-            # Door only at top - when checked, hides rest of form (still requires elevation name)
-            assign_ref("door_only_checkbox", ft.Checkbox(
-                label="Door only (no bays) — still requires elevation name",
-                value=False,
-                fill_color=COLOR_ACCENT,
-                on_change=update_door_only_visibility
-            )),
+            ft.Row([inputs["toggle_elevation_btn"], inputs["toggle_door_only_btn"]], spacing=0),
             ft.Row([create_input_field("Elevation Type (Name)", "type")]),
 
             # Rest of form - hidden when door_only
@@ -3564,7 +3948,7 @@ def main(page: ft.Page):
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=10,
             expand=True),
-            visible=True,  # Container always visible, image visibility controls display
+            visible=True,
             expand=True,
             padding=20,
             bgcolor=COLOR_SURFACE,
@@ -3575,6 +3959,55 @@ def main(page: ft.Page):
                 ft.BorderSide(2, COLOR_ACCENT_LIGHT),
                 ft.BorderSide(2, COLOR_ACCENT_LIGHT)
             )
+        ))
+
+        # Door-only diagram: one diagram per door, arrows to switch
+        door_only_diagram_image = ft.Image(
+            src_base64="",
+            fit=ft.ImageFit.CONTAIN,
+            visible=False
+        )
+        inputs["door_only_diagram_image"] = door_only_diagram_image
+        assign_ref("door_only_title_text", ft.Text("Door 1 of 1", size=14, color=COLOR_TEXT, text_align=ft.TextAlign.CENTER, expand=True))
+        door_only_prev_btn = ft.IconButton(ft.Icons.CHEVRON_LEFT, icon_color=COLOR_ACCENT, on_click=door_only_diagram_prev, tooltip="Previous door")
+        door_only_next_btn = ft.IconButton(ft.Icons.CHEVRON_RIGHT, icon_color=COLOR_ACCENT, on_click=door_only_diagram_next, tooltip="Next door")
+        assign_ref("door_only_nav_row", ft.Row(
+            [door_only_prev_btn, inputs["door_only_title_text"], door_only_next_btn],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            visible=False
+        ))
+        assign_ref("door_only_diagram_container", ft.Container(
+            content=ft.Column([
+                ft.Text("DOOR ONLY — To Scale", size=16, weight="bold", color=COLOR_ACCENT, text_align=ft.TextAlign.CENTER),
+                inputs["door_only_nav_row"],
+                ft.Container(
+                    content=door_only_diagram_image,
+                    expand=True,
+                    alignment=ft.alignment.center,
+                    padding=10
+                )
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=10,
+            expand=True),
+            visible=False,
+            expand=True,
+            padding=20,
+            bgcolor=COLOR_SURFACE,
+            border_radius=10,
+            border=ft.Border(
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT),
+                ft.BorderSide(2, COLOR_ACCENT_LIGHT)
+            )
+        ))
+
+        # Switcher: show bay diagram (elevation) or door-only diagram
+        assign_ref("diagram_switcher_container", ft.Container(
+            content=inputs["bay_diagram_container"],
+            expand=1,
+            margin=ft.margin.only(right=10, top=10, bottom=10)
         ))
 
         # Create Tabs
@@ -3606,11 +4039,7 @@ def main(page: ft.Page):
                             padding=20, 
                             margin=ft.margin.only(left=10, top=10, bottom=10)
                         ),
-                        ft.Container(
-                            content=inputs["bay_diagram_container"],
-                            expand=1,
-                            margin=ft.margin.only(right=10, top=10, bottom=10)
-                        )
+                        inputs["diagram_switcher_container"]
                     ], expand=True)
                 ),
                 ft.Tab(
@@ -3634,7 +4063,7 @@ def main(page: ft.Page):
         # Instead, we just set the initial visibility state of the controls.
         
         is_yes45_init = inputs["system"].value == "YES 45TU FRONT SET(OG)"
-        door_only_init = inputs.get("door_only_checkbox") and inputs["door_only_checkbox"].value
+        door_only_init = state.get("workspace_mode") == "door_only"
         show_bays_init = is_yes45_init and not door_only_init
         
         # Safely set initial visibility on containers if they exist
