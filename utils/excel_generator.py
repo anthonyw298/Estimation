@@ -52,9 +52,31 @@ def _door_spans_for_diagram(doors, opening_width):
 
 # --- Helper Functions ---
 
-def _get_multiplier(running_grand_total):
-    """Returns multiplier based on running grand total."""
-    return 0.614 if running_grand_total < 50000 else 0.572
+def _get_multiplier(running_grand_total, settings=None):
+    """Returns multiplier based on running grand total. If settings has discount overrides (non-empty), use them."""
+    threshold = 50000
+    low_mult = 0.614
+    high_mult = 0.572
+    if settings:
+        t = settings.get("discount_threshold")
+        if t is not None and str(t).strip() != "":
+            try:
+                threshold = float(t)
+            except (ValueError, TypeError):
+                pass
+        lm = settings.get("discount_multiplier_low")
+        if lm is not None and str(lm).strip() != "":
+            try:
+                low_mult = float(lm)
+            except (ValueError, TypeError):
+                pass
+        hm = settings.get("discount_multiplier_high")
+        if hm is not None and str(hm).strip() != "":
+            try:
+                high_mult = float(hm)
+            except (ValueError, TypeError):
+                pass
+    return low_mult if running_grand_total < threshold else high_mult
 
 def _autofit_columns_by_longest_word(ws, start_col, end_col, start_row, end_row):
     """Fit columns to the longest word in any cell. Keeps columns tight so values aren't pushed far right."""
@@ -947,6 +969,25 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     elevation_summary_cols = []
     category_start_col = 1  # Profiles section still starts at column 1 by default
 
+    # Load settings early for discount multiplier overrides
+    pricing_settings = {}
+    if summary_settings_path and os.path.exists(summary_settings_path):
+        try:
+            with open(summary_settings_path, 'r') as f:
+                pricing_settings = json.load(f)
+        except Exception:
+            pass
+    elev_dir_early = os.path.dirname(elevations_json_path)
+    elev_basename_early = os.path.basename(elevations_json_path)
+    if not pricing_settings and "_Elevations.json" in elev_basename_early:
+        alt_path = os.path.join(elev_dir_early, elev_basename_early.replace("_Elevations.json", "") + "_Settings.json")
+        if os.path.exists(alt_path):
+            try:
+                with open(alt_path, 'r') as f:
+                    pricing_settings = json.load(f)
+            except Exception:
+                pass
+
     # Step 1: Calculate full_running_grand_total for multiplier
     full_running_grand_total = 0.0
     for elev_key, elev in data.items():
@@ -972,7 +1013,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 price = price if price is not None else 0.0
             full_running_grand_total += price
 
-    multiplier = _get_multiplier(full_running_grand_total)
+    multiplier = _get_multiplier(full_running_grand_total, pricing_settings)
 
     # Step 2: Aggregate quantities and prices across all elevations, grouped by category
     categories = {
@@ -2268,6 +2309,26 @@ def generate_excel_report(
     save_extra_materials({}, private_extra_materials_path)
     overall_current_extra_materials_state = load_extra_materials(private_extra_materials_path)
 
+    # Load settings early for discount multiplier overrides
+    pricing_settings = {}
+    settings_paths_to_try = []
+    if summary_settings_path:
+        settings_paths_to_try.append(summary_settings_path)
+        settings_paths_to_try.append(os.path.abspath(summary_settings_path))
+    elev_dir = os.path.dirname(private_elevations_path)
+    elev_basename = os.path.basename(private_elevations_path)
+    if "_Elevations.json" in elev_basename:
+        project_base = elev_basename.replace("_Elevations.json", "")
+        settings_paths_to_try.append(os.path.join(private_projects_dir, f"{project_base}_Settings.json"))
+    for p in settings_paths_to_try:
+        if p and os.path.exists(p):
+            try:
+                with open(p, 'r') as f:
+                    pricing_settings = json.load(f)
+                break
+            except Exception:
+                pass
+
     full_running_grand_total = 0.0
     for elev_name in current_saved_elevations:
         elev_data = current_saved_elevations[elev_name]
@@ -2289,7 +2350,7 @@ def generate_excel_report(
                     price_sum += p if p is not None else 0.0
             full_running_grand_total += price_sum
 
-    multiplier = _get_multiplier(full_running_grand_total)
+    multiplier = _get_multiplier(full_running_grand_total, pricing_settings)
 
     sorted_elev_names = sorted(current_saved_elevations.keys())
 

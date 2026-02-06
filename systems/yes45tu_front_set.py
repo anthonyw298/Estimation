@@ -33,7 +33,9 @@ def calculate_yes45tu_quantities(
     opening_width: float,
     opening_height: float,
     doors=None,
-    custom_bay_widths=None
+    custom_bay_widths=None,
+    glass_per_sqft=None,
+    fabrication_cost_per_joint=None
 ) -> list:
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
@@ -151,12 +153,12 @@ def calculate_yes45tu_quantities(
             "quantity": adjusted_glass_area,
             "part_number": "N/A",
             "type": "Glass",
-            'price': 10.5,
+            'price': float(glass_per_sqft) if glass_per_sqft is not None else 10.5,
             'unit': 'sqft',
             'manual': True
         }
 
-    # --- Manual outputs including glass and door area ---
+    fab_price = float(fabrication_cost_per_joint) if fabrication_cost_per_joint is not None else 15.0
     manual_outputs = [
         glass_output,
         {
@@ -164,7 +166,7 @@ def calculate_yes45tu_quantities(
             "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
             "part_number": "N/A",
             "type": "Fabrication",
-            'price': 15.0,
+            'price': fab_price,
             'unit': 'joints',
             'manual': True
         }

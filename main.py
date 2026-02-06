@@ -2720,9 +2720,14 @@ def main(page: ft.Page):
                     data["custom_bay_widths"] = w_vals
                     data["custom_bay_heights"] = h_vals
                     
+                    proj_settings = load_project_settings(state["current_project"]) or {}
+                    glass_override = proj_settings.get("glass_per_sqft")
+                    fab_override = proj_settings.get("fabrication_cost_per_joint")
                     data["calculated_outputs"] = calculate_yes45tu_quantities(
                         bw, bh, total, w, h, state["current_doors"], 
-                        custom_bay_widths=w_vals if w_vals else None
+                        custom_bay_widths=w_vals if w_vals else None,
+                        glass_per_sqft=glass_override,
+                        fabrication_cost_per_joint=fab_override
                     )
                 else:
                     data["calculated_outputs"] = []
@@ -3699,6 +3704,56 @@ def main(page: ft.Page):
             waste_calculator_section
         ], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
         
+        # Pricing Adjustment Tab - separate tab with default values pre-filled
+        _def = lambda k, d: str(project_settings.get(k, d)) if project_settings.get(k) not in (None, "") else str(d)
+        create_input_field("Discount multiplier (projects < $50k)", "discount_multiplier_low", numeric=True, expand=False, value=_def("discount_multiplier_low", 0.614))
+        create_input_field("Discount multiplier (projects >= $50k)", "discount_multiplier_high", numeric=True, expand=False, value=_def("discount_multiplier_high", 0.572))
+        create_input_field("Discount threshold ($)", "discount_threshold", numeric=True, expand=False, value=_def("discount_threshold", 50000))
+        create_input_field("Glass per sqft ($)", "glass_per_sqft", numeric=True, expand=False, value=_def("glass_per_sqft", 10.5))
+        create_input_field("Fabrication cost per joint ($)", "fabrication_cost_per_joint", numeric=True, expand=False, value=_def("fabrication_cost_per_joint", 15))
+        
+        _pricing_defaults = {"discount_multiplier_low": 0.614, "discount_multiplier_high": 0.572, "discount_threshold": 50000, "glass_per_sqft": 10.5, "fabrication_cost_per_joint": 15}
+        def save_pricing_adjustment(e):
+            try:
+                settings = {}
+                for key in ["discount_multiplier_low", "discount_multiplier_high", "discount_threshold", "glass_per_sqft", "fabrication_cost_per_joint"]:
+                    val = inputs.get(key)
+                    if val:
+                        s = (val.value or "").strip()
+                        try:
+                            settings[key] = float(s) if s else _pricing_defaults[key]
+                        except ValueError:
+                            settings[key] = _pricing_defaults[key]
+                existing_settings = load_project_settings(state["current_project"])
+                existing_settings.update(settings)
+                save_project_settings(state["current_project"], existing_settings)
+                show_snack("Pricing adjustment saved.", "green")
+            except Exception as ex:
+                show_snack(f"Error saving: {ex}", "red")
+        
+        pricing_adjustment_container = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Text("PRICING ADJUSTMENT", size=16, weight="bold", color=COLOR_ACCENT, expand=True),
+                    ft.ElevatedButton("SAVE", bgcolor=COLOR_ACCENT, color="white", on_click=save_pricing_adjustment, height=40, width=120)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Text("Adjust discount multipliers, glass per sqft, and fabrication cost. Values shown are defaults until changed.", size=12, color=COLOR_TEXT_DIM, italic=True),
+                ft.Divider(height=1, color=COLOR_SURFACE),
+                ft.Container(height=20),
+                ft.Row([
+                    ft.Column([
+                        inputs["discount_multiplier_low"],
+                        inputs["discount_multiplier_high"],
+                        inputs["discount_threshold"],
+                        inputs["glass_per_sqft"],
+                        inputs["fabrication_cost_per_joint"]
+                    ], spacing=15, expand=True)
+                ], spacing=0)
+            ], spacing=15),
+            padding=20,
+            expand=True
+        )
+        
         # Initialize waste calculator when project is loaded
         refresh_waste_calculator()
         
@@ -4049,6 +4104,10 @@ def main(page: ft.Page):
                         padding=20,
                         expand=True
                     )
+                ),
+                ft.Tab(
+                    text="Pricing Adjustment",
+                    content=pricing_adjustment_container
                 )
             ],
             expand=True
