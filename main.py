@@ -381,6 +381,7 @@ def main(page: ft.Page):
     state = {
         "projects": [], "current_project": None, "saved_elevations": {},
         "current_doors": [], "selected_door_index": None,
+        "report_intent": None,  # "excel" or "pdf" when user clicks Generate Report or Export PDF
         "system_options": ["YES 45TU FRONT SET(OG)", "Other"],
         "finish_options": ["Clear", "Black", "Paint"],
         "door_options": ['None', "3' X 7'", "3' X 8'", "3' X 9'", "6' X 7'", "6' X 8'", "6' X 9'"],
@@ -3811,10 +3812,10 @@ def main(page: ft.Page):
                     icon=ft.Icons.PICTURE_AS_PDF,
                     bgcolor="#D32F2F",
                     color="white",
-                    on_click=export_to_pdf,
-                    tooltip="Export report as branded PDF with company logo"
+                    on_click=lambda e: (state.__setitem__("report_intent", "pdf"), page.go("/report-options")),
+                    tooltip="Choose sections and export as PDF"
                 ) if REPORTLAB_AVAILABLE else ft.Container(),
-                ft.ElevatedButton("GENERATE REPORT", bgcolor=COLOR_ACCENT, color="white", on_click=gen_full_report)
+                ft.ElevatedButton("GENERATE REPORT", bgcolor=COLOR_ACCENT, color="white", on_click=lambda e: (state.__setitem__("report_intent", "excel"), page.go("/report-options")))
             ], spacing=10)
         ], height=60, alignment=ft.MainAxisAlignment.START)
 
@@ -4188,6 +4189,295 @@ def main(page: ft.Page):
             padding=0
         )
 
+    def build_report_options_view():
+        """Multi-layer dropdown stock list for report customization."""
+        elev_names = sorted(state.get("saved_elevations", {}).keys())
+        elev_count = len(elev_names)
+
+        # Layer 2: per-elevation subsections (maps to excel sections)
+        L2_KEYS = ["system_input", "profiles", "accessories", "glass", "labor", "gaskets", "doors", "diagram", "elevation_summary"]
+        L2_LABELS = {"system_input": "System input boxes", "profiles": "Profiles", "accessories": "Accessories",
+            "glass": "Glass", "labor": "Labor/Fabrication", "gaskets": "Gaskets", "doors": "Doors", "diagram": "Diagrams",
+            "elevation_summary": "Elevation summary"}
+        # Layer 3: column headers (elevation tabs — all column headers from _write_output_section)
+        L3_KEYS = ["description", "part_number", "total_quantity_required", "quantity_per_elevation",
+            "total_list_cost", "total_list_cost_per_elevation", "discounted_total_list_cost", "discounted_total_list_cost_per_elevation"]
+        L3_LABELS = {"description": "Description", "part_number": "Part Number", "total_quantity_required": "Total Quantity Required",
+            "quantity_per_elevation": "Quantity Per Elevation", "total_list_cost": "Total List Cost",
+            "total_list_cost_per_elevation": "Total List Cost Per Elevation", "discounted_total_list_cost": "Discounted Total List Cost",
+            "discounted_total_list_cost_per_elevation": "Discounted Total List Cost Per Elevation"}
+        # Summary table columns (from get_headers_for_category — union of all category columns)
+        SUMMARY_COLUMN_KEYS = [
+            "description", "project_total_materials", "total_feet_required", "sticks_required",
+            "total_pieces_required", "quantity_per_order", "orders_required", "rolls_required",
+            "unit_price", "quantity_req_ft", "qty_stick_req", "total_quantity_required",
+            "total_list_cost", "discounted_total_list_cost",
+            "residual_material_quantity", "residual_waste_pct", "residual_material_cost"
+        ]
+        SUMMARY_COLUMN_LABELS = {
+            "description": "Description", "project_total_materials": "Project Total Materials",
+            "total_feet_required": "Total Feet Required", "sticks_required": "Sticks Required",
+            "total_pieces_required": "Total Pieces Required", "quantity_per_order": "Quantity Per Order",
+            "orders_required": "Orders Required", "rolls_required": "Rolls Required",
+            "unit_price": "Unit Price", "quantity_req_ft": "Quantity Req (FT)", "qty_stick_req": "Qty Stick (Req)",
+            "total_quantity_required": "Total Quantity Required", "total_list_cost": "Total List Cost",
+            "discounted_total_list_cost": "Discounted Total List Cost",
+            "residual_material_quantity": "Residual Material Quantity", "residual_waste_pct": "Residual Waste %",
+            "residual_material_cost": "Residual Material Cost"
+        }
+        # Summary: (1) same subsections as elevation, (2) summary table columns, (3) cost overview
+        COST_OVERVIEW_KEYS = ["additional_costs", "markups", "diagram"]
+        COST_OVERVIEW_LABELS = {"additional_costs": "Additional costs", "markups": "Markups/Profit", "diagram": "Cost overview diagram"}
+
+        # Build checkbox state: {elev_name: {L2: {k: cb}, L3: {k: cb}}} and summary state
+        elev_included_cbs = {}
+        elev_l2_cbs = {}
+        elev_l3_cbs = {}
+        summary_included_cb = None
+        summary_tab_cbs = {}
+        summary_column_cbs = {}
+        summary_cost_cbs = {}
+
+        def make_elev_panel(elev_name):
+            inc_cb = ft.Checkbox(label=f"Include", value=True, fill_color=COLOR_ACCENT)
+            elev_included_cbs[elev_name] = inc_cb
+            l2 = {k: ft.Checkbox(label=L2_LABELS[k], value=True, fill_color=COLOR_ACCENT) for k in L2_KEYS}
+            l3 = {k: ft.Checkbox(label=L3_LABELS[k], value=True, fill_color=COLOR_ACCENT) for k in L3_KEYS}
+            elev_l2_cbs[elev_name] = l2
+            elev_l3_cbs[elev_name] = l3
+
+            def l2_all(e):
+                for cb in l2.values(): cb.value = True
+                page.update()
+            def l2_none(e):
+                for cb in l2.values(): cb.value = False
+                page.update()
+            def l3_all(e):
+                for cb in l3.values(): cb.value = True
+                page.update()
+            def l3_none(e):
+                for cb in l3.values(): cb.value = False
+                page.update()
+
+            layer2_content = ft.Column([
+                ft.Row([ft.TextButton("All", on_click=l2_all), ft.TextButton("None", on_click=l2_none)], spacing=10),
+                ft.Column([l2[k] for k in L2_KEYS], spacing=4),
+            ], spacing=8)
+            layer3_content = ft.Column([
+                ft.Row([ft.TextButton("All", on_click=l3_all), ft.TextButton("None", on_click=l3_none)], spacing=10),
+                ft.Column([l3[k] for k in L3_KEYS], spacing=4),
+            ], spacing=8)
+
+            expanded_content = ft.Column([
+                ft.Text("Layer 2 — Subsections", size=12, weight="bold", color=COLOR_ACCENT),
+                layer2_content,
+                ft.Container(height=12),
+                ft.Text("Layer 3 — Column headers", size=12, weight="bold", color=COLOR_ACCENT),
+                layer3_content,
+            ], spacing=4)
+
+            return ft.ExpansionPanel(
+                header=ft.Row([inc_cb, ft.Text(elev_name, color=COLOR_TEXT, expand=True)], spacing=10, alignment=ft.MainAxisAlignment.START),
+                content=ft.Container(content=expanded_content, padding=12),
+                expanded=False,
+                bgcolor=COLOR_SURFACE,
+                can_tap_header=True,
+            )
+
+        def make_summary_panel():
+            nonlocal summary_included_cb, summary_tab_cbs, summary_column_cbs, summary_cost_cbs
+            summary_included_cb = ft.Checkbox(label="Include", value=True, fill_color=COLOR_ACCENT)
+            summary_tab_cbs = {k: ft.Checkbox(label=L2_LABELS[k], value=True, fill_color=COLOR_ACCENT) for k in L2_KEYS}
+            summary_column_cbs = {k: ft.Checkbox(label=SUMMARY_COLUMN_LABELS[k], value=True, fill_color=COLOR_ACCENT) for k in SUMMARY_COLUMN_KEYS}
+            summary_cost_cbs = {k: ft.Checkbox(label=COST_OVERVIEW_LABELS[k], value=True, fill_color=COLOR_ACCENT) for k in COST_OVERVIEW_KEYS}
+
+            def tab_all(e):
+                for cb in summary_tab_cbs.values(): cb.value = True
+                page.update()
+            def tab_none(e):
+                for cb in summary_tab_cbs.values(): cb.value = False
+                page.update()
+            def col_all(e):
+                for cb in summary_column_cbs.values(): cb.value = True
+                page.update()
+            def col_none(e):
+                for cb in summary_column_cbs.values(): cb.value = False
+                page.update()
+            def cost_all(e):
+                for cb in summary_cost_cbs.values(): cb.value = True
+                page.update()
+            def cost_none(e):
+                for cb in summary_cost_cbs.values(): cb.value = False
+                page.update()
+
+            return ft.ExpansionPanel(
+                header=ft.Row([summary_included_cb, ft.Text("Summary", color=COLOR_TEXT, expand=True)], spacing=10, alignment=ft.MainAxisAlignment.START),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text("Same as elevation — subsections", size=12, weight="bold", color=COLOR_ACCENT),
+                        ft.Row([ft.TextButton("All", on_click=tab_all), ft.TextButton("None", on_click=tab_none)], spacing=10),
+                        ft.Column([summary_tab_cbs[k] for k in L2_KEYS], spacing=4),
+                        ft.Container(height=12),
+                        ft.Text("Summary table — column headers", size=12, weight="bold", color=COLOR_ACCENT),
+                        ft.Row([ft.TextButton("All", on_click=col_all), ft.TextButton("None", on_click=col_none)], spacing=10),
+                        ft.Column([summary_column_cbs[k] for k in SUMMARY_COLUMN_KEYS], spacing=4),
+                        ft.Container(height=12),
+                        ft.Text("Cost overview — additional costs, markups, diagram", size=12, weight="bold", color=COLOR_ACCENT),
+                        ft.Row([ft.TextButton("All", on_click=cost_all), ft.TextButton("None", on_click=cost_none)], spacing=10),
+                        ft.Column([summary_cost_cbs[k] for k in COST_OVERVIEW_KEYS], spacing=4),
+                    ], spacing=8),
+                    padding=12
+                ),
+                expanded=False,
+                bgcolor=COLOR_SURFACE,
+                can_tap_header=True,
+            )
+
+        elev_panels = [make_elev_panel(e) for e in elev_names]
+        summary_panel = make_summary_panel()
+        all_panels = elev_panels + [summary_panel]
+        ep_list = ft.ExpansionPanelList(controls=all_panels, spacing=4, expand_icon_color=COLOR_ACCENT)
+
+        def apply_to_all(e):
+            if not elev_names:
+                return
+            src = elev_names[0]  # Use first as template
+            if src not in elev_l2_cbs or src not in elev_l3_cbs:
+                return
+            for name in elev_names[1:]:
+                if name in elev_l2_cbs:
+                    for k in L2_KEYS:
+                        elev_l2_cbs[name][k].value = elev_l2_cbs[src][k].value
+                if name in elev_l3_cbs:
+                    for k in L3_KEYS:
+                        elev_l3_cbs[name][k].value = elev_l3_cbs[src][k].value
+            show_snack(f"Applied {src}'s sections & columns to all elevations", "green")
+            page.update()
+
+        def do_generate(e):
+            temp_paths = None
+            try:
+                intent = state.get("report_intent") or "excel"
+                elevations_included = {e: elev_included_cbs[e].value for e in elev_names} if elev_included_cbs else {}
+                summary_included = summary_included_cb.value if summary_included_cb else True
+
+                per_elev_sections = {}
+                per_elev_columns = {}
+                for name in elev_names:
+                    if name not in elevations_included or not elevations_included[name]:
+                        continue
+                    per_elev_sections[name] = {k: elev_l2_cbs[name][k].value for k in L2_KEYS}
+                    per_elev_columns[name] = {k: elev_l3_cbs[name][k].value for k in L3_KEYS}
+
+                summary_options = {}
+                if summary_included and summary_tab_cbs:
+                    summary_options["summary_tab"] = {k: summary_tab_cbs[k].value for k in L2_KEYS}
+                if summary_included and summary_column_cbs:
+                    summary_options["summary_columns"] = {k: summary_column_cbs[k].value for k in SUMMARY_COLUMN_KEYS}
+                if summary_included and summary_cost_cbs:
+                    summary_options["cost_overview"] = {k: summary_cost_cbs[k].value for k in COST_OVERVIEW_KEYS}
+
+                # Map L2 to excel include_sections keys (labor->fabrication, diagram->diagrams, elevation_summary folded into summary)
+                include_sections = {"summary": summary_included}
+                for name, sec in per_elev_sections.items():
+                    include_sections["system_input"] = include_sections.get("system_input", False) or sec.get("system_input", True)
+                    include_sections["profiles"] = include_sections.get("profiles", False) or sec.get("profiles", True)
+                    include_sections["accessories"] = include_sections.get("accessories", False) or sec.get("accessories", True)
+                    include_sections["glass"] = include_sections.get("glass", False) or sec.get("glass", True)
+                    include_sections["gaskets"] = include_sections.get("gaskets", False) or sec.get("gaskets", True)
+                    include_sections["fabrication"] = include_sections.get("fabrication", False) or sec.get("labor", True)
+                    include_sections["diagrams"] = include_sections.get("diagrams", False) or sec.get("diagram", True)
+                    include_sections["doors"] = include_sections.get("doors", True)
+                if not per_elev_sections:
+                    include_sections = {k: True for k in ["system_input", "profiles", "accessories", "gaskets", "doors", "glass", "fabrication", "diagrams"]}
+                    include_sections["summary"] = summary_included
+
+                report_config = {
+                    "elevations_included": elevations_included,
+                    "summary_included": summary_included,
+                    "per_elevation_sections": per_elev_sections,
+                    "per_elevation_columns": per_elev_columns,
+                    "summary_options": summary_options,
+                }
+
+                settings = {k: get_input_pct(k) for k in [
+                    "overhead_materials_pct", "overhead_labor_pct", "admin_management_pct",
+                    "engineering_pct", "packaging_materials_pct", "shipping_transport_pct", "commissions_pct"
+                ]}
+                save_project_settings(state["current_project"], settings)
+
+                temp_paths = prepare_temp_files_for_excel(state["current_project"], elevations_override=state.get("saved_elevations"))
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                out = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
+                os.makedirs("reports", exist_ok=True)
+
+                generate_excel_report(
+                    out, temp_paths["elevations"], temp_paths["materials"],
+                    "", "", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, [], None, None, mode="export_all",
+                    summary_settings_path=temp_paths["settings"], include_sections=include_sections,
+                    report_config=report_config,
+                )
+                sync_from_temp_files(state["current_project"], temp_paths)
+
+                if intent == "pdf":
+                    if not REPORTLAB_AVAILABLE:
+                        show_snack("PDF export requires reportlab. Install with: pip install reportlab", "red")
+                        return
+                    pdf_path = export_project_to_pdf(state["current_project"], excel_path=out, include_logo=True)
+                    if os.path.exists(pdf_path):
+                        show_snack(f"PDF exported: {pdf_path}", "green")
+                        try:
+                            os.startfile(pdf_path)
+                        except Exception:
+                            pass
+                    else:
+                        show_snack("PDF export failed", "red")
+                else:
+                    show_snack(f"Report generated: {out}", "green")
+
+                page.go("/workspace")
+            except Exception as ex:
+                error_msg = str(ex)
+                print(f"[ERROR] {error_msg}")
+                traceback.print_exc()
+                show_snack(error_msg, "red")
+                if temp_paths:
+                    cleanup_temp_files(temp_paths)
+
+        intent = state.get("report_intent") or "excel"
+        action_label = "Export PDF" if intent == "pdf" else "Generate Report"
+        action_color = "#D32F2F" if intent == "pdf" else COLOR_ACCENT
+
+        content = ft.Column([
+            ft.Row([
+                ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda e: page.go("/workspace"), icon_color=COLOR_TEXT),
+                ft.Text("Report Stock List — Choose Sections", size=20, weight="bold", color=COLOR_TEXT),
+            ], spacing=10),
+            ft.Container(height=12),
+            ft.Text("Layer 1: Select elevations and Summary to include. Expand each to configure subsections and column headers.", color=COLOR_TEXT_DIM, size=12),
+            ft.Container(height=8),
+            ep_list,
+            ft.Container(height=12),
+            ft.Row([
+                ft.OutlinedButton("Apply first elevation's sections & columns to all", on_click=apply_to_all) if elev_count > 1 else ft.Container(),
+                ft.Container(expand=True),
+            ]),
+            ft.Container(height=16),
+            ft.ElevatedButton(
+                action_label,
+                icon=ft.Icons.FILE_DOWNLOAD if intent == "excel" else ft.Icons.PICTURE_AS_PDF,
+                bgcolor=action_color,
+                color="white",
+                on_click=do_generate,
+            ),
+        ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=4)
+
+        return ft.View(
+            "/report-options",
+            [ft.Container(content=content, padding=20, expand=True)],
+            bgcolor=COLOR_BG,
+        )
+
     def route_change(e):
         # Smooth transition - only rebuild what's needed
         target_route = page.route
@@ -4211,6 +4501,14 @@ def main(page: ft.Page):
             while len(page.views) > 1:
                 page.views.pop()
             page.views.append(build_ml_analytics_view())
+        elif target_route == "/report-options" and state.get("current_project"):
+            if not page.views or page.views[0].route != "/":
+                page.views.clear()
+                page.views.append(build_projects_view())
+            while len(page.views) > 1:
+                page.views.pop()
+            page.views.append(build_workspace_view())
+            page.views.append(build_report_options_view())
         else:
             # Default fallback
             page.views.clear()
