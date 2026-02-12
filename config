@@ -1,0 +1,8 @@
+# Ghostty Config
+# Theme - choose from: Dracula, Catppuccin, Tokyo Night, Gruvbox, Nord, Solarized Dark
+theme = Tokyo Night
+
+# Or use custom colors:
+# background = #000000
+# foreground = #ffffff
+# cursor-color = #0073e6
