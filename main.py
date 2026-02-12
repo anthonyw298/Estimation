@@ -4954,8 +4954,6 @@ def main(page: ft.Page):
                 ft.Container(height=30),  # Spacing between sections
                 markup_section,
                 ft.Container(height=30),  # Spacing between sections
-                elevation_summary_section,
-                ft.Container(height=30),  # Spacing between sections
                 waste_calculator_section,
             ],
             spacing=0,
@@ -5365,33 +5363,8 @@ def main(page: ft.Page):
                                     create_input_field(
                                         "Quantity",
                                         "count",
-                                        on_change=update_qty_per_elev_visibility,
                                     )
                                 ]
-                            ),
-                            # Quantity Per Elevation Toggle (shown only when count > 1)
-                            assign_ref(
-                                "qty_per_elev_container",
-                                ft.Container(
-                                    content=ft.Row([qty_per_elev_checkbox]),
-                                    visible=False,
-                                    margin=ft.margin.only(top=5, bottom=5),
-                                ),
-                            ),
-                            # Cost Per Elevation Toggles (shown only when count > 1)
-                            assign_ref(
-                                "cost_per_elev_container",
-                                ft.Container(
-                                    content=ft.Column(
-                                        [
-                                            total_cost_per_elev_checkbox,
-                                            discounted_cost_per_elev_checkbox,
-                                        ],
-                                        spacing=5,
-                                    ),
-                                    visible=False,
-                                    margin=ft.margin.only(top=5, bottom=5),
-                                ),
                             ),
                             # Dimensions
                             ft.Container(
@@ -5824,15 +5797,15 @@ def main(page: ft.Page):
             "elevation_summary",
         ]
         L2_LABELS = {
-            "system_input": "System input boxes",
-            "profiles": "Profiles",
-            "accessories": "Accessories",
-            "glass": "Glass",
-            "labor": "Labor/Fabrication",
-            "gaskets": "Gaskets",
-            "doors": "Doors",
-            "diagram": "Diagrams",
-            "elevation_summary": "Elevation summary",
+            "system_input": "System inputs (dimensions, system type, finish)",
+            "profiles": "Profiles (aluminum extrusions)",
+            "accessories": "Accessories (hardware, fasteners, clips)",
+            "glass": "Glass (panels, glazing)",
+            "labor": "Labor / Fabrication costs",
+            "gaskets": "Gaskets (seals, weatherstripping)",
+            "doors": "Doors (door hardware, frames)",
+            "diagram": "Bay / door diagrams",
+            "elevation_summary": "Elevation summary table (name, qty, dimensions, sqft, perimeter)",
         }
         # Layer 3: column headers (elevation tabs — all column headers from _write_output_section)
         L3_KEYS = [
@@ -5846,14 +5819,14 @@ def main(page: ft.Page):
             "discounted_total_list_cost_per_elevation",
         ]
         L3_LABELS = {
-            "description": "Description",
-            "part_number": "Part Number",
-            "total_quantity_required": "Total Quantity Required",
-            "quantity_per_elevation": "Quantity Per Elevation",
-            "total_list_cost": "Total List Cost",
-            "total_list_cost_per_elevation": "Total List Cost Per Elevation",
-            "discounted_total_list_cost": "Discounted Total List Cost",
-            "discounted_total_list_cost_per_elevation": "Discounted Total List Cost Per Elevation",
+            "description": "Item description (material name)",
+            "part_number": "Part number (catalog ID)",
+            "total_quantity_required": "Total quantity required (all elevations combined)",
+            "quantity_per_elevation": "Quantity per single elevation",
+            "total_list_cost": "Total list cost (before discount)",
+            "total_list_cost_per_elevation": "List cost per single elevation (before discount)",
+            "discounted_total_list_cost": "Discounted total cost (after multiplier)",
+            "discounted_total_list_cost_per_elevation": "Discounted cost per single elevation",
         }
         # Summary table columns (from get_headers_for_category — union of all category columns)
         SUMMARY_COLUMN_KEYS = [
@@ -5876,30 +5849,30 @@ def main(page: ft.Page):
             "residual_material_cost",
         ]
         SUMMARY_COLUMN_LABELS = {
-            "description": "Description",
-            "project_total_materials": "Project Total Materials",
-            "total_feet_required": "Total Feet Required",
-            "sticks_required": "Sticks Required",
-            "total_pieces_required": "Total Pieces Required",
-            "quantity_per_order": "Quantity Per Order",
-            "orders_required": "Orders Required",
-            "rolls_required": "Rolls Required",
-            "unit_price": "Unit Price",
-            "quantity_req_ft": "Quantity Req (FT)",
-            "qty_stick_req": "Qty Stick (Req)",
-            "total_quantity_required": "Total Quantity Required",
-            "total_list_cost": "Total List Cost",
-            "discounted_total_list_cost": "Discounted Total List Cost",
-            "residual_material_quantity": "Residual Material Quantity",
-            "residual_waste_pct": "Residual Waste %",
-            "residual_material_cost": "Residual Material Cost",
+            "description": "Item description (material name)",
+            "project_total_materials": "Project total materials (part number + finish)",
+            "total_feet_required": "Total linear feet required (profiles/gaskets)",
+            "sticks_required": "Number of sticks required (profiles)",
+            "total_pieces_required": "Total pieces required (accessories)",
+            "quantity_per_order": "Qty per order (min order size for accessories)",
+            "orders_required": "Number of orders required (accessories)",
+            "rolls_required": "Number of rolls required (gaskets)",
+            "unit_price": "Unit price per item (glass/labor/doors)",
+            "quantity_req_ft": "Quantity required in feet (profiles/gaskets)",
+            "qty_stick_req": "Sticks or rolls needed (profiles/gaskets)",
+            "total_quantity_required": "Total quantity required (all elevations)",
+            "total_list_cost": "Total list cost (before discount)",
+            "discounted_total_list_cost": "Discounted total cost (after multiplier)",
+            "residual_material_quantity": "Leftover / residual material quantity",
+            "residual_waste_pct": "Residual waste percentage (%)",
+            "residual_material_cost": "Residual material cost ($)",
         }
         # Summary: (1) same subsections as elevation, (2) summary table columns, (3) cost overview
         COST_OVERVIEW_KEYS = ["additional_costs", "markups", "diagram"]
         COST_OVERVIEW_LABELS = {
-            "additional_costs": "Additional costs",
-            "markups": "Markups/Profit",
-            "diagram": "Cost overview diagram",
+            "additional_costs": "Additional costs (overhead, shipping, engineering, etc.)",
+            "markups": "Markups / profit margins",
+            "diagram": "Cost breakdown pie chart",
         }
 
         # Build checkbox state: {elev_name: {L2: {k: cb}, L3: {k: cb}}} and summary state

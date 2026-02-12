@@ -8,11 +8,23 @@ from openpyxl.utils import get_column_letter
 from collections import Counter
 import datetime
 
-from utils.pricing import get_price_by_part, reverse_material_impact, load_extra_materials, save_extra_materials, apply_material_impact_to_extra_materials_in_memory, get_unit_price_by_part, parse_length_to_feet, BAY_WIDTH_PARTS, _is_bay_width_part
+from utils.pricing import (
+    get_price_by_part,
+    reverse_material_impact,
+    load_extra_materials,
+    save_extra_materials,
+    apply_material_impact_to_extra_materials_in_memory,
+    get_unit_price_by_part,
+    parse_length_to_feet,
+    BAY_WIDTH_PARTS,
+    _is_bay_width_part,
+)
+
 EPSILON = 1e-9  # Small value for floating point comparisons
 from data.part_number import PART_NUMBER_MAP
 from data.parts_data import parts_data
 from utils.formulas import calculate_door_info
+
 
 # --- Diagram helpers (doors) ---
 def _parse_door_size_inches(size_str):
@@ -24,9 +36,10 @@ def _parse_door_size_inches(size_str):
         return float(m.group(1)) * 12.0, float(m.group(2)) * 12.0
     return 36.0, 84.0
 
+
 def _door_spans_for_diagram(doors, opening_width):
     """Yield (left_in, right_in, door_h_in) for each door instance for drawing on bay diagram."""
-    for door in (doors or []):
+    for door in doors or []:
         size_str = door.get("size", "")
         count = door.get("count", 1)
         dw, dh = _parse_door_size_inches(size_str)
@@ -50,7 +63,9 @@ def _door_spans_for_diagram(doors, opening_width):
             right_in = max(0, min(x_center + dw / 2, opening_width))
             yield left_in, right_in, dh
 
+
 # --- Helper Functions ---
+
 
 def _get_multiplier(running_grand_total, settings=None):
     """Returns multiplier based on running grand total. If settings has discount overrides (non-empty), use them."""
@@ -78,6 +93,7 @@ def _get_multiplier(running_grand_total, settings=None):
                 pass
     return low_mult if running_grand_total < threshold else high_mult
 
+
 def _autofit_columns_by_longest_word(ws, start_col, end_col, start_row, end_row):
     """Fit columns to the longest word in any cell. Keeps columns tight so values aren't pushed far right."""
     for col_idx in range(start_col, end_col + 1):
@@ -96,6 +112,7 @@ def _autofit_columns_by_longest_word(ws, start_col, end_col, start_row, end_row)
             width = max(max_word_len + 2, min(max_full_len + 1, 20))
             ws.column_dimensions[col_letter].width = width
 
+
 def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
     """Autofits columns in the worksheet. Ensures minimum width for currency columns to prevent ######## display."""
     end_row = end_row if end_row is not None else ws.max_row
@@ -108,27 +125,39 @@ def _autofit_columns(ws, start_col, end_col, start_row=1, end_row=None):
             cell_value = cell.value
             if cell_value is not None:
                 max_len = max(max_len, len(str(cell_value)))
-                if isinstance(cell_value, (int, float)) or (cell.number_format and '$' in str(cell.number_format).upper()):
+                if isinstance(cell_value, (int, float)) or (
+                    cell.number_format and "$" in str(cell.number_format).upper()
+                ):
                     has_numbers = True
         # Currency/number columns need min width 14 to prevent ######## in Excel
         if has_numbers:
             max_len = max(max_len, 12)
         current_width_obj = ws.column_dimensions[col_letter]
-        current_width = current_width_obj.width if current_width_obj.width is not None else 0.0
+        current_width = (
+            current_width_obj.width if current_width_obj.width is not None else 0.0
+        )
         if col_idx == 5:  # Column E (Description)
             ws.column_dimensions[col_letter].width = max(max_len, current_width)
         else:
-            ws.column_dimensions[col_letter].width = max(max_len + 2, 14 if has_numbers else 0)
+            ws.column_dimensions[col_letter].width = max(
+                max_len + 2, 14 if has_numbers else 0
+            )
+
 
 def _clean_trailing_blank_rows(ws, start_row):
     """Deletes blank rows from the worksheet starting from a given row."""
     rows_deleted = 0
     current_row = start_row
     while current_row <= ws.max_row:
-        if all(ws.cell(row=current_row, column=c).value is None for c in range(1, ws.max_column + 1)):
+        if all(
+            ws.cell(row=current_row, column=c).value is None
+            for c in range(1, ws.max_column + 1)
+        ):
             ws.delete_rows(current_row, 1)
             rows_deleted += 1
-        else: current_row += 1
+        else:
+            current_row += 1
+
 
 def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost):
     """
@@ -141,30 +170,30 @@ def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
     except ImportError:
         print("PIL/Pillow not available, skipping pie chart generation")
         return None
-    
+
     # Calculate grand total
     grand_total = material_cost + misc_cost + markup_cost + residual_cost
-    
+
     if grand_total <= 0:
         return None
-    
+
     # Calculate percentages
     material_pct = (material_cost / grand_total * 100) if grand_total > 0 else 0
     misc_pct = (misc_cost / grand_total * 100) if grand_total > 0 else 0
     markup_pct = (markup_cost / grand_total * 100) if grand_total > 0 else 0
     residual_pct = (residual_cost / grand_total * 100) if grand_total > 0 else 0
-    
+
     # Chart dimensions
     chart_width = 420
     chart_height = 400
     center_x = chart_width // 2
     center_y = 160
     radius = 90
-    
+
     # Create image with white background
-    img = Image.new('RGB', (chart_width, chart_height), color='white')
+    img = Image.new("RGB", (chart_width, chart_height), color="white")
     draw = ImageDraw.Draw(img)
-    
+
     # Try to load fonts
     try:
         font_title = ImageFont.truetype("arial.ttf", 14)
@@ -179,98 +208,139 @@ def _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
             font_title = ImageFont.load_default()
             font_label = ImageFont.load_default()
             font_small = ImageFont.load_default()
-    
+
     # Draw title
-    draw.text((center_x, 15), "Project Cost Breakdown", fill='#333333', anchor='mm', font=font_title)
-    
+    draw.text(
+        (center_x, 15),
+        "Project Cost Breakdown",
+        fill="#333333",
+        anchor="mm",
+        font=font_title,
+    )
+
     # Colors for each segment
-    material_color = '#4472C4'  # Blue for materials
-    misc_color = '#548235'      # Green for addition cost
-    markup_color = '#7030A0'    # Purple for markups/profit
-    residual_color = '#ED7D31'  # Orange for residual/waste
-    
+    material_color = "#4472C4"  # Blue for materials
+    misc_color = "#548235"  # Green for addition cost
+    markup_color = "#7030A0"  # Purple for markups/profit
+    residual_color = "#ED7D31"  # Orange for residual/waste
+
     # Build segments list (only include non-zero values)
     segments = []
     if material_cost > 0:
-        segments.append(('Active Materials', material_cost, material_pct, material_color))
+        segments.append(
+            ("Active Materials", material_cost, material_pct, material_color)
+        )
     if misc_cost > 0:
-        segments.append(('Additional', misc_cost, misc_pct, misc_color))
+        segments.append(("Additional", misc_cost, misc_pct, misc_color))
     if markup_cost > 0:
-        segments.append(('Profit/Markups', markup_cost, markup_pct, markup_color))
+        segments.append(("Profit/Markups", markup_cost, markup_pct, markup_color))
     if residual_cost > 0:
-        segments.append(('Residual/Waste', residual_cost, residual_pct, residual_color))
-    
+        segments.append(("Residual/Waste", residual_cost, residual_pct, residual_color))
+
     # Draw pie chart
     start_angle = -90
     for name, cost, pct, color in segments:
         if pct > 0:
             sweep_angle = (pct / 100) * 360
             draw.pieslice(
-                [center_x - radius, center_y - radius, center_x + radius, center_y + radius],
+                [
+                    center_x - radius,
+                    center_y - radius,
+                    center_x + radius,
+                    center_y + radius,
+                ],
                 start=start_angle,
                 end=start_angle + sweep_angle,
                 fill=color,
-                outline='white'
+                outline="white",
             )
             start_angle += sweep_angle
-    
+
     # Draw legend at bottom
     legend_y = 270
     legend_box_size = 12
     legend_spacing = 22
-    
+
     legend_items = [
-        ('Active Materials', material_cost, material_pct, material_color),
-        ('Additional', misc_cost, misc_pct, misc_color),
-        ('Profit/Markups', markup_cost, markup_pct, markup_color),
-        ('Residual/Waste', residual_cost, residual_pct, residual_color)
+        ("Active Materials", material_cost, material_pct, material_color),
+        ("Additional", misc_cost, misc_pct, misc_color),
+        ("Profit/Markups", markup_cost, markup_pct, markup_color),
+        ("Residual/Waste", residual_cost, residual_pct, residual_color),
     ]
-    
+
     for i, (name, cost, pct, color) in enumerate(legend_items):
         y_pos = legend_y + (i * legend_spacing)
-        draw.rectangle([30, y_pos, 30 + legend_box_size, y_pos + legend_box_size], fill=color, outline='#333333')
-        draw.text((50 + legend_box_size, y_pos + legend_box_size // 2), 
-                  f"{name}: ${cost:,.2f} ({pct:.1f}%)", 
-                  fill='#333333', anchor='lm', font=font_label)
-    
+        draw.rectangle(
+            [30, y_pos, 30 + legend_box_size, y_pos + legend_box_size],
+            fill=color,
+            outline="#333333",
+        )
+        draw.text(
+            (50 + legend_box_size, y_pos + legend_box_size // 2),
+            f"{name}: ${cost:,.2f} ({pct:.1f}%)",
+            fill="#333333",
+            anchor="lm",
+            font=font_label,
+        )
+
     # Grand total at bottom
-    draw.text((center_x, chart_height - 15), f"Grand Total: ${grand_total:,.2f}", fill='#333333', anchor='mm', font=font_small)
-    
+    draw.text(
+        (center_x, chart_height - 15),
+        f"Grand Total: ${grand_total:,.2f}",
+        fill="#333333",
+        anchor="mm",
+        font=font_small,
+    )
+
     return img
 
-def _add_pie_chart_to_excel(ws, start_row, start_col, material_cost, misc_cost, markup_cost, residual_cost):
+
+def _add_pie_chart_to_excel(
+    ws, start_row, start_col, material_cost, misc_cost, markup_cost, residual_cost
+):
     """Adds a cost distribution pie chart to the Excel worksheet."""
     try:
         from openpyxl.drawing.image import Image as OpenpyxlImage
         import io
-        
+
         # Create the pie chart
-        chart_img = _create_cost_pie_chart(material_cost, misc_cost, markup_cost, residual_cost)
-        
+        chart_img = _create_cost_pie_chart(
+            material_cost, misc_cost, markup_cost, residual_cost
+        )
+
         if chart_img:
             # Save to bytes
             img_bytes = io.BytesIO()
-            chart_img.save(img_bytes, format='PNG')
+            chart_img.save(img_bytes, format="PNG")
             img_bytes.seek(0)
-            
+
             # Add to Excel
             img = OpenpyxlImage(img_bytes)
             # Scale image
             img.width = 380
             img.height = 360
             col_letter = get_column_letter(start_col)
-            img.anchor = f'{col_letter}{start_row}'
+            img.anchor = f"{col_letter}{start_row}"
             ws.add_image(img)
-            
+
             # Return estimated row height for spacing
             estimated_rows = max(22, int(img.height / 15))
             return start_row + estimated_rows + 2
     except Exception as e:
         print(f"Error creating pie chart: {e}")
-    
+
     return start_row + 2
 
-def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None, doors=None):
+
+def _create_bay_diagram(
+    bays_wide,
+    bays_tall,
+    opening_width,
+    opening_height,
+    custom_bay_widths=None,
+    custom_bay_heights=None,
+    doors=None,
+):
     """
     Creates a visual blueprint diagram of the bay distribution.
     If doors is provided, draws green door bands (to scale) on the diagram.
@@ -282,7 +352,7 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
     except ImportError:
         print("PIL/Pillow not available, skipping diagram generation")
         return None
-    
+
     diagram_width = 400
     diagram_height = 300
     margin = 20  # Reduced for tighter spacing when door is present
@@ -292,32 +362,32 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
         bay_widths = custom_bay_widths
     else:
         bay_widths = [opening_width / bays_wide] * bays_wide if bays_wide > 0 else []
-    
+
     if custom_bay_heights and len(custom_bay_heights) == bays_tall:
         bay_heights = custom_bay_heights
     else:
         bay_heights = [opening_height / bays_tall] * bays_tall if bays_tall > 0 else []
-    
+
     if not bay_widths or not bay_heights:
         return None
-    
-    img = Image.new('RGB', (diagram_width, diagram_height), color='white')
+
+    img = Image.new("RGB", (diagram_width, diagram_height), color="white")
     draw = ImageDraw.Draw(img)
-    
+
     max_display_width = diagram_width - 2 * margin
     max_display_height = diagram_height - 2 * margin - 60
-    
+
     total_width = sum(bay_widths)
     total_height = sum(bay_heights)
     scale_x = max_display_width / total_width if total_width > 0 else 1
     scale_y = max_display_height / total_height if total_height > 0 else 1
     scale = min(scale_x, scale_y)
-    
+
     scaled_total_width = total_width * scale
     scaled_total_height = total_height * scale
     start_x = margin + (max_display_width - scaled_total_width) / 2
     start_y = margin + 30
-    
+
     try:
         font_large = ImageFont.truetype("arial.ttf", 12)
         font_small = ImageFont.truetype("arial.ttf", 8)
@@ -328,46 +398,83 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
         except:
             font_large = ImageFont.load_default()
             font_small = ImageFont.load_default()
-    
-    draw.text((diagram_width // 2, 10), "Bay Distribution Layout", fill='black', anchor='mm', font=font_large)
-    
+
+    draw.text(
+        (diagram_width // 2, 10),
+        "Bay Distribution Layout",
+        fill="black",
+        anchor="mm",
+        font=font_large,
+    )
+
     current_x = start_x
     current_y = start_y
-    
+
     for i, width in enumerate(bay_widths):
         if i > 0:
-            draw.line([(current_x, start_y), (current_x, start_y + scaled_total_height)], fill='gray', width=2)
+            draw.line(
+                [(current_x, start_y), (current_x, start_y + scaled_total_height)],
+                fill="gray",
+                width=2,
+            )
         current_x += width * scale
-    
+
     current_x = start_x
     for i, height in enumerate(bay_heights):
         if i > 0:
-            draw.line([(start_x, current_y), (start_x + scaled_total_width, current_y)], fill='gray', width=2)
+            draw.line(
+                [(start_x, current_y), (start_x + scaled_total_width, current_y)],
+                fill="gray",
+                width=2,
+            )
         current_y += height * scale
-    
-    draw.rectangle([start_x, start_y, start_x + scaled_total_width, start_y + scaled_total_height], 
-                   outline='black', width=3)
-    
+
+    draw.rectangle(
+        [start_x, start_y, start_x + scaled_total_width, start_y + scaled_total_height],
+        outline="black",
+        width=3,
+    )
+
     current_x = start_x
     current_y = start_y
     bay_num = 1
-    
+
     for row in range(bays_tall):
         current_x = start_x
         for col in range(bays_wide):
             bay_center_x = current_x + (bay_widths[col] * scale) / 2
             bay_center_y = current_y + (bay_heights[row] * scale) / 2
-            draw.text((bay_center_x, bay_center_y - 6), f"B{bay_num}", fill='black', anchor='mm', font=font_small)
-            dim_text = f"{bay_widths[col]:.1f}\" x {bay_heights[row]:.1f}\""
-            draw.text((bay_center_x, bay_center_y + 6), dim_text, fill='black', anchor='mm', font=font_small)
+            draw.text(
+                (bay_center_x, bay_center_y - 6),
+                f"B{bay_num}",
+                fill="black",
+                anchor="mm",
+                font=font_small,
+            )
+            dim_text = f'{bay_widths[col]:.1f}" x {bay_heights[row]:.1f}"'
+            draw.text(
+                (bay_center_x, bay_center_y + 6),
+                dim_text,
+                fill="black",
+                anchor="mm",
+                font=font_small,
+            )
             current_x += bay_widths[col] * scale
             bay_num += 1
         current_y += bay_heights[row] * scale
-    
+
     # Draw door bands (green) when doors provided — use total_width for alignment with bay grid
     width_ref = total_width if total_width > 0 else opening_width
-    if doors and width_ref > 0 and opening_height > 0 and scaled_total_width > 0 and scaled_total_height > 0:
-        for left_in, right_in, door_h_in in _door_spans_for_diagram(doors, opening_width):
+    if (
+        doors
+        and width_ref > 0
+        and opening_height > 0
+        and scaled_total_width > 0
+        and scaled_total_height > 0
+    ):
+        for left_in, right_in, door_h_in in _door_spans_for_diagram(
+            doors, opening_width
+        ):
             if right_in <= left_in:
                 continue
             px_left = start_x + (left_in / width_ref) * scaled_total_width
@@ -377,41 +484,66 @@ def _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, cus
             px_top = px_bottom - door_h_px
             draw.rectangle(
                 [px_left, px_top, px_right, px_bottom],
-                outline='#2E7D32',
+                outline="#2E7D32",
                 width=2,
-                fill='#A5D6A7'
+                fill="#A5D6A7",
             )
-    
-    dim_text = f"Total: {opening_width:.1f}\" W x {opening_height:.1f}\" H"
-    draw.text((diagram_width // 2, diagram_height - 20), dim_text, fill='black', anchor='mm', font=font_small)
-    
+
+    dim_text = f'Total: {opening_width:.1f}" W x {opening_height:.1f}" H'
+    draw.text(
+        (diagram_width // 2, diagram_height - 20),
+        dim_text,
+        fill="black",
+        anchor="mm",
+        font=font_small,
+    )
+
     return img
 
-def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths=None, custom_bay_heights=None, doors=None):
+
+def _add_bay_diagram_to_excel(
+    ws,
+    start_row,
+    bays_wide,
+    bays_tall,
+    opening_width,
+    opening_height,
+    custom_bay_widths=None,
+    custom_bay_heights=None,
+    doors=None,
+):
     """Adds a bay distribution diagram to the Excel worksheet. If doors provided, includes green door bands."""
     if bays_wide == 0 or bays_tall == 0:
         return start_row
-    
+
     try:
         from openpyxl.drawing.image import Image as OpenpyxlImage
         import io
-        
-        diagram_img = _create_bay_diagram(bays_wide, bays_tall, opening_width, opening_height, custom_bay_widths, custom_bay_heights, doors=doors)
-        
+
+        diagram_img = _create_bay_diagram(
+            bays_wide,
+            bays_tall,
+            opening_width,
+            opening_height,
+            custom_bay_widths,
+            custom_bay_heights,
+            doors=doors,
+        )
+
         if diagram_img:
             # Save to bytes
             img_bytes = io.BytesIO()
-            diagram_img.save(img_bytes, format='PNG')
+            diagram_img.save(img_bytes, format="PNG")
             img_bytes.seek(0)
-            
+
             img = OpenpyxlImage(img_bytes)
             original_width = img.width
             original_height = img.height
             img.width = min(original_width, _DIAGRAM_MAX_WIDTH)
             img.height = int(original_height * (img.width / original_width))
-            img.anchor = f'A{start_row}'  # Place starting in column A
+            img.anchor = f"A{start_row}"  # Place starting in column A
             ws.add_image(img)
-            
+
             # Return the row after the image (estimate image height)
             # Image height in rows (approximately 1 row per 15 pixels at default row height)
             estimated_rows = max(15, int(img.height / _DIAGRAM_ROW_HEIGHT_PX))
@@ -419,8 +551,9 @@ def _add_bay_diagram_to_excel(ws, start_row, bays_wide, bays_tall, opening_width
     except Exception as e:
         print(f"Error creating bay diagram: {e}")
         ws.cell(row=start_row, column=3, value="Bay diagram could not be generated")
-    
+
     return start_row + 2
+
 
 # Consistent diagram sizing for Excel (columns A-C)
 _DIAGRAM_MAX_WIDTH = 280  # Slightly smaller
@@ -428,6 +561,7 @@ _DIAGRAM_ROW_HEIGHT_PX = 15
 _EXTRA_ROWS_AFTER_IMAGE = 1
 # Door-only: same column, stacked up/down, as close as possible
 _DOOR_DIAGRAM_GAP_ROWS = 0  # Minimal gap between stacked diagrams
+
 
 def _create_door_only_diagram_single(dw_in, dh_in, label):
     """Create a single door-only diagram image (one door, to scale). Returns PIL Image or None."""
@@ -448,7 +582,7 @@ def _create_door_only_diagram_single(dw_in, dh_in, label):
     scaled_h = dh_in * scale
     start_x = margin + (max_display_w - scaled_w) / 2
     start_y = margin + 30
-    img = Image.new('RGB', (diagram_width, diagram_height), color='white')
+    img = Image.new("RGB", (diagram_width, diagram_height), color="white")
     draw = ImageDraw.Draw(img)
     try:
         font_large = ImageFont.truetype("arial.ttf", 12)
@@ -460,34 +594,48 @@ def _create_door_only_diagram_single(dw_in, dh_in, label):
         except:
             font_large = ImageFont.load_default()
             font_small = ImageFont.load_default()
-    draw.text((diagram_width // 2, 10), "Door Only — To Scale", fill='black', anchor='mm', font=font_large)
+    draw.text(
+        (diagram_width // 2, 10),
+        "Door Only — To Scale",
+        fill="black",
+        anchor="mm",
+        font=font_large,
+    )
     draw.rectangle(
         [start_x, start_y, start_x + scaled_w, start_y + scaled_h],
-        outline='#2E7D32',
+        outline="#2E7D32",
         width=2,
-        fill='#A5D6A7'
+        fill="#A5D6A7",
     )
     cx = start_x + scaled_w / 2
     cy = start_y + scaled_h / 2
-    dim_txt = f"{dw_in:.0f}\" x {dh_in:.0f}\""
-    draw.text((cx, cy - 6), dim_txt, fill='black', anchor='mm', font=font_small)
-    draw.text((cx, cy + 6), label, fill='gray', anchor='mm', font=font_small)
-    draw.text((diagram_width // 2, diagram_height - 18), dim_txt, fill='black', anchor='mm', font=font_small)
+    dim_txt = f'{dw_in:.0f}" x {dh_in:.0f}"'
+    draw.text((cx, cy - 6), dim_txt, fill="black", anchor="mm", font=font_small)
+    draw.text((cx, cy + 6), label, fill="gray", anchor="mm", font=font_small)
+    draw.text(
+        (diagram_width // 2, diagram_height - 18),
+        dim_txt,
+        fill="black",
+        anchor="mm",
+        font=font_small,
+    )
     return img
+
 
 def _door_only_unique_by_kind(doors):
     """Return one diagram per unique door size (dw, dh). Deduplicates by kind."""
     seen = set()
     out = []
-    for door in (doors or []):
+    for door in doors or []:
         size_str = door.get("size", "")
         dw, dh = _parse_door_size_inches(size_str)
         key = (round(dw, 1), round(dh, 1))
         if key not in seen:
             seen.add(key)
-            label = f"{dw:.0f}\" x {dh:.0f}\""
+            label = f'{dw:.0f}" x {dh:.0f}"'
             out.append((dw, dh, label))
     return out
+
 
 def _add_door_only_diagrams_to_excel(ws, start_row, doors):
     """Add door-only diagram(s): one per unique kind, same column, stacked up/down, as close as possible."""
@@ -506,12 +654,12 @@ def _add_door_only_diagrams_to_excel(ws, start_row, doors):
         diagram_img = _create_door_only_diagram_single(dw, dh, label)
         if diagram_img:
             img_bytes = io.BytesIO()
-            diagram_img.save(img_bytes, format='PNG')
+            diagram_img.save(img_bytes, format="PNG")
             img_bytes.seek(0)
             img = OpenpyxlImage(img_bytes)
             img.width = min(diagram_img.width, _DIAGRAM_MAX_WIDTH)
             img.height = int(diagram_img.height * (img.width / diagram_img.width))
-            img.anchor = f'A{current_row}'
+            img.anchor = f"A{current_row}"
             ws.add_image(img)
             estimated_rows = max(12, int(img.height / _DIAGRAM_ROW_HEIGHT_PX))
             current_row += estimated_rows
@@ -519,31 +667,64 @@ def _add_door_only_diagrams_to_excel(ws, start_row, doors):
             current_row += 2
     return current_row + _EXTRA_ROWS_AFTER_IMAGE
 
-def _write_output_section(ws, title, items, colE, elevation_finish, system_total_ref, original_system_total_ref, start_output_row, current_extra_materials_state, extra_materials_path, multiplier, show_qty_per_elevation=False, total_count=1, show_total_cost_per_elevation=False, show_discounted_cost_per_elevation=False):
+
+def _write_output_section(
+    ws,
+    title,
+    items,
+    colE,
+    elevation_finish,
+    system_total_ref,
+    original_system_total_ref,
+    start_output_row,
+    current_extra_materials_state,
+    extra_materials_path,
+    multiplier,
+    show_qty_per_elevation=False,
+    total_count=1,
+    show_total_cost_per_elevation=False,
+    show_discounted_cost_per_elevation=False,
+    column_config=None,
+):
     """Writes a section of calculated outputs to the worksheet."""
-    if not items: 
-        return start_output_row, [], {'original': 0.0, 'discounted': 0.0}
+    if not items:
+        return start_output_row, [], {"original": 0.0, "discounted": 0.0}
+
+    # Column visibility from column_config (default: show all)
+    cc = column_config or {}
+    show_description = cc.get("description", True)
+    show_part_number = cc.get("part_number", True)
+    show_total_qty = cc.get("total_quantity_required", True)
+    show_total_list_cost = cc.get("total_list_cost", True)
+    show_discounted_list_cost = cc.get("discounted_total_list_cost", True)
 
     current_row = start_output_row
     title_cell = ws.cell(row=current_row, column=colE, value=title)
     title_cell.font = Font(bold=True, size=12)
-    # title_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
 
-    # Build headers based on which optional columns to show
-    headers = ["Description", "Part Number", "Total Quantity Required"]
+    # Build headers based on which columns to show
+    headers = []
+    if show_description:
+        headers.append("Description")
+    if show_part_number:
+        headers.append("Part Number")
+    if show_total_qty:
+        headers.append("Total Quantity Required")
     if show_qty_per_elevation and total_count > 1:
         headers.append("Quantity Per Elevation")
-    headers.append("Total List Cost")
+    if show_total_list_cost:
+        headers.append("Total List Cost")
     if show_total_cost_per_elevation and total_count > 1:
         headers.append("Total List Cost Per Elevation")
-    headers.append("Discounted Total List Cost")
+    if show_discounted_list_cost:
+        headers.append("Discounted Total List Cost")
     if show_discounted_cost_per_elevation and total_count > 1:
         headers.append("Discounted Total List Cost Per Elevation")
-    
+
     for i, h in enumerate(headers):
         header_cell = ws.cell(row=current_row + 1, column=colE + i, value=h)
         header_cell.font = Font(bold=True)
-        header_cell.border = Border(bottom=Side(style='thin'))
+        header_cell.border = Border(bottom=Side(style="thin"))
         # header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid") # Removed color fill for professional look
     current_row += 2
 
@@ -551,27 +732,32 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
     section_original_total = 0.0
     section_discounted_total = 0.0
     section_original_per_elev_total = 0.0  # Sum of actual per-elevation costs
-    section_discounted_per_elev_total = 0.0  # Sum of actual per-elevation discounted costs
+    section_discounted_per_elev_total = (
+        0.0  # Sum of actual per-elevation discounted costs
+    )
 
     for item in items:
-        qty_raw = item.get('quantity', 0)
-        pn, manual = item.get('part_number'), item.get('manual', False)
-        desc = item.get('description', '').strip()
-        is_profile = pn in PART_NUMBER_MAP.get('profiles', {})
+        qty_raw = item.get("quantity", 0)
+        pn, manual = item.get("part_number"), item.get("manual", False)
+        desc = item.get("description", "").strip()
+        is_profile = pn in PART_NUMBER_MAP.get("profiles", {})
         is_gasket = "gasket" in desc.lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]
-        is_accessory = pn in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
-        is_glass = pn == "GLASS_AREA" or item.get('type', '').lower() == 'glass'
+        is_accessory = (
+            pn in PART_NUMBER_MAP.get("accessories", {})
+            or item.get("type", "").lower() == "accessory"
+        )
+        is_glass = pn == "GLASS_AREA" or item.get("type", "").lower() == "glass"
 
         # Determine if we should process as a group (for optimization)
-        is_bay_width_item = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
+        is_bay_width_item = _is_bay_width_part(pn, qty_raw, item.get("description", ""))
         is_list = isinstance(qty_raw, list)
         has_multiple_items = is_list and len(qty_raw) > 1
-        
+
         # For profiles/gaskets with a list, ALWAYS process the entire list at once for optimization
         # This ensures proper leftover calculation across multiple cuts
         # CRITICAL: Check this BEFORE creating individual_quantities to avoid splitting the list
         should_process_as_group = (is_profile or is_gasket) and has_multiple_items
-        
+
         # Calculate quantities for display and processing
         # Only split into individual_quantities if NOT processing as group
         if should_process_as_group:
@@ -583,7 +769,13 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
             individual_quantities = qty_raw if is_list else [qty_raw]
             qty_sum = sum(individual_quantities) if is_list else qty_raw
 
-        unit_type = 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else item.get('unit', 'pcs' if not is_glass else 'sqft')
+        unit_type = (
+            "ft"
+            if (is_profile or is_gasket)
+            else "pcs"
+            if is_accessory
+            else item.get("unit", "pcs" if not is_glass else "sqft")
+        )
         display_unit = unit_type
 
         # Format display string
@@ -593,17 +785,32 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                 if is_profile:
                     # Check if it's a whole number
                     if qty_raw[0] == int(qty_raw[0]):
-                        display_qty_string = f"{int(qty_raw[0])}{display_unit} x {len(qty_raw)}"
+                        display_qty_string = (
+                            f"{int(qty_raw[0])}{display_unit} x {len(qty_raw)}"
+                        )
                     else:
-                        display_qty_string = f"{qty_raw[0]:.2f}{display_unit} x {len(qty_raw)}"
+                        display_qty_string = (
+                            f"{qty_raw[0]:.2f}{display_unit} x {len(qty_raw)}"
+                        )
                 else:
-                    display_qty_string = f"{qty_raw[0]:.2f} {display_unit} x {len(qty_raw)}"
+                    display_qty_string = (
+                        f"{qty_raw[0]:.2f} {display_unit} x {len(qty_raw)}"
+                    )
             else:
                 # For profiles, show individual cuts without decimals when whole numbers, with decimals otherwise
                 if is_profile:
-                    display_qty_string = ", ".join([f"{int(q)}{display_unit}" if q == int(q) else f"{q:.2f}{display_unit}" for q in qty_raw])
+                    display_qty_string = ", ".join(
+                        [
+                            f"{int(q)}{display_unit}"
+                            if q == int(q)
+                            else f"{q:.2f}{display_unit}"
+                            for q in qty_raw
+                        ]
+                    )
                 else:
-                    display_qty_string = ", ".join([f"{q:.2f} {display_unit}" for q in qty_raw])
+                    display_qty_string = ", ".join(
+                        [f"{q:.2f} {display_unit}" for q in qty_raw]
+                    )
         else:
             # For profiles, show without decimals when whole number
             if is_profile and qty_raw == int(qty_raw):
@@ -613,74 +820,146 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
 
         item_total_cost_for_display = 0.0
         original_item_total_cost = 0.0
-        
+
         # Process as group if it's a profile/gasket with multiple pieces
         if should_process_as_group:
             # Process the entire list as one request for waste optimization
             # Profiles and gaskets are treated as length-based items (sold by length, with leftover tracking)
-            print(f"DEBUG: Processing {pn} as GROUP with list {qty_raw} (type: {type(qty_raw)}, is_list: {isinstance(qty_raw, list)})")
+            print(
+                f"DEBUG: Processing {pn} as GROUP with list {qty_raw} (type: {type(qty_raw)}, is_list: {isinstance(qty_raw, list)})"
+            )
             use_group = is_profile or is_gasket
             # CRITICAL: Ensure qty_raw is passed as a list, not converted to a single value
             list_to_process = qty_raw if isinstance(qty_raw, list) else [qty_raw]
             print(f"DEBUG: Calling get_price_by_part with list: {list_to_process}")
-            total_price, calculated_unit_type, material_impact_details = \
-                get_price_by_part(pn, list_to_process, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=use_group, description=item.get('description', ''))
-            
+            total_price, calculated_unit_type, material_impact_details = (
+                get_price_by_part(
+                    pn,
+                    list_to_process,
+                    finish=elevation_finish,
+                    current_extra_materials=current_extra_materials_state,
+                    extra_materials_file=extra_materials_path,
+                    summary=False,
+                    group=use_group,
+                    description=item.get("description", ""),
+                )
+            )
+
             item_total_cost_for_display = total_price or 0.0
             original_item_total_cost = total_price or 0.0
-            calculated_unit_type = unit_type if (is_profile or is_gasket or is_accessory) else (calculated_unit_type or item.get('unit', 'pcs'))
-            
+            calculated_unit_type = (
+                unit_type
+                if (is_profile or is_gasket or is_accessory)
+                else (calculated_unit_type or item.get("unit", "pcs"))
+            )
+
             if material_impact_details:
-                leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
-                all_leftovers = material_impact_details.get('all_new_leftovers', [])
-                print(f"DEBUG: Material impact for {pn}: leftover_qty={leftover_qty}, all_new_leftovers={all_leftovers}")
-                material_impact_details['leftover_generated_qty_or_length_display'] = f"{leftover_qty:.2f} {display_unit}"
+                leftover_qty = material_impact_details.get(
+                    "leftover_generated_qty_or_length", 0.0
+                )
+                all_leftovers = material_impact_details.get("all_new_leftovers", [])
+                print(
+                    f"DEBUG: Material impact for {pn}: leftover_qty={leftover_qty}, all_new_leftovers={all_leftovers}"
+                )
+                material_impact_details["leftover_generated_qty_or_length_display"] = (
+                    f"{leftover_qty:.2f} {display_unit}"
+                )
                 section_material_impacts.append(material_impact_details)
-                apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
+                apply_material_impact_to_extra_materials_in_memory(
+                    current_extra_materials_state, material_impact_details
+                )
             else:
-                print(f"DEBUG: WARNING - No material_impact_details returned for {pn} with list {qty_raw}")
+                print(
+                    f"DEBUG: WARNING - No material_impact_details returned for {pn} with list {qty_raw}"
+                )
         else:
             # Standard processing: iterate through each quantity (for non-profile/gasket items or single quantities)
             for single_qty_for_calc in individual_quantities:
-                total_item_price_single_cut, calculated_unit_type, material_impact_details = 0.0, unit_type, None
+                (
+                    total_item_price_single_cut,
+                    calculated_unit_type,
+                    material_impact_details,
+                ) = 0.0, unit_type, None
 
                 if manual:
                     if pn and pn != "N/A":
-                        price_calculated, unit_calculated, material_impact_details = \
-                            get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=True)
-                        total_item_price_single_cut = (price_calculated if price_calculated is not None else item.get('price', 0.0) * single_qty_for_calc)
-                        calculated_unit_type = unit_type if is_profile or is_accessory else (unit_calculated or item.get('unit', 'pcs'))
+                        price_calculated, unit_calculated, material_impact_details = (
+                            get_price_by_part(
+                                pn,
+                                single_qty_for_calc,
+                                finish=elevation_finish,
+                                current_extra_materials=current_extra_materials_state,
+                                extra_materials_file=extra_materials_path,
+                                summary=False,
+                                group=True,
+                            )
+                        )
+                        total_item_price_single_cut = (
+                            price_calculated
+                            if price_calculated is not None
+                            else item.get("price", 0.0) * single_qty_for_calc
+                        )
+                        calculated_unit_type = (
+                            unit_type
+                            if is_profile or is_accessory
+                            else (unit_calculated or item.get("unit", "pcs"))
+                        )
                     else:
-                        total_item_price_single_cut = item.get('price', 0.0) * single_qty_for_calc
-                        calculated_unit_type = item.get('unit', 'pcs')
+                        total_item_price_single_cut = (
+                            item.get("price", 0.0) * single_qty_for_calc
+                        )
+                        calculated_unit_type = item.get("unit", "pcs")
                         material_impact_details = {
-                            'part_number': "N/A - Manual", 'requested_qty': single_qty_for_calc, 'purchased_qty_or_length': 0.0,
-                            'leftover_generated_qty_or_length': 0.0, 'used_from_leftover_qty_or_length': 0.0,
-                            'cost_incurred': total_item_price_single_cut, 'type_processed_as': 'manual_no_pn',
-                            'finish': None
+                            "part_number": "N/A - Manual",
+                            "requested_qty": single_qty_for_calc,
+                            "purchased_qty_or_length": 0.0,
+                            "leftover_generated_qty_or_length": 0.0,
+                            "used_from_leftover_qty_or_length": 0.0,
+                            "cost_incurred": total_item_price_single_cut,
+                            "type_processed_as": "manual_no_pn",
+                            "finish": None,
                         }
                 else:
                     # For profiles/gaskets, use group=True to ensure proper processing
                     # For others, use group only if it's a gasket
-                    use_group = (is_profile or is_gasket)
-                    total_price, unit_from_pricing, material_impact_details = \
-                        get_price_by_part(pn, single_qty_for_calc, finish=elevation_finish, current_extra_materials=current_extra_materials_state, extra_materials_file=extra_materials_path, summary=False, group=use_group)
+                    use_group = is_profile or is_gasket
+                    total_price, unit_from_pricing, material_impact_details = (
+                        get_price_by_part(
+                            pn,
+                            single_qty_for_calc,
+                            finish=elevation_finish,
+                            current_extra_materials=current_extra_materials_state,
+                            extra_materials_file=extra_materials_path,
+                            summary=False,
+                            group=use_group,
+                        )
+                    )
                     total_item_price_single_cut = total_price or 0.0
-                    calculated_unit_type = unit_type if (is_profile or is_gasket or is_accessory) else (unit_from_pricing or item.get('unit', 'pcs'))
+                    calculated_unit_type = (
+                        unit_type
+                        if (is_profile or is_gasket or is_accessory)
+                        else (unit_from_pricing or item.get("unit", "pcs"))
+                    )
 
                 item_total_cost_for_display += total_item_price_single_cut
                 original_item_total_cost += total_item_price_single_cut
 
                 if material_impact_details:
-                    leftover_qty = material_impact_details.get('leftover_generated_qty_or_length', 0.0)
-                    material_impact_details['leftover_generated_qty_or_length_display'] = f"{leftover_qty:.2f} {display_unit}"
+                    leftover_qty = material_impact_details.get(
+                        "leftover_generated_qty_or_length", 0.0
+                    )
+                    material_impact_details[
+                        "leftover_generated_qty_or_length_display"
+                    ] = f"{leftover_qty:.2f} {display_unit}"
                     section_material_impacts.append(material_impact_details)
-                    apply_material_impact_to_extra_materials_in_memory(current_extra_materials_state, material_impact_details)
+                    apply_material_impact_to_extra_materials_in_memory(
+                        current_extra_materials_state, material_impact_details
+                    )
 
         if is_profile or is_gasket or is_accessory:
             item_total_cost_for_display *= multiplier
             if qty_sum > 0:
-                item['price'] = item_total_cost_for_display / qty_sum
+                item["price"] = item_total_cost_for_display / qty_sum
 
         system_total_ref[0] += item_total_cost_for_display
         original_system_total_ref[0] += original_item_total_cost
@@ -692,13 +971,15 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         if show_qty_per_elevation and total_count > 1:
             # Only use "x" format for profiles and gaskets (they have specific cut dimensions)
             use_x_format = is_profile or is_gasket
-            
+
             if isinstance(qty_raw, list):
                 num_pieces = len(qty_raw)
                 pieces_per_elev = num_pieces / total_count
-                
+
                 # If all pieces are the same length, show as "8ft x 2" for profiles/gaskets
-                if len(qty_raw) > 1 and all(abs(x - qty_raw[0]) < 0.001 for x in qty_raw):
+                if len(qty_raw) > 1 and all(
+                    abs(x - qty_raw[0]) < 0.001 for x in qty_raw
+                ):
                     piece_length = qty_raw[0]
                     if use_x_format:
                         if is_profile:
@@ -717,14 +998,20 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                         length_counts = Counter(qty_raw)
                         parts = []
                         for length, count in sorted(length_counts.items()):
-                            pieces_per_length_per_elev = (count / total_count)
+                            pieces_per_length_per_elev = count / total_count
                             if is_profile:
                                 if length == int(length):
-                                    parts.append(f"{int(length)}{display_unit} x {int(pieces_per_length_per_elev)}")
+                                    parts.append(
+                                        f"{int(length)}{display_unit} x {int(pieces_per_length_per_elev)}"
+                                    )
                                 else:
-                                    parts.append(f"{length:.2f}{display_unit} x {int(pieces_per_length_per_elev)}")
+                                    parts.append(
+                                        f"{length:.2f}{display_unit} x {int(pieces_per_length_per_elev)}"
+                                    )
                             else:  # is_gasket
-                                parts.append(f"{length:.2f} {display_unit} x {int(pieces_per_length_per_elev)}")
+                                parts.append(
+                                    f"{length:.2f} {display_unit} x {int(pieces_per_length_per_elev)}"
+                                )
                         qty_per_elev_display = ", ".join(parts)
                     else:
                         # For other items, just show total quantity per elevation
@@ -745,25 +1032,56 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                 else:
                     # For other items, just show the quantity per elevation without "x"
                     qty_per_elev_display = f"{qty_per_elev:.2f} {display_unit}"
-        
+
         # Write data columns
         col_offset = 0
-        ws.cell(row=current_row, column=colE + col_offset, value=item.get('description', ''))
-        col_offset += 1
-        ws.cell(row=current_row, column=colE + col_offset, value=pn or 'N/A')
+        if show_description:
+            ws.cell(
+                row=current_row,
+                column=colE + col_offset,
+                value=item.get("description", ""),
+            )
+            col_offset += 1
+        if show_part_number:
+            ws.cell(row=current_row, column=colE + col_offset, value=pn or "N/A")
+            col_offset += 1
+        if show_total_qty:
+            ws.cell(row=current_row, column=colE + col_offset, value=display_qty_string)
+            col_offset += 1
+
+        # Add quantity per elevation column if enabled
+        if qty_per_elev_display:
+            ws.cell(
+                row=current_row, column=colE + col_offset, value=qty_per_elev_display
+            )
+            col_offset += 1
+
+        # Total List Cost
+        if show_total_list_cost:
+            ws.cell(
+                row=current_row,
+                column=colE + col_offset,
+                value=original_item_total_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            col_offset += 1
+        ws.cell(row=current_row, column=colE + col_offset, value=pn or "N/A")
         col_offset += 1
         ws.cell(row=current_row, column=colE + col_offset, value=display_qty_string)
         col_offset += 1
-        
+
         # Add quantity per elevation column if enabled
         if qty_per_elev_display:
-            ws.cell(row=current_row, column=colE + col_offset, value=qty_per_elev_display)
+            ws.cell(
+                row=current_row, column=colE + col_offset, value=qty_per_elev_display
+            )
             col_offset += 1
-        
+
         # Total List Cost
-        ws.cell(row=current_row, column=colE + col_offset, value=original_item_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(
+            row=current_row, column=colE + col_offset, value=original_item_total_cost
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         col_offset += 1
-        
+
         # Total List Cost Per Elevation (if enabled) - calculate actual purchase cost for per-elevation quantity
         original_cost_per_elev = None
         if show_total_cost_per_elevation and total_count > 1:
@@ -772,10 +1090,12 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                 # For lists, calculate pieces per elevation
                 num_pieces = len(qty_raw)
                 pieces_per_elev = num_pieces / total_count
-                
+
                 # Check if this is a bay width part - if so, keep as list
-                is_bay_width_for_per_elev = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
-                
+                is_bay_width_for_per_elev = _is_bay_width_part(
+                    pn, qty_raw, item.get("description", "")
+                )
+
                 if is_bay_width_for_per_elev:
                     # For bay width parts, take first pieces_per_elev items
                     pieces_per_elev_int = int(pieces_per_elev)
@@ -786,7 +1106,9 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
                         qty_per_elev = [q / total_count for q in qty_raw]
                 else:
                     # For non-bay-width parts, if all pieces are the same, use single value
-                    if len(qty_raw) > 0 and all(abs(x - qty_raw[0]) < 0.001 for x in qty_raw):
+                    if len(qty_raw) > 0 and all(
+                        abs(x - qty_raw[0]) < 0.001 for x in qty_raw
+                    ):
                         # All pieces same length, per elevation is just one piece
                         qty_per_elev = qty_raw[0]
                     else:
@@ -795,78 +1117,114 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
             else:
                 # Single quantity value
                 qty_per_elev = qty_raw / total_count
-            
+
             # Calculate actual purchase cost for per-elevation quantity (accounts for minimum purchase lengths)
             if not manual and pn and pn != "N/A":
                 use_group_for_per_elev = is_gasket
-                
+
                 # Get price for per-elevation quantity
                 per_elev_price, _, _ = get_price_by_part(
-                    pn, qty_per_elev, 
-                    finish=elevation_finish, 
-                    current_extra_materials=current_extra_materials_state, 
-                    extra_materials_file=extra_materials_path, 
+                    pn,
+                    qty_per_elev,
+                    finish=elevation_finish,
+                    current_extra_materials=current_extra_materials_state,
+                    extra_materials_file=extra_materials_path,
                     summary=True,  # Use summary=True to get price without material impact
                     group=use_group_for_per_elev,
-                    description=item.get('description', '')
+                    description=item.get("description", ""),
                 )
-                original_cost_per_elev = per_elev_price if per_elev_price is not None else (original_item_total_cost / total_count)
+                original_cost_per_elev = (
+                    per_elev_price
+                    if per_elev_price is not None
+                    else (original_item_total_cost / total_count)
+                )
             else:
                 # For manual items, just divide the cost
                 original_cost_per_elev = original_item_total_cost / total_count
-            
-            ws.cell(row=current_row, column=colE + col_offset, value=original_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            section_original_per_elev_total += original_cost_per_elev  # Track sum of per-elevation costs
+
+            ws.cell(
+                row=current_row, column=colE + col_offset, value=original_cost_per_elev
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            section_original_per_elev_total += (
+                original_cost_per_elev  # Track sum of per-elevation costs
+            )
             col_offset += 1
-        
+
         # Discounted Total List Cost
-        ws.cell(row=current_row, column=colE + col_offset, value=item_total_cost_for_display).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        col_offset += 1
-        
+        if show_discounted_list_cost:
+            ws.cell(
+                row=current_row,
+                column=colE + col_offset,
+                value=item_total_cost_for_display,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            col_offset += 1
+
         # Discounted Total List Cost Per Elevation (if enabled) - apply multiplier to per-elevation cost
         if show_discounted_cost_per_elevation and total_count > 1:
             if original_cost_per_elev is not None:
                 # Use the calculated per-elevation cost and apply multiplier
-                discounted_cost_per_elev = original_cost_per_elev * multiplier if (is_profile or is_gasket or is_accessory) else original_cost_per_elev
+                discounted_cost_per_elev = (
+                    original_cost_per_elev * multiplier
+                    if (is_profile or is_gasket or is_accessory)
+                    else original_cost_per_elev
+                )
             else:
                 # Fallback: recalculate per-elevation quantity and price (shouldn't happen if original_cost_per_elev was calculated)
                 if isinstance(qty_raw, list):
                     num_pieces = len(qty_raw)
                     pieces_per_elev = num_pieces / total_count
-                    is_bay_width_for_per_elev = _is_bay_width_part(pn, qty_raw, item.get('description', ''))
-                    
+                    is_bay_width_for_per_elev = _is_bay_width_part(
+                        pn, qty_raw, item.get("description", "")
+                    )
+
                     if is_bay_width_for_per_elev:
                         pieces_per_elev_int = int(pieces_per_elev)
-                        if pieces_per_elev_int > 0 and pieces_per_elev_int <= len(qty_raw):
+                        if pieces_per_elev_int > 0 and pieces_per_elev_int <= len(
+                            qty_raw
+                        ):
                             qty_per_elev = qty_raw[:pieces_per_elev_int]
                         else:
                             qty_per_elev = [q / total_count for q in qty_raw]
                     else:
-                        if len(qty_raw) > 0 and all(abs(x - qty_raw[0]) < 0.001 for x in qty_raw):
+                        if len(qty_raw) > 0 and all(
+                            abs(x - qty_raw[0]) < 0.001 for x in qty_raw
+                        ):
                             qty_per_elev = qty_raw[0]
                         else:
                             qty_per_elev = qty_sum / total_count
                 else:
                     qty_per_elev = qty_raw / total_count
-                
+
                 if not manual and pn and pn != "N/A":
                     use_group_for_per_elev = is_gasket
                     per_elev_price, _, _ = get_price_by_part(
-                        pn, qty_per_elev,
+                        pn,
+                        qty_per_elev,
                         finish=elevation_finish,
                         current_extra_materials=current_extra_materials_state,
                         extra_materials_file=extra_materials_path,
                         summary=True,
                         group=use_group_for_per_elev,
-                        description=item.get('description', '')
+                        description=item.get("description", ""),
                     )
-                    discounted_cost_per_elev = (per_elev_price * multiplier) if (is_profile or is_gasket or is_accessory) and per_elev_price is not None else (item_total_cost_for_display / total_count)
+                    discounted_cost_per_elev = (
+                        (per_elev_price * multiplier)
+                        if (is_profile or is_gasket or is_accessory)
+                        and per_elev_price is not None
+                        else (item_total_cost_for_display / total_count)
+                    )
                 else:
                     discounted_cost_per_elev = item_total_cost_for_display / total_count
-            ws.cell(row=current_row, column=colE + col_offset, value=discounted_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            section_discounted_per_elev_total += discounted_cost_per_elev  # Track sum of per-elevation discounted costs
+            ws.cell(
+                row=current_row,
+                column=colE + col_offset,
+                value=discounted_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            section_discounted_per_elev_total += (
+                discounted_cost_per_elev  # Track sum of per-elevation discounted costs
+            )
             col_offset += 1
-        
+
         current_row += 1
 
     # Add Section Totals
@@ -877,62 +1235,87 @@ def _write_output_section(ws, title, items, colE, elevation_finish, system_total
         "GASKETS": "Gasket",
         "DOORS": "Door",
         "GLASS": "Glass",
-        "LABOR": "Labor"
+        "LABOR": "Labor",
     }
     title_label = title_mapping.get(title.upper(), title.title())
     total_label = f"Total {title_label} Cost"
-    
-    # Calculate column offsets based on which optional columns are shown
-    total_col_offset = 2  # Start after "Total Quantity Required"
+
+    # Calculate column offsets based on which columns are shown
+    total_col_offset = 0
+    if show_description:
+        total_col_offset += 1
+    if show_part_number:
+        total_col_offset += 1
+    if show_total_qty:
+        total_col_offset += 1
     if show_qty_per_elevation and total_count > 1:
-        total_col_offset += 1  # Skip "Quantity Per Elevation" column
-    
-    # Place total label in the "Total List Cost" column
-    ws.cell(row=current_row, column=colE + total_col_offset, value=total_label).font = Font(bold=True)
-    total_col_offset += 1
-    
+        total_col_offset += 1
+
+    # Place total label just before the first cost column
+    label_col = colE + total_col_offset - 1 if total_col_offset > 0 else colE
+    ws.cell(row=current_row, column=label_col, value=total_label).font = Font(bold=True)
+
     # Total List Cost
-    ws.cell(row=current_row, column=colE + total_col_offset, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
-    total_col_offset += 1
-    
+    if show_total_list_cost:
+        ws.cell(
+            row=current_row,
+            column=colE + total_col_offset,
+            value=section_original_total,
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
+        total_col_offset += 1
+
     # Total List Cost Per Elevation (if enabled) - use sum of actual per-elevation costs
     if show_total_cost_per_elevation and total_count > 1:
-        ws.cell(row=current_row, column=colE + total_col_offset, value=section_original_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(
+            row=current_row,
+            column=colE + total_col_offset,
+            value=section_original_per_elev_total,
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
         total_col_offset += 1
-    
+
     # Discounted Total List Cost
-    ws.cell(row=current_row, column=colE + total_col_offset, value=section_discounted_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
-    total_col_offset += 1
-    
+    if show_discounted_list_cost:
+        ws.cell(
+            row=current_row,
+            column=colE + total_col_offset,
+            value=section_discounted_total,
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
+        total_col_offset += 1
+
     # Discounted Total List Cost Per Elevation (if enabled) - use sum of actual per-elevation discounted costs
     if show_discounted_cost_per_elevation and total_count > 1:
-        ws.cell(row=current_row, column=colE + total_col_offset, value=section_discounted_per_elev_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(
+            row=current_row,
+            column=colE + total_col_offset,
+            value=section_discounted_per_elev_total,
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(row=current_row, column=colE + total_col_offset).font = Font(bold=True)
         total_col_offset += 1
-    
-    # Add top border for totals row - adjust range based on number of columns
-    num_cols = 5  # Base columns: Description, Part Number, Total Quantity Required, Total List Cost, Discounted Total List Cost
-    if show_qty_per_elevation and total_count > 1:
-        num_cols += 1
-    if show_total_cost_per_elevation and total_count > 1:
-        num_cols += 1
-    if show_discounted_cost_per_elevation and total_count > 1:
-        num_cols += 1
+
+    # Add top border for totals row - use actual header count
+    num_cols = len(headers)
     for col in range(colE, colE + num_cols):
-        ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
+        ws.cell(row=current_row, column=col).border = Border(top=Side(style="thin"))
 
     # Return section totals for summary
     section_totals = {
-        'original': section_original_total,
-        'discounted': section_discounted_total
+        "original": section_original_total,
+        "discounted": section_discounted_total,
     }
     return current_row + 1, section_material_impacts, section_totals
 
 
-def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb=None, summary_settings_path=None, summary_options=None):
+def create_summary_sheet(
+    ws,
+    elevations_json_path,
+    extra_materials_json_path,
+    wb=None,
+    summary_settings_path=None,
+    summary_options=None,
+):
     """
     Reads elevation data, aggregates quantities and prices by part number across all elevations,
     and writes a clean summary section into the worksheet, grouped by profiles, accessories, doors, glass, and labor.
@@ -940,7 +1323,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     When provided, conditionally include sections based on these flags.
     """
     try:
-        with open(elevations_json_path, 'r') as f:
+        with open(elevations_json_path, "r") as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"[WARNING] Could not load elevations JSON: {e}")
@@ -949,7 +1332,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # For summary, use a shared in-memory state that accumulates leftovers across all elevations
     # This allows the summary to utilize waste materials across all elevations
     summary_extra_materials_state = {}
-    
+
     try:
         extra_materials = load_extra_materials(extra_materials_json_path)
     except (FileNotFoundError, json.JSONDecodeError) as e:
@@ -977,13 +1360,41 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     show_markups = cov.get("markups", True)
     show_diagram = cov.get("diagram", True)
 
-    # --- Elevation summary defaults (can be overridden later when settings are loaded) ---
+    # Summary column filtering from Stock List checkboxes
+    scols = so.get("summary_columns") or {}
+    # Map each of the 10 fixed column positions to summary_column_keys
+    # Position 0: description, 1: project_total_materials, 2: total_feet_required/total_pieces_required,
+    # 3: sticks_required/quantity_per_order/rolls_required/unit_price, 4: total_quantity_required,
+    # 5: total_list_cost, 6: discounted_total_list_cost, 7: residual_material_quantity,
+    # 8: residual_waste_pct, 9: residual_material_cost
+    _summary_col_visible = {
+        0: scols.get("description", True),
+        1: scols.get("project_total_materials", True),
+        2: scols.get("total_feet_required", True)
+        or scols.get("total_pieces_required", True),
+        3: scols.get("sticks_required", True)
+        or scols.get("quantity_per_order", True)
+        or scols.get("rolls_required", True)
+        or scols.get("unit_price", True)
+        or scols.get("qty_stick_req", True),
+        4: scols.get("total_quantity_required", True)
+        or scols.get("quantity_req_ft", True),
+        5: scols.get("total_list_cost", True),
+        6: scols.get("discounted_total_list_cost", True),
+        7: scols.get("residual_material_quantity", True),
+        8: scols.get("residual_waste_pct", True),
+        9: scols.get("residual_material_cost", True),
+    }
+
+    # --- Elevation summary defaults ---
+    # When "Elevation summary" is checked in the Stock List, show all columns by default.
+    # Old per-column settings.json values can still override, but the UI for those was removed.
     elevation_summary_settings = {
-        "show_elevation_names": False,
-        "show_elevation_quantity": False,
-        "show_elevation_dimensions": False,
-        "show_elevation_sqft": False,
-        "show_elevation_perimeter": False,
+        "show_elevation_names": True,
+        "show_elevation_quantity": True,
+        "show_elevation_dimensions": True,
+        "show_elevation_sqft": True,
+        "show_elevation_perimeter": True,
     }
     elevation_summary_cols = []
     category_start_col = 1  # Profiles section still starts at column 1 by default
@@ -992,17 +1403,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     pricing_settings = {}
     if summary_settings_path and os.path.exists(summary_settings_path):
         try:
-            with open(summary_settings_path, 'r') as f:
+            with open(summary_settings_path, "r") as f:
                 pricing_settings = json.load(f)
         except Exception:
             pass
     elev_dir_early = os.path.dirname(elevations_json_path)
     elev_basename_early = os.path.basename(elevations_json_path)
     if not pricing_settings and "_Elevations.json" in elev_basename_early:
-        alt_path = os.path.join(elev_dir_early, elev_basename_early.replace("_Elevations.json", "") + "_Settings.json")
+        alt_path = os.path.join(
+            elev_dir_early,
+            elev_basename_early.replace("_Elevations.json", "") + "_Settings.json",
+        )
         if os.path.exists(alt_path):
             try:
-                with open(alt_path, 'r') as f:
+                with open(alt_path, "r") as f:
                     pricing_settings = json.load(f)
             except Exception:
                 pass
@@ -1010,16 +1424,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # Step 1: Calculate full_running_grand_total for multiplier
     full_running_grand_total = 0.0
     for elev_key, elev in data.items():
-        elevation_finish = elev.get('finish', '').lower()
-        for output in elev.get('calculated_outputs', []):
-            qty = output.get('quantity', 0)
+        elevation_finish = elev.get("finish", "").lower()
+        for output in elev.get("calculated_outputs", []):
+            qty = output.get("quantity", 0)
             qty = sum(qty) if isinstance(qty, list) else qty
-            manual = output.get('manual', False)
-            part = output.get('part_number', '').strip()
-            item_type = output.get('type', '').lower()
+            manual = output.get("manual", False)
+            part = output.get("part_number", "").strip()
+            item_type = output.get("type", "").lower()
             price = 0.0
-            if manual or part == "GLASS_AREA" or item_type in ['glass', 'joints_fab_labor', 'door', 'doors']:
-                price = output.get('price', 0.0) * qty
+            if (
+                manual
+                or part == "GLASS_AREA"
+                or item_type in ["glass", "joints_fab_labor", "door", "doors"]
+            ):
+                price = output.get("price", 0.0) * qty
             else:
                 price, _, _ = get_price_by_part(
                     part,
@@ -1027,7 +1445,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     finish=elevation_finish,
                     extra_materials_file=extra_materials_json_path,
                     summary=True,
-                    group=True if manual else False
+                    group=True if manual else False,
                 )
                 price = price if price is not None else 0.0
             full_running_grand_total += price
@@ -1036,122 +1454,189 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
 
     # Step 2: Aggregate quantities and prices across all elevations, grouped by category
     categories = {
-        'PROFILES': [],
-        'ACCESSORIES': [],
-        'GASKETS': [],
-        'DOORS': [],
-        'GLASS': [],
-        'LABOR': []
+        "PROFILES": [],
+        "ACCESSORIES": [],
+        "GASKETS": [],
+        "DOORS": [],
+        "GLASS": [],
+        "LABOR": [],
     }
 
     for elev_key, elev in data.items():
-        elevation_finish = elev.get('finish', '').lower()
-        for output in elev.get('calculated_outputs', []):
-            part = output.get('part_number', '').strip()
-            desc = output.get('description', '').strip()
-            manual = output.get('manual', False)
-            qty = output.get('quantity', 0)
+        elevation_finish = elev.get("finish", "").lower()
+        for output in elev.get("calculated_outputs", []):
+            part = output.get("part_number", "").strip()
+            desc = output.get("description", "").strip()
+            manual = output.get("manual", False)
+            qty = output.get("quantity", 0)
             qty_for_aggregation = sum(qty) if isinstance(qty, list) else qty
-            is_profile = part in PART_NUMBER_MAP.get('profiles', {})
-            is_gasket = "gasket" in desc.lower() or part in ["E2-0052", "E2-0053", "E2-0065"]  # Identify gaskets
-            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or output.get('type', '').lower() == 'accessory'
-            is_glass = part == "GLASS_AREA" or output.get('type', '').lower() == 'glass'
-            is_joints_fab_labor = part == "JOINTS_FAB_LABOR" or output.get('type', '').lower() == 'joints_fab_labor' or "joints fabrication" in desc.lower() or "fabrication labor" in desc.lower()
-            is_door = output.get('type', '').lower() in ['door', 'doors']
+            is_profile = part in PART_NUMBER_MAP.get("profiles", {})
+            is_gasket = "gasket" in desc.lower() or part in [
+                "E2-0052",
+                "E2-0053",
+                "E2-0065",
+            ]  # Identify gaskets
+            is_accessory = (
+                part in PART_NUMBER_MAP.get("accessories", {})
+                or output.get("type", "").lower() == "accessory"
+            )
+            is_glass = part == "GLASS_AREA" or output.get("type", "").lower() == "glass"
+            is_joints_fab_labor = (
+                part == "JOINTS_FAB_LABOR"
+                or output.get("type", "").lower() == "joints_fab_labor"
+                or "joints fabrication" in desc.lower()
+                or "fabrication labor" in desc.lower()
+            )
+            is_door = output.get("type", "").lower() in ["door", "doors"]
 
             if is_profile:
-                category = 'PROFILES'
+                category = "PROFILES"
             elif is_gasket:
-                category = 'GASKETS'
+                category = "GASKETS"
             elif is_accessory:
-                category = 'ACCESSORIES'
+                category = "ACCESSORIES"
             elif is_door:
-                category = 'DOORS'
+                category = "DOORS"
             elif is_glass:
-                category = 'GLASS'
+                category = "GLASS"
             elif is_joints_fab_labor:
-                category = 'LABOR'
+                category = "LABOR"
             else:
                 continue
 
             if manual or is_glass or is_joints_fab_labor or is_door:
                 if part and part != "N/A":
-                    key = f"MANUAL_{part}-{elevation_finish}" if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"MANUAL_{part}"
-                    display = f"{desc} ({part} - {elevation_finish})" if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish else f"{desc} ({part})"
+                    key = (
+                        f"MANUAL_{part}-{elevation_finish}"
+                        if (
+                            is_profile
+                            or is_gasket
+                            or is_joints_fab_labor
+                            or is_door
+                            or is_glass
+                        )
+                        and elevation_finish
+                        else f"MANUAL_{part}"
+                    )
+                    display = (
+                        f"{desc} ({part} - {elevation_finish})"
+                        if (
+                            is_profile
+                            or is_gasket
+                            or is_joints_fab_labor
+                            or is_door
+                            or is_glass
+                        )
+                        and elevation_finish
+                        else f"{desc} ({part})"
+                    )
                 else:
                     key = f"MANUAL_NO_PN_{desc}"
                     display = desc
             else:
-                if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) and elevation_finish:
+                if (
+                    is_profile
+                    or is_gasket
+                    or is_joints_fab_labor
+                    or is_door
+                    or is_glass
+                ) and elevation_finish:
                     key = f"{part}-{elevation_finish}"
                     display = f"{part} ({elevation_finish})"
                 else:
                     key = part
                     display = part
 
-            categories[category].append({
-                'key': key,
-                'quantity': qty_for_aggregation,
-                'quantity_list': qty if isinstance(qty, list) else [qty],  # Preserve individual quantities
-                'description': desc,
-                'display': display,
-                'part_number': part,
-                'manual': manual,
-                'unit': 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else output.get('unit', 'pcs' if not is_glass else 'sqft'),
-                'finish': elevation_finish if (is_profile or is_gasket or is_joints_fab_labor or is_door or is_glass) else '',
-                'is_glass': is_glass,
-                'is_joints_fab_labor': is_joints_fab_labor,
-                'is_door': is_door,
-                'is_gasket': is_gasket,
-                'price': output.get('price', 0.0) if (manual or is_glass or is_joints_fab_labor or is_door) else 0.0
-            })
+            categories[category].append(
+                {
+                    "key": key,
+                    "quantity": qty_for_aggregation,
+                    "quantity_list": qty
+                    if isinstance(qty, list)
+                    else [qty],  # Preserve individual quantities
+                    "description": desc,
+                    "display": display,
+                    "part_number": part,
+                    "manual": manual,
+                    "unit": "ft"
+                    if (is_profile or is_gasket)
+                    else "pcs"
+                    if is_accessory
+                    else output.get("unit", "pcs" if not is_glass else "sqft"),
+                    "finish": elevation_finish
+                    if (
+                        is_profile
+                        or is_gasket
+                        or is_joints_fab_labor
+                        or is_door
+                        or is_glass
+                    )
+                    else "",
+                    "is_glass": is_glass,
+                    "is_joints_fab_labor": is_joints_fab_labor,
+                    "is_door": is_door,
+                    "is_gasket": is_gasket,
+                    "price": output.get("price", 0.0)
+                    if (manual or is_glass or is_joints_fab_labor or is_door)
+                    else 0.0,
+                }
+            )
 
     # Step 2.5: Aggregate items within each category by key to prevent duplicates across elevations
     for category in categories:
         aggregated_map = {}
         for item in categories[category]:
-            k = item['key']
+            k = item["key"]
             if k in aggregated_map:
                 existing = aggregated_map[k]
                 # Preserve description if missing
-                if not existing.get('description') and item.get('description'):
-                    existing['description'] = item['description']
+                if not existing.get("description") and item.get("description"):
+                    existing["description"] = item["description"]
                 # If price is manually set (manual, glass, labor, door), maintain correct total cost by updating unit price
-                if existing['manual'] or existing['is_glass'] or existing['is_joints_fab_labor'] or existing['is_door']:
+                if (
+                    existing["manual"]
+                    or existing["is_glass"]
+                    or existing["is_joints_fab_labor"]
+                    or existing["is_door"]
+                ):
                     # Recalculate weighted average price
-                    cost_existing = float(existing.get('price', 0.0)) * float(existing['quantity'])
-                    cost_new = float(item.get('price', 0.0)) * float(item['quantity'])
-                    total_qty = float(existing['quantity']) + float(item['quantity'])
-                    existing['quantity'] = total_qty
+                    cost_existing = float(existing.get("price", 0.0)) * float(
+                        existing["quantity"]
+                    )
+                    cost_new = float(item.get("price", 0.0)) * float(item["quantity"])
+                    total_qty = float(existing["quantity"]) + float(item["quantity"])
+                    existing["quantity"] = total_qty
                     # Combine quantity lists
-                    existing_qty_list = existing.get('quantity_list', [])
-                    item_qty_list = item.get('quantity_list', [])
+                    existing_qty_list = existing.get("quantity_list", [])
+                    item_qty_list = item.get("quantity_list", [])
                     if not existing_qty_list:
-                        existing_qty_list = [existing['quantity']]
+                        existing_qty_list = [existing["quantity"]]
                     if not item_qty_list:
-                        item_qty_list = [item['quantity']]
-                    existing['quantity_list'] = existing_qty_list + item_qty_list
+                        item_qty_list = [item["quantity"]]
+                    existing["quantity_list"] = existing_qty_list + item_qty_list
                     if total_qty > 0:
-                        existing['price'] = (cost_existing + cost_new) / total_qty
+                        existing["price"] = (cost_existing + cost_new) / total_qty
                 else:
                     # For standard parts, just sum quantity; price is re-calculated in Step 3
-                    existing['quantity'] = float(existing['quantity']) + float(item['quantity'])
+                    existing["quantity"] = float(existing["quantity"]) + float(
+                        item["quantity"]
+                    )
                     # Combine quantity lists
-                    existing_qty_list = existing.get('quantity_list', [])
-                    item_qty_list = item.get('quantity_list', [])
+                    existing_qty_list = existing.get("quantity_list", [])
+                    item_qty_list = item.get("quantity_list", [])
                     if not existing_qty_list:
-                        existing_qty_list = [existing['quantity']]
+                        existing_qty_list = [existing["quantity"]]
                     if not item_qty_list:
-                        item_qty_list = [item['quantity']]
-                    existing['quantity_list'] = existing_qty_list + item_qty_list
+                        item_qty_list = [item["quantity"]]
+                    existing["quantity_list"] = existing_qty_list + item_qty_list
             else:
                 # Ensure quantity is float
-                item['quantity'] = float(item['quantity'])
-                if 'quantity_list' not in item:
-                    item['quantity_list'] = [item['quantity']]
+                item["quantity"] = float(item["quantity"])
+                if "quantity_list" not in item:
+                    item["quantity_list"] = [item["quantity"]]
                 # Ensure description exists
-                if 'description' not in item or not item.get('description'):
-                    item['description'] = item.get('display', '')
+                if "description" not in item or not item.get("description"):
+                    item["description"] = item.get("display", "")
                 aggregated_map[k] = item
         categories[category] = list(aggregated_map.values())
 
@@ -1165,21 +1650,34 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
 
     for category, items in categories.items():
         for item in items:
-            key = item['key']
-            quantity_aggregated = item['quantity']
-            manual = item['manual']
-            part = item['part_number']
-            display = item['display']
-            description = item.get('description', '') or display
-            is_profile = part in PART_NUMBER_MAP.get('profiles', {})
-            is_accessory = part in PART_NUMBER_MAP.get('accessories', {}) or item.get('type', '').lower() == 'accessory'
-            is_gasket = item.get('is_gasket', False) or "gasket" in item.get('description', '').lower() or part in ["E2-0052", "E2-0053", "E2-0065"]
-            is_glass = item['is_glass']
-            is_joints_fab_labor = item['is_joints_fab_labor']
-            is_door = item['is_door']
-            item_finish = item['finish']
+            key = item["key"]
+            quantity_aggregated = item["quantity"]
+            manual = item["manual"]
+            part = item["part_number"]
+            display = item["display"]
+            description = item.get("description", "") or display
+            is_profile = part in PART_NUMBER_MAP.get("profiles", {})
+            is_accessory = (
+                part in PART_NUMBER_MAP.get("accessories", {})
+                or item.get("type", "").lower() == "accessory"
+            )
+            is_gasket = (
+                item.get("is_gasket", False)
+                or "gasket" in item.get("description", "").lower()
+                or part in ["E2-0052", "E2-0053", "E2-0065"]
+            )
+            is_glass = item["is_glass"]
+            is_joints_fab_labor = item["is_joints_fab_labor"]
+            is_door = item["is_door"]
+            item_finish = item["finish"]
 
-            display_unit = 'ft' if (is_profile or is_gasket) else 'pcs' if is_accessory else item['unit']
+            display_unit = (
+                "ft"
+                if (is_profile or is_gasket)
+                else "pcs"
+                if is_accessory
+                else item["unit"]
+            )
             original_total_cost_for_item = 0.0
             total_cost_for_item = 0.0
             calculated_unit_type = display_unit
@@ -1189,40 +1687,56 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             reusable_qty_display_string = "N/A"
 
             if manual or is_glass or is_joints_fab_labor or is_door:
-                price = float(item.get('price', 0.0))
+                price = float(item.get("price", 0.0))
                 qty_float = float(quantity_aggregated)
                 original_total_cost_for_item = price * qty_float
-                calculated_unit_type = item['unit'] or ('sqft' if is_glass else 'pcs')
+                calculated_unit_type = item["unit"] or ("sqft" if is_glass else "pcs")
             else:
                 # Gaskets are treated as profiles (sold by length, with leftover tracking)
                 use_group = is_gasket
-                
+
                 # For profiles and gaskets, use quantity_list if available for optimal cutting
                 # This allows the pricing function to optimize cuts across multiple pieces
                 quantity_for_pricing = quantity_aggregated
                 if (is_profile or is_gasket) and part and part != "N/A":
-                    quantity_list = item.get('quantity_list', [])
+                    quantity_list = item.get("quantity_list", [])
                     if quantity_list and len(quantity_list) > 1:
                         # Use the list for optimization - filter valid values
-                        valid_quantities = [q for q in quantity_list if q is not None and isinstance(q, (int, float)) and q > 0]
+                        valid_quantities = [
+                            q
+                            for q in quantity_list
+                            if q is not None and isinstance(q, (int, float)) and q > 0
+                        ]
                         if valid_quantities:
                             quantity_for_pricing = valid_quantities
-                
+
                 # Use shared in-memory state for summary to accumulate leftovers across all elevations
-                total_price, unit_type_from_pricing, material_impact = get_price_by_part(
-                    part,
-                    quantity_for_pricing,
-                    finish=item_finish,
-                    current_extra_materials=summary_extra_materials_state,
-                    extra_materials_file=extra_materials_json_path,
-                    summary=False,  # Use False to actually use and track leftovers
-                    group=use_group
+                total_price, unit_type_from_pricing, material_impact = (
+                    get_price_by_part(
+                        part,
+                        quantity_for_pricing,
+                        finish=item_finish,
+                        current_extra_materials=summary_extra_materials_state,
+                        extra_materials_file=extra_materials_json_path,
+                        summary=False,  # Use False to actually use and track leftovers
+                        group=use_group,
+                    )
                 )
                 # Apply material impact to accumulate leftovers in summary state
                 if material_impact:
-                    apply_material_impact_to_extra_materials_in_memory(summary_extra_materials_state, material_impact)
-                original_total_cost_for_item = total_price if total_price is not None else 0.0
-                calculated_unit_type = 'ft' if is_profile else 'pcs' if is_accessory else (unit_type_from_pricing or item['unit'] or 'pcs')
+                    apply_material_impact_to_extra_materials_in_memory(
+                        summary_extra_materials_state, material_impact
+                    )
+                original_total_cost_for_item = (
+                    total_price if total_price is not None else 0.0
+                )
+                calculated_unit_type = (
+                    "ft"
+                    if is_profile
+                    else "pcs"
+                    if is_accessory
+                    else (unit_type_from_pricing or item["unit"] or "pcs")
+                )
 
             if is_profile or is_gasket or is_accessory:
                 total_cost_for_item = original_total_cost_for_item * multiplier
@@ -1237,22 +1751,34 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     extra_materials_key_for_reuse = f"{part}-{item_finish}"
 
                 # Use the shared summary state that accumulates leftovers across all elevations
-                part_data = summary_extra_materials_state.get(extra_materials_key_for_reuse, {})
+                part_data = summary_extra_materials_state.get(
+                    extra_materials_key_for_reuse, {}
+                )
                 if part_data.get("length_pieces"):
                     # Get min_purchase_length for validation
                     part_info = parts_data.get(part, {})
-                    length_str = part_info.get('Length', '')
+                    length_str = part_info.get("Length", "")
                     min_purchase_length = parse_length_to_feet(length_str) or 24.0
-                    
+
                     # Filter out invalid leftover pieces (must be > 0 and < min_purchase_length)
-                    lengths = [float(x) for x in part_data["length_pieces"] if isinstance(x, (int, float, str))]
-                    valid_lengths = [l for l in lengths if l > EPSILON and l < min_purchase_length - EPSILON]
+                    lengths = [
+                        float(x)
+                        for x in part_data["length_pieces"]
+                        if isinstance(x, (int, float, str))
+                    ]
+                    valid_lengths = [
+                        l
+                        for l in lengths
+                        if l > EPSILON and l < min_purchase_length - EPSILON
+                    ]
                     reusable_qty_sum = sum(valid_lengths)
                     if valid_lengths:
                         # Count occurrences of each length, using rounded values for grouping
                         counter = Counter([round(l, 2) for l in valid_lengths])
                         reuse_lengths_formatted = []
-                        for length_val, count in sorted(counter.items(), key=lambda x: x[0], reverse=True):
+                        for length_val, count in sorted(
+                            counter.items(), key=lambda x: x[0], reverse=True
+                        ):
                             # Format length: use integer if whole number, otherwise 2 decimals
                             if length_val == int(length_val):
                                 length_str = f"{int(length_val)}{display_unit}"
@@ -1266,7 +1792,9 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                         reusable_qty_display_string = "N/A"
                 else:
                     reusable_qty_sum = part_data.get("quantity", 0.0)
-                    reusable_qty_display_string = f"{float(reusable_qty_sum):.2f} {display_unit}"
+                    reusable_qty_display_string = (
+                        f"{float(reusable_qty_sum):.2f} {display_unit}"
+                    )
 
                 try:
                     reusable_qty_sum = float(reusable_qty_sum)
@@ -1279,12 +1807,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     quantity_aggregated_f = 0.0
 
                 if reusable_qty_sum > 0 and quantity_aggregated_f > 0:
-                    reusable_pct = min((reusable_qty_sum / (quantity_aggregated_f + reusable_qty_sum)) * 100, 100.0)
+                    reusable_pct = min(
+                        (reusable_qty_sum / (quantity_aggregated_f + reusable_qty_sum))
+                        * 100,
+                        100.0,
+                    )
                 else:
                     reusable_pct = 0.0
 
-                unit_price_for_reuse, unit_type_for_reusable_calc = get_unit_price_by_part(
-                    part, finish=item_finish, extra_materials_file=extra_materials_json_path
+                unit_price_for_reuse, unit_type_for_reusable_calc = (
+                    get_unit_price_by_part(
+                        part,
+                        finish=item_finish,
+                        extra_materials_file=extra_materials_json_path,
+                    )
                 )
                 reusable_cost = (
                     reusable_qty_sum * unit_price_for_reuse * multiplier
@@ -1296,13 +1832,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             quantity_req_ft = "N/A"
             qty_stick_req = "N/A"
             quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
-            
+
             if (is_profile or is_gasket) and part and part != "N/A":
                 # For profiles and gaskets, quantity is in feet - add units
                 quantity_req_ft = f"{quantity_aggregated:.2f} ft"
                 # Calculate number of sticks/rolls needed and format with length
                 part_data = parts_data.get(part, {})
-                length_str = part_data.get('Length', '')
+                length_str = part_data.get("Length", "")
                 min_purchase_length = parse_length_to_feet(length_str) or 1.0
                 if min_purchase_length > 0:
                     num_units = math.ceil(quantity_aggregated / min_purchase_length)
@@ -1310,23 +1846,31 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     qty_stick_req = f"{num_units} ({min_purchase_length:.0f}ft per)"
                 else:
                     qty_stick_req = "N/A"
-                
+
                 # Format quantity_display to show breakdown like "16ft x2, 8ft x1"
-                quantity_list = item.get('quantity_list', [quantity_aggregated])
+                quantity_list = item.get("quantity_list", [quantity_aggregated])
                 # Filter out invalid values (None, empty, non-numeric)
-                valid_quantities = [q for q in quantity_list if q is not None and (isinstance(q, (int, float)) and q > 0)]
-                
+                valid_quantities = [
+                    q
+                    for q in quantity_list
+                    if q is not None and (isinstance(q, (int, float)) and q > 0)
+                ]
+
                 # If no valid quantities, use aggregated quantity
                 if not valid_quantities:
-                    valid_quantities = [quantity_aggregated] if quantity_aggregated > 0 else []
-                
+                    valid_quantities = (
+                        [quantity_aggregated] if quantity_aggregated > 0 else []
+                    )
+
                 # Count occurrences of each length
                 if valid_quantities:
                     length_counter = Counter([round(q, 2) for q in valid_quantities])
                     if len(length_counter) > 1:
                         # Multiple different lengths - show breakdown
                         length_parts = []
-                        for length_val, count in sorted(length_counter.items(), key=lambda x: x[0], reverse=True):
+                        for length_val, count in sorted(
+                            length_counter.items(), key=lambda x: x[0], reverse=True
+                        ):
                             if count > 1:
                                 length_parts.append(f"{length_val:.0f}ft x{count}")
                             else:
@@ -1342,20 +1886,24 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                             quantity_display_formatted = f"{length_val:.0f}ft"
                     else:
                         # Empty counter - fallback to default format
-                        quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
+                        quantity_display_formatted = (
+                            f"{quantity_aggregated:.2f} {display_unit}"
+                        )
                 else:
                     # No valid quantities - fallback to default format
-                    quantity_display_formatted = f"{quantity_aggregated:.2f} {display_unit}"
-                    
+                    quantity_display_formatted = (
+                        f"{quantity_aggregated:.2f} {display_unit}"
+                    )
+
             elif is_accessory and part and part != "N/A":
                 # For accessories, get bulk order info
                 part_data = parts_data.get(part, {})
-                units_str = part_data.get('Units', '1 pcs.')
-                length_str = part_data.get('Length', '')
-                
+                units_str = part_data.get("Units", "1 pcs.")
+                length_str = part_data.get("Length", "")
+
                 # Check if sold by length (feet) or by pieces
                 length_ft = parse_length_to_feet(length_str) if length_str else 0.0
-                
+
                 if length_ft > 1.0:
                     # Sold by length (e.g., glazing gasket: 500 ft per order)
                     unit_count_per_bundle = length_ft
@@ -1363,92 +1911,162 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 else:
                     # Sold by pieces
                     unit_count_per_bundle = 1
-                    if 'pc' in units_str.lower():
+                    if "pc" in units_str.lower():
                         try:
-                            unit_count_per_bundle = int(units_str.lower().split('pc')[0].strip()) or 1
+                            unit_count_per_bundle = (
+                                int(units_str.lower().split("pc")[0].strip()) or 1
+                            )
                         except ValueError:
                             unit_count_per_bundle = 1
                     unit_label = "pcs per"
-                
+
                 # Column 2: Quantity (total pieces/feet required)
                 quantity_req_ft = f"{quantity_aggregated:.2f} {display_unit}"
-                
+
                 # Column 3: Quantity Per Order (e.g., "500 ft per" or "20 pcs per")
                 qty_stick_req = f"{unit_count_per_bundle:.0f} {unit_label}"
-                
+
                 # Column 4: Orders Required (number of orders needed)
-                num_orders = math.ceil(quantity_aggregated / unit_count_per_bundle) if unit_count_per_bundle > 0 else 0
-                quantity_display_formatted = f"{num_orders} order{'s' if num_orders != 1 else ''}"
+                num_orders = (
+                    math.ceil(quantity_aggregated / unit_count_per_bundle)
+                    if unit_count_per_bundle > 0
+                    else 0
+                )
+                quantity_display_formatted = (
+                    f"{num_orders} order{'s' if num_orders != 1 else ''}"
+                )
             else:
                 # For other items (glass, labor, doors), show N/A in first column, unit price in second
                 quantity_req_ft = "N/A"
-                
+
                 # For the second column, show unit price
                 if quantity_aggregated > 0:
                     unit_price = original_total_cost_for_item / quantity_aggregated
                     qty_stick_req = f"${unit_price:.2f}"
                 else:
                     qty_stick_req = "$0.00"
-            
-            final_summary_data.append({
-                'category': category,
-                'description': description,
-                'display': display,
-                'quantity_display': quantity_display_formatted,
-                'quantity_req_ft': quantity_req_ft,
-                'qty_stick_req': qty_stick_req,
-                'original_total_cost': original_total_cost_for_item,
-                'total_cost': total_cost_for_item,
-                'reusable_qty_display': reusable_qty_display_string,
-                'reusable_pct': reusable_pct if (is_profile or is_gasket or is_accessory) else "N/A",
-                'reusable_cost': reusable_cost if (is_profile or is_gasket or is_accessory) else 0.0,
-                'part': part,
-                'calculated_unit_type': calculated_unit_type
-            })
+
+            final_summary_data.append(
+                {
+                    "category": category,
+                    "description": description,
+                    "display": display,
+                    "quantity_display": quantity_display_formatted,
+                    "quantity_req_ft": quantity_req_ft,
+                    "qty_stick_req": qty_stick_req,
+                    "original_total_cost": original_total_cost_for_item,
+                    "total_cost": total_cost_for_item,
+                    "reusable_qty_display": reusable_qty_display_string,
+                    "reusable_pct": reusable_pct
+                    if (is_profile or is_gasket or is_accessory)
+                    else "N/A",
+                    "reusable_cost": reusable_cost
+                    if (is_profile or is_gasket or is_accessory)
+                    else 0.0,
+                    "part": part,
+                    "calculated_unit_type": calculated_unit_type,
+                }
+            )
 
     # Step 4: Write to worksheet with grouped sections
     start_row = 1
     current_row = start_row
-    
+
     # Define headers based on category
     def get_headers_for_category(category, items_list=None):
-        if category == 'PROFILES':
+        if category == "PROFILES":
             return [
-                "Description", "Project Total Materials", "Total Feet Required", "Sticks Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "Total Feet Required",
+                "Sticks Required",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-        elif category == 'ACCESSORIES':
+        elif category == "ACCESSORIES":
             return [
-                "Description", "Project Total Materials", "Total Pieces Required", "Quantity Per Order", "Orders Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "Total Pieces Required",
+                "Quantity Per Order",
+                "Orders Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-        elif category == 'GASKETS':
+        elif category == "GASKETS":
             return [
-                "Description", "Project Total Materials", "Total Feet Required", "Rolls Required", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "Total Feet Required",
+                "Rolls Required",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-        elif category == 'GLASS':
+        elif category == "GLASS":
             return [
-                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "N/A",
+                "Unit Price",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-        elif category == 'LABOR':
+        elif category == "LABOR":
             return [
-                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "N/A",
+                "Unit Price",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-        elif category == 'DOORS':
+        elif category == "DOORS":
             return [
-                "Description", "Project Total Materials", "N/A", "Unit Price", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "N/A",
+                "Unit Price",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
         else:
             # Default headers
             return [
-                "Description", "Project Total Materials", "Quantity Req (FT)", "Qty Stick (Req)", "Total Quantity Required", "Total List Cost", "Discounted Total List Cost",
-                "Residual Material Quantity", "Residual Waste %", "Residual Material Cost"
+                "Description",
+                "Project Total Materials",
+                "Quantity Req (FT)",
+                "Qty Stick (Req)",
+                "Total Quantity Required",
+                "Total List Cost",
+                "Discounted Total List Cost",
+                "Residual Material Quantity",
+                "Residual Waste %",
+                "Residual Material Cost",
             ]
-    
+
     # Track category totals for markup calculations (initialize before loop)
     category_totals = {
         "PROFILES": {"discounted": 0.0, "residual": 0.0},
@@ -1456,7 +2074,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         "GASKETS": {"discounted": 0.0, "residual": 0.0},
         "DOORS": {"discounted": 0.0, "residual": 0.0},
         "GLASS": {"discounted": 0.0, "residual": 0.0},
-        "LABOR": {"discounted": 0.0, "residual": 0.0}
+        "LABOR": {"discounted": 0.0, "residual": 0.0},
     }
 
     for category, items in categories.items():
@@ -1464,9 +2082,21 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             continue
         if not show_category.get(category, True):
             # Still compute category_totals for markups, but don't write to sheet
-            section_original_total = sum(item['original_total_cost'] for item in final_summary_data if item['category'] == category)
-            section_total_cost = sum(item['total_cost'] for item in final_summary_data if item['category'] == category)
-            section_residual_total = sum(item['reusable_cost'] for item in final_summary_data if item['category'] == category)
+            section_original_total = sum(
+                item["original_total_cost"]
+                for item in final_summary_data
+                if item["category"] == category
+            )
+            section_total_cost = sum(
+                item["total_cost"]
+                for item in final_summary_data
+                if item["category"] == category
+            )
+            section_residual_total = sum(
+                item["reusable_cost"]
+                for item in final_summary_data
+                if item["category"] == category
+            )
             grand_original_total += section_original_total
             grand_discounted_total += section_total_cost
             grand_residual_total += section_residual_total
@@ -1474,111 +2104,163 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                 category_totals[category]["discounted"] = section_total_cost
                 category_totals[category]["residual"] = section_residual_total
             continue
-        headers = get_headers_for_category(category, items)
-        header_cell = ws.cell(row=current_row, column=category_start_col, value=category)
+        all_headers = get_headers_for_category(category, items)
+        # Build visible column index list based on _summary_col_visible
+        visible_indices = [
+            i for i in range(len(all_headers)) if _summary_col_visible.get(i, True)
+        ]
+        filtered_headers = [all_headers[i] for i in visible_indices]
+
+        header_cell = ws.cell(
+            row=current_row, column=category_start_col, value=category
+        )
         header_cell.font = Font(bold=True, size=12)
-        # header_cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid") # Removed color fill for professional look
         current_row += 1
-        for col, header in enumerate(headers, start=category_start_col):
-            header_cell = ws.cell(row=current_row, column=col, value=header)
+        for write_col, header in enumerate(filtered_headers, start=category_start_col):
+            header_cell = ws.cell(row=current_row, column=write_col, value=header)
             header_cell.font = Font(bold=True)
-            header_cell.border = Border(bottom=Side(style='thin'))
-            # header_cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid") # Removed color fill for professional look
+            header_cell.border = Border(bottom=Side(style="thin"))
         current_row += 1
-        
+
         section_original_total = 0.0
         section_total_cost = 0.0
         section_residual_total = 0.0
-        
+
+        # Map original column index to data values
+        def _get_item_values(item):
+            description_value = item.get("description", "")
+            if not description_value or description_value == "":
+                description_value = item.get("display", "")
+            reusable_pct_val = (
+                f"{item['reusable_pct']:.2f}%"
+                if isinstance(item["reusable_pct"], (int, float))
+                else item["reusable_pct"]
+            )
+            return {
+                0: description_value,
+                1: item["display"],
+                2: item["quantity_req_ft"],
+                3: item["qty_stick_req"],
+                4: item["quantity_display"],
+                5: item["original_total_cost"],
+                6: item["total_cost"],
+                7: item["reusable_qty_display"],
+                8: reusable_pct_val,
+                9: item["reusable_cost"],
+            }
+
+        currency_positions = {5, 6, 9}
+
         for item in final_summary_data:
-            if item['category'] == category:
-                section_original_total += item['original_total_cost']
-                section_total_cost += item['total_cost']
-                section_residual_total += item['reusable_cost']
-                
-                # Get description - it should be in final_summary_data
-                description_value = item.get('description', '')
-                if not description_value or description_value == '':
-                    # Fallback to display if description is missing
-                    description_value = item.get('display', '')
-                ws.cell(row=current_row, column=category_start_col, value=description_value)
-                ws.cell(row=current_row, column=category_start_col + 1, value=item['display'])
-                ws.cell(row=current_row, column=category_start_col + 2, value=item['quantity_req_ft'])
-                ws.cell(row=current_row, column=category_start_col + 3, value=item['qty_stick_req'])
-                ws.cell(row=current_row, column=category_start_col + 4, value=item['quantity_display'])
-                ws.cell(row=current_row, column=category_start_col + 5, value=item['original_total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=category_start_col + 6, value=item['total_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=current_row, column=category_start_col + 7, value=item['reusable_qty_display'])
-                ws.cell(row=current_row, column=category_start_col + 8, value=f"{item['reusable_pct']:.2f}%" if isinstance(item['reusable_pct'], (int, float)) else item['reusable_pct'])
-                ws.cell(row=current_row, column=category_start_col + 9, value=item['reusable_cost']).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            if item["category"] == category:
+                section_original_total += item["original_total_cost"]
+                section_total_cost += item["total_cost"]
+                section_residual_total += item["reusable_cost"]
+
+                vals = _get_item_values(item)
+                for write_col_idx, orig_idx in enumerate(visible_indices):
+                    cell = ws.cell(
+                        row=current_row,
+                        column=category_start_col + write_col_idx,
+                        value=vals[orig_idx],
+                    )
+                    if orig_idx in currency_positions:
+                        cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 current_row += 1
-        
+
         grand_original_total += section_original_total
         grand_discounted_total += section_total_cost
         grand_residual_total += section_residual_total
-        
+
         # Track category totals for markup calculations
         if category in category_totals:
             category_totals[category]["discounted"] = section_total_cost
             category_totals[category]["residual"] = section_residual_total
 
         # Add Section Totals for Summary
-        # Convert category to proper label (e.g., "PROFILES" -> "Profile Cost")
         category_mapping = {
             "PROFILES": "Profile",
             "ACCESSORIES": "Accessory",
             "GASKETS": "Gasket",
             "DOORS": "Door",
             "GLASS": "Glass",
-            "LABOR": "Labor"
+            "LABOR": "Labor",
         }
         category_label = category_mapping.get(category.upper(), category.title())
         total_label = f"Total {category_label} Cost"
-        ws.cell(row=current_row, column=category_start_col + 4, value=total_label).font = Font(bold=True)
-        ws.cell(row=current_row, column=category_start_col + 5, value=section_original_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=category_start_col + 5).font = Font(bold=True)
-        ws.cell(row=current_row, column=category_start_col + 6, value=section_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=category_start_col + 6).font = Font(bold=True)
-        ws.cell(row=current_row, column=category_start_col + 9, value=section_residual_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=current_row, column=category_start_col + 9).font = Font(bold=True)
-        
+
+        # Find the write positions for the totals based on visible columns
+        # Place total label at the last non-cost visible column before cost columns
+        # Place cost values at their filtered positions
+        total_vals = {
+            4: total_label,
+            5: section_original_total,
+            6: section_total_cost,
+            9: section_residual_total,
+        }
+        for write_col_idx, orig_idx in enumerate(visible_indices):
+            if orig_idx in total_vals:
+                cell = ws.cell(
+                    row=current_row,
+                    column=category_start_col + write_col_idx,
+                    value=total_vals[orig_idx],
+                )
+                cell.font = Font(bold=True)
+                if orig_idx in currency_positions:
+                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+
         # Add top border for totals row
-        for col in range(category_start_col, category_start_col + 10):
-            ws.cell(row=current_row, column=col).border = Border(top=Side(style='thin'))
+        for col in range(
+            category_start_col, category_start_col + len(filtered_headers)
+        ):
+            ws.cell(row=current_row, column=col).border = Border(top=Side(style="thin"))
 
         current_row += 2
-    
+
     # ============================================================================
     # SUMMARY SECTIONS - Clean Professional Layout
     # ============================================================================
     gt_row = current_row + 2
-    
+
     # Calculate discounted total from column G (adjusted for elevation summary offset)
     discounted_total_col = category_start_col + 6  # Column G was 7, now shifted
     sum_from_column_g = 0.0
     try:
         for row in range(1, gt_row):
-            label_cell = ws.cell(row=row, column=category_start_col + 4)  # Column E was 5, now shifted
+            label_cell = ws.cell(
+                row=row, column=category_start_col + 4
+            )  # Column E was 5, now shifted
             value_cell = ws.cell(row=row, column=discounted_total_col)
             if label_cell.value and isinstance(label_cell.value, str):
                 if "Total" in label_cell.value and "Cost" in label_cell.value:
                     if value_cell.value is not None:
                         try:
                             sum_from_column_g += float(value_cell.value)
-                            print(f"Found section total '{label_cell.value}' in row {row}, column 7: ${value_cell.value}")
+                            print(
+                                f"Found section total '{label_cell.value}' in row {row}, column 7: ${value_cell.value}"
+                            )
                         except (ValueError, TypeError):
                             pass
     except Exception as e:
         print(f"Error reading from column G: {e}")
         sum_from_column_g = 0.0
-    
-    final_discounted_total = sum_from_column_g if sum_from_column_g > 0 else grand_discounted_total
+
+    final_discounted_total = (
+        sum_from_column_g if sum_from_column_g > 0 else grand_discounted_total
+    )
     if sum_from_column_g > 0:
-        print(f"Summary discounted total from column G: ${sum_from_column_g:.2f}, calculated: ${grand_discounted_total:.2f}, using: ${final_discounted_total:.2f}")
-    
+        print(
+            f"Summary discounted total from column G: ${sum_from_column_g:.2f}, calculated: ${grand_discounted_total:.2f}, using: ${final_discounted_total:.2f}"
+        )
+
     reuse_total = total_reusable_cost
-    reuse_pct_of_gt = min((total_reusable_cost / total_discounted_price * 100) if total_discounted_price > 0 else 0.0, 100.0)
-    
+    reuse_pct_of_gt = min(
+        (total_reusable_cost / total_discounted_price * 100)
+        if total_discounted_price > 0
+        else 0.0,
+        100.0,
+    )
+
     # ============================================================================
     # COST OVERVIEW BOX - Spans columns (shifted right if elevation summary exists)
     # ============================================================================
@@ -1586,76 +2268,172 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # so the "TOTAL" cost box doesn't visually overlap the elevation list.
     overview_start_row = gt_row + 4
     overview_start_col = category_start_col
-    
+
     # Header row with background
-    ws.cell(row=overview_start_row, column=overview_start_col, value="COST OVERVIEW").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=overview_start_row, column=overview_start_col).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=overview_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=overview_start_row, column=overview_start_col + 1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=overview_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=overview_start_row, column=overview_start_col + 2).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    ws.cell(row=overview_start_row, column=overview_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    
+    ws.cell(
+        row=overview_start_row, column=overview_start_col, value="COST OVERVIEW"
+    ).font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=overview_start_row, column=overview_start_col).fill = PatternFill(
+        start_color="4472C4", end_color="4472C4", fill_type="solid"
+    )
+    ws.cell(row=overview_start_row, column=overview_start_col).border = Border(
+        left=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
+    )
+    ws.cell(row=overview_start_row, column=overview_start_col + 1).fill = PatternFill(
+        start_color="4472C4", end_color="4472C4", fill_type="solid"
+    )
+    ws.cell(row=overview_start_row, column=overview_start_col + 1).border = Border(
+        top=Side(style="medium"), bottom=Side(style="thin")
+    )
+    ws.cell(row=overview_start_row, column=overview_start_col + 2).fill = PatternFill(
+        start_color="4472C4", end_color="4472C4", fill_type="solid"
+    )
+    ws.cell(row=overview_start_row, column=overview_start_col + 2).border = Border(
+        right=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
+    )
+
     # List Price row (ensure values are numeric for display)
-    grand_original_safe = grand_original_total if grand_original_total is not None else 0.0
-    final_discounted_safe = final_discounted_total if final_discounted_total is not None else 0.0
-    ws.cell(row=overview_start_row+1, column=overview_start_col, value="List Price Total:")
-    ws.cell(row=overview_start_row+1, column=overview_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+1, column=overview_start_col + 2, value=grand_original_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+1, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+1, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    grand_original_safe = (
+        grand_original_total if grand_original_total is not None else 0.0
+    )
+    final_discounted_safe = (
+        final_discounted_total if final_discounted_total is not None else 0.0
+    )
+    ws.cell(
+        row=overview_start_row + 1, column=overview_start_col, value="List Price Total:"
+    )
+    ws.cell(row=overview_start_row + 1, column=overview_start_col).border = Border(
+        left=Side(style="medium")
+    )
+    ws.cell(
+        row=overview_start_row + 1,
+        column=overview_start_col + 2,
+        value=grand_original_safe,
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(
+        row=overview_start_row + 1, column=overview_start_col + 2
+    ).alignment = Alignment(horizontal="right")
+    ws.cell(row=overview_start_row + 1, column=overview_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Discounted Total row
-    ws.cell(row=overview_start_row+2, column=overview_start_col, value="Discounted Total:")
-    ws.cell(row=overview_start_row+2, column=overview_start_col).font = Font(bold=True)
-    ws.cell(row=overview_start_row+2, column=overview_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+2, column=overview_start_col + 2, value=final_discounted_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).font = Font(bold=True)
-    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+2, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    ws.cell(
+        row=overview_start_row + 2, column=overview_start_col, value="Discounted Total:"
+    )
+    ws.cell(row=overview_start_row + 2, column=overview_start_col).font = Font(
+        bold=True
+    )
+    ws.cell(row=overview_start_row + 2, column=overview_start_col).border = Border(
+        left=Side(style="medium")
+    )
+    ws.cell(
+        row=overview_start_row + 2,
+        column=overview_start_col + 2,
+        value=final_discounted_safe,
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=overview_start_row + 2, column=overview_start_col + 2).font = Font(
+        bold=True
+    )
+    ws.cell(
+        row=overview_start_row + 2, column=overview_start_col + 2
+    ).alignment = Alignment(horizontal="right")
+    ws.cell(row=overview_start_row + 2, column=overview_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Residual/Waste Cost row
-    ws.cell(row=overview_start_row+3, column=overview_start_col, value="Residual/Waste Cost:")
-    ws.cell(row=overview_start_row+3, column=overview_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=overview_start_row+3, column=overview_start_col + 2, value=reuse_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=overview_start_row+3, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+3, column=overview_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    ws.cell(
+        row=overview_start_row + 3,
+        column=overview_start_col,
+        value="Residual/Waste Cost:",
+    )
+    ws.cell(row=overview_start_row + 3, column=overview_start_col).border = Border(
+        left=Side(style="medium")
+    )
+    ws.cell(
+        row=overview_start_row + 3, column=overview_start_col + 2, value=reuse_total
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(
+        row=overview_start_row + 3, column=overview_start_col + 2
+    ).alignment = Alignment(horizontal="right")
+    ws.cell(row=overview_start_row + 3, column=overview_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Waste Percentage row
-    ws.cell(row=overview_start_row+4, column=overview_start_col, value="Waste Percentage:")
-    ws.cell(row=overview_start_row+4, column=overview_start_col).border = Border(left=Side(style='medium'), bottom=Side(style='medium'))
-    ws.cell(row=overview_start_row+4, column=overview_start_col + 1).border = Border(bottom=Side(style='medium'))
-    ws.cell(row=overview_start_row+4, column=overview_start_col + 2, value=f"{reuse_pct_of_gt:.2f}%")
-    ws.cell(row=overview_start_row+4, column=overview_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=overview_start_row+4, column=overview_start_col + 2).border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
-    
+    ws.cell(
+        row=overview_start_row + 4, column=overview_start_col, value="Waste Percentage:"
+    )
+    ws.cell(row=overview_start_row + 4, column=overview_start_col).border = Border(
+        left=Side(style="medium"), bottom=Side(style="medium")
+    )
+    ws.cell(row=overview_start_row + 4, column=overview_start_col + 1).border = Border(
+        bottom=Side(style="medium")
+    )
+    ws.cell(
+        row=overview_start_row + 4,
+        column=overview_start_col + 2,
+        value=f"{reuse_pct_of_gt:.2f}%",
+    )
+    ws.cell(
+        row=overview_start_row + 4, column=overview_start_col + 2
+    ).alignment = Alignment(horizontal="right")
+    ws.cell(row=overview_start_row + 4, column=overview_start_col + 2).border = Border(
+        right=Side(style="medium"), bottom=Side(style="medium")
+    )
+
     overview_end_row = overview_start_row + 4
-    
+
     # Ensure value column is wide enough for currency (prevents "########" display)
     value_col_letter = get_column_letter(overview_start_col + 2)
-    ws.column_dimensions[value_col_letter].width = max(ws.column_dimensions[value_col_letter].width or 0, 14)
-    
+    ws.column_dimensions[value_col_letter].width = max(
+        ws.column_dimensions[value_col_letter].width or 0, 14
+    )
+
     # PIE CHART will be added after addition cost and markup totals are calculated
 
     # ============================================================================
     # ADDITIONAL COST - Stacked vertically below Cost Overview (conditional)
     # ============================================================================
-    
+
     # Start with spacing after the cost overview box
     section_start_row = overview_end_row + 2
     misc_start_row = section_start_row
-    
+
     if show_additional_costs:
         # ADDITIONAL COST Header (shifted right if elevation summary exists)
-        ws.cell(row=section_start_row, column=category_start_col, value="ADDITIONAL COSTS").font = Font(bold=True, size=11, color="FFFFFF")
-        ws.cell(row=section_start_row, column=category_start_col).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-        ws.cell(row=section_start_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-        ws.cell(row=section_start_row, column=category_start_col + 1).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-        ws.cell(row=section_start_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-        ws.cell(row=section_start_row, column=category_start_col + 2).fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-        ws.cell(row=section_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
+        ws.cell(
+            row=section_start_row, column=category_start_col, value="ADDITIONAL COSTS"
+        ).font = Font(bold=True, size=11, color="FFFFFF")
+        ws.cell(row=section_start_row, column=category_start_col).fill = PatternFill(
+            start_color="548235", end_color="548235", fill_type="solid"
+        )
+        ws.cell(row=section_start_row, column=category_start_col).border = Border(
+            left=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
+        ws.cell(
+            row=section_start_row, column=category_start_col + 1
+        ).fill = PatternFill(
+            start_color="548235", end_color="548235", fill_type="solid"
+        )
+        ws.cell(row=section_start_row, column=category_start_col + 1).border = Border(
+            top=Side(style="medium"), bottom=Side(style="thin")
+        )
+        ws.cell(
+            row=section_start_row, column=category_start_col + 2
+        ).fill = PatternFill(
+            start_color="548235", end_color="548235", fill_type="solid"
+        )
+        ws.cell(row=section_start_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
     summary_section_row = section_start_row + 1
-    
+
     # Get summary percentages from project settings file
     summary_pcts = {
         "Overhead Materials": 0.0,
@@ -1664,21 +2442,21 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         "Engineering": 0.0,
         "Packaging Materials": 0.0,
         "Shipping and Transport": 0.0,
-        "Commissions": 0.0
+        "Commissions": 0.0,
     }
-    
+
     # Load percentages from settings file
     print(f"[INFO] Attempting to load settings from: {summary_settings_path}")
     print(f"   Elevations path: {elevations_json_path}")
-    
+
     # Always try to construct path from elevations path first (most reliable)
     settings_paths_to_try = []
-    
+
     # 1. Try provided path
     if summary_settings_path:
         settings_paths_to_try.append(summary_settings_path)
         settings_paths_to_try.append(os.path.abspath(summary_settings_path))
-    
+
     # 2. Construct from elevations path (most reliable)
     elev_dir = os.path.dirname(elevations_json_path)
     elev_basename = os.path.basename(elevations_json_path)
@@ -1687,11 +2465,13 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         constructed_path = os.path.join(elev_dir, f"{project_base}_Settings.json")
         settings_paths_to_try.append(constructed_path)
         print(f"   Constructed from elevations: {constructed_path}")
-    
+
     # 3. Try in same directory as elevations
     if summary_settings_path:
-        settings_paths_to_try.append(os.path.join(elev_dir, os.path.basename(summary_settings_path)))
-    
+        settings_paths_to_try.append(
+            os.path.join(elev_dir, os.path.basename(summary_settings_path))
+        )
+
     # Remove duplicates while preserving order (rebuild unique_paths here)
     seen = set()
     unique_paths = []
@@ -1699,47 +2479,68 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         if path and path not in seen:
             seen.add(path)
             unique_paths.append(path)
-    
+
     settings_loaded = False
     for path_to_try in unique_paths:
         if os.path.exists(path_to_try):
             try:
                 print(f"   [OK] Found file, trying to read: {path_to_try}")
-                with open(path_to_try, 'r') as f:
+                with open(path_to_try, "r") as f:
                     settings_data = json.load(f)
                     # Additional cost percentages
                     summary_pcts = {
-                        "Overhead Materials": settings_data.get("overhead_materials_pct", 0.0),
+                        "Overhead Materials": settings_data.get(
+                            "overhead_materials_pct", 0.0
+                        ),
                         "Overhead Labor": settings_data.get("overhead_labor_pct", 0.0),
-                        "Admin and Management": settings_data.get("admin_management_pct", 0.0),
+                        "Admin and Management": settings_data.get(
+                            "admin_management_pct", 0.0
+                        ),
                         "Engineering": settings_data.get("engineering_pct", 0.0),
-                        "Packaging Materials": settings_data.get("packaging_materials_pct", 0.0),
-                        "Shipping and Transport": settings_data.get("shipping_transport_pct", 0.0),
-                        "Commissions": settings_data.get("commissions_pct", 0.0)
+                        "Packaging Materials": settings_data.get(
+                            "packaging_materials_pct", 0.0
+                        ),
+                        "Shipping and Transport": settings_data.get(
+                            "shipping_transport_pct", 0.0
+                        ),
+                        "Commissions": settings_data.get("commissions_pct", 0.0),
                     }
                     print(f"[OK] Loaded summary percentages from {path_to_try}")
                     print(f"   Percentages: {summary_pcts}")
                     # Elevation summary display flags
-                    elevation_summary_settings["show_elevation_names"] = settings_data.get("show_elevation_names", False)
-                    elevation_summary_settings["show_elevation_quantity"] = settings_data.get("show_elevation_quantity", False)
-                    elevation_summary_settings["show_elevation_dimensions"] = settings_data.get("show_elevation_dimensions", False)
-                    elevation_summary_settings["show_elevation_sqft"] = settings_data.get("show_elevation_sqft", False)
-                    elevation_summary_settings["show_elevation_perimeter"] = settings_data.get("show_elevation_perimeter", False)
+                    elevation_summary_settings["show_elevation_names"] = (
+                        settings_data.get("show_elevation_names", False)
+                    )
+                    elevation_summary_settings["show_elevation_quantity"] = (
+                        settings_data.get("show_elevation_quantity", False)
+                    )
+                    elevation_summary_settings["show_elevation_dimensions"] = (
+                        settings_data.get("show_elevation_dimensions", False)
+                    )
+                    elevation_summary_settings["show_elevation_sqft"] = (
+                        settings_data.get("show_elevation_sqft", False)
+                    )
+                    elevation_summary_settings["show_elevation_perimeter"] = (
+                        settings_data.get("show_elevation_perimeter", False)
+                    )
                     settings_loaded = True
                     break
             except Exception as e:
                 print(f"   [ERROR] Error reading {path_to_try}: {e}")
                 import traceback
+
                 traceback.print_exc()
                 continue
-    
+
     if not settings_loaded:
         print(f"[WARNING] Could not load settings from any path. Tried:")
         for path_to_try in unique_paths:
             exists = "[EXISTS]" if os.path.exists(path_to_try) else "[NOT FOUND]"
             print(f"   {exists}: {path_to_try}")
         if not summary_settings_path:
-            print(f"   [WARNING] No summary settings path was provided to create_summary_sheet")
+            print(
+                f"   [WARNING] No summary settings path was provided to create_summary_sheet"
+            )
 
     # Build elevation summary column definitions based on flags
     elevation_summary_cols = []
@@ -1747,14 +2548,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         elevation_summary_cols.append(("Elevation Name", 1))
     if elevation_summary_settings["show_elevation_quantity"]:
         # Include units in header so summary numbers stay numeric but units are clear
-        elevation_summary_cols.append(("Quantity (EA)", len(elevation_summary_cols) + 1))
+        elevation_summary_cols.append(
+            ("Quantity (EA)", len(elevation_summary_cols) + 1)
+        )
     if elevation_summary_settings["show_elevation_dimensions"]:
         elevation_summary_cols.append(("Dimensions", len(elevation_summary_cols) + 1))
     if elevation_summary_settings["show_elevation_sqft"]:
-        elevation_summary_cols.append(("SQFT Total (SQFT)", len(elevation_summary_cols) + 1))
+        elevation_summary_cols.append(
+            ("SQFT Total (SQFT)", len(elevation_summary_cols) + 1)
+        )
     if elevation_summary_settings["show_elevation_perimeter"]:
-        elevation_summary_cols.append(("Perimeter FT Total (FT)", len(elevation_summary_cols) + 1))
-    
+        elevation_summary_cols.append(
+            ("Perimeter FT Total (FT)", len(elevation_summary_cols) + 1)
+        )
+
     # ============================================================================
     # ELEVATION SUMMARY COLUMNS (if enabled) - Write before categories
     # ============================================================================
@@ -1762,14 +2569,20 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     elevation_summary_start_row = current_row
     if elevation_summary_cols and show_elevation_totals:
         # Colors to match existing section headers (PROJECT TOTAL / GRAND TOTAL style)
-        header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="2F5496", end_color="2F5496", fill_type="solid"
+        )
         header_font = Font(bold=True, size=12, color="FFFFFF")
-        subheader_fill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
+        subheader_fill = PatternFill(
+            start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"
+        )
 
         # Add a clear section title spanning the used columns so it stands out visually
         first_col = elevation_summary_cols[0][1]
         last_col = elevation_summary_cols[-1][1]
-        title_cell = ws.cell(row=current_row, column=first_col, value="ELEVATION SUMMARY")
+        title_cell = ws.cell(
+            row=current_row, column=first_col, value="ELEVATION SUMMARY"
+        )
         title_cell.font = header_font
         title_cell.fill = header_fill
         # Apply fill across merged range
@@ -1789,7 +2602,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             header_cell = ws.cell(row=current_row, column=col_num, value=header_name)
             header_cell.font = Font(bold=True, size=11)
             header_cell.fill = subheader_fill
-            header_cell.border = Border(bottom=Side(style='thin'))
+            header_cell.border = Border(bottom=Side(style="thin"))
         current_row += 1
 
         # Totals accumulators
@@ -1801,26 +2614,46 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         for elev_key, elev in data.items():
             col_idx = 0
             if elevation_summary_settings["show_elevation_names"]:
-                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=elev_key)
+                ws.cell(
+                    row=current_row,
+                    column=elevation_summary_cols[col_idx][1],
+                    value=elev_key,
+                )
                 col_idx += 1
             if elevation_summary_settings["show_elevation_quantity"]:
                 qty = elev.get("total_count", 0) or 0
-                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=qty)
+                ws.cell(
+                    row=current_row,
+                    column=elevation_summary_cols[col_idx][1],
+                    value=qty,
+                )
                 total_qty += qty
                 col_idx += 1
             if elevation_summary_settings["show_elevation_dimensions"]:
                 width = elev.get("opening_width_inches", 0) or 0
                 height = elev.get("opening_height_inches", 0) or 0
-                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=f"{width}\" x {height}\"")
+                ws.cell(
+                    row=current_row,
+                    column=elevation_summary_cols[col_idx][1],
+                    value=f'{width}" x {height}"',
+                )
                 col_idx += 1
             if elevation_summary_settings["show_elevation_sqft"]:
                 sqft = elev.get("total_sqft", 0) or 0
-                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=sqft)
+                ws.cell(
+                    row=current_row,
+                    column=elevation_summary_cols[col_idx][1],
+                    value=sqft,
+                )
                 total_sqft += sqft
                 col_idx += 1
             if elevation_summary_settings["show_elevation_perimeter"]:
                 perimeter = elev.get("total_perimeter_ft", 0) or 0
-                ws.cell(row=current_row, column=elevation_summary_cols[col_idx][1], value=perimeter)
+                ws.cell(
+                    row=current_row,
+                    column=elevation_summary_cols[col_idx][1],
+                    value=perimeter,
+                )
                 total_perimeter += perimeter
                 col_idx += 1
             current_row += 1
@@ -1835,51 +2668,77 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             totals_cell.fill = subheader_fill
 
         if elevation_summary_settings["show_elevation_names"]:
-            total_label_cell = ws.cell(row=total_row, column=elevation_summary_cols[col_idx][1], value="TOTAL")
+            total_label_cell = ws.cell(
+                row=total_row, column=elevation_summary_cols[col_idx][1], value="TOTAL"
+            )
             total_label_cell.font = Font(bold=True)
             col_idx += 1
         # Debug: print totals to console
-        print(f"[SUMMARY] ELEVATION SUMMARY TOTALS: Qty={total_qty}, SQFT={total_sqft}, Perimeter={total_perimeter}")
-        
+        print(
+            f"[SUMMARY] ELEVATION SUMMARY TOTALS: Qty={total_qty}, SQFT={total_sqft}, Perimeter={total_perimeter}"
+        )
+
         if elevation_summary_settings["show_elevation_quantity"]:
             # Write the accumulated total directly
             qty_col_index = elevation_summary_cols[col_idx][1]
             qty_value = int(total_qty) if total_qty == int(total_qty) else total_qty
             ws.cell(row=total_row, column=qty_col_index, value=qty_value)
             ws.cell(row=total_row, column=qty_col_index).font = Font(bold=True)
-            ws.cell(row=total_row, column=qty_col_index).alignment = Alignment(horizontal="right")
-            print(f"   Writing Qty total {qty_value} to row {total_row}, col {qty_col_index}")
+            ws.cell(row=total_row, column=qty_col_index).alignment = Alignment(
+                horizontal="right"
+            )
+            print(
+                f"   Writing Qty total {qty_value} to row {total_row}, col {qty_col_index}"
+            )
             col_idx += 1
         if elevation_summary_settings["show_elevation_dimensions"]:
             # No total for dimensions; leave blank cell
             col_idx += 1
         if elevation_summary_settings["show_elevation_sqft"]:
             sqft_col_index = elevation_summary_cols[col_idx][1]
-            sqft_value = int(total_sqft) if total_sqft == int(total_sqft) else round(total_sqft, 2)
+            sqft_value = (
+                int(total_sqft)
+                if total_sqft == int(total_sqft)
+                else round(total_sqft, 2)
+            )
             ws.cell(row=total_row, column=sqft_col_index, value=sqft_value)
             ws.cell(row=total_row, column=sqft_col_index).font = Font(bold=True)
-            ws.cell(row=total_row, column=sqft_col_index).alignment = Alignment(horizontal="right")
-            print(f"   Writing SQFT total {sqft_value} to row {total_row}, col {sqft_col_index}")
+            ws.cell(row=total_row, column=sqft_col_index).alignment = Alignment(
+                horizontal="right"
+            )
+            print(
+                f"   Writing SQFT total {sqft_value} to row {total_row}, col {sqft_col_index}"
+            )
             col_idx += 1
         if elevation_summary_settings["show_elevation_perimeter"]:
             perim_col_index = elevation_summary_cols[col_idx][1]
-            perim_value = int(total_perimeter) if total_perimeter == int(total_perimeter) else round(total_perimeter, 2)
+            perim_value = (
+                int(total_perimeter)
+                if total_perimeter == int(total_perimeter)
+                else round(total_perimeter, 2)
+            )
             ws.cell(row=total_row, column=perim_col_index, value=perim_value)
             ws.cell(row=total_row, column=perim_col_index).font = Font(bold=True)
-            ws.cell(row=total_row, column=perim_col_index).alignment = Alignment(horizontal="right")
-            print(f"   Writing Perimeter total {perim_value} to row {total_row}, col {perim_col_index}")
+            ws.cell(row=total_row, column=perim_col_index).alignment = Alignment(
+                horizontal="right"
+            )
+            print(
+                f"   Writing Perimeter total {perim_value} to row {total_row}, col {perim_col_index}"
+            )
 
         # Add a thin top border across the used columns to separate totals from data
         for _, (_, col_num) in enumerate(elevation_summary_cols):
             cell = ws.cell(row=total_row, column=col_num)
-            cell.border = Border(top=Side(style='thin'))
+            cell.border = Border(top=Side(style="thin"))
 
         current_row += 2  # Spacing after elevation summary section
 
     # Calculate base amount: use discounted total only
     base_amount = final_discounted_total
-    print(f"[SUMMARY] Additional Cost section - Base amount (discounted total): ${base_amount:.2f}")
-    
+    print(
+        f"[SUMMARY] Additional Cost section - Base amount (discounted total): ${base_amount:.2f}"
+    )
+
     # ========== STEP 1: Collect all ADDITIONAL COST items ==========
     summary_total = 0.0
     misc_items_list = []
@@ -1889,7 +2748,7 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
             summary_total += amount
             misc_items_list.append((label, amount))
             print(f"   {label}: {pct}% = ${amount:.2f}")
-    
+
     # ========== STEP 2: Collect all MARKUP items ==========
     # Get markup percentages from project settings file (same file as addition cost)
     markup_pcts = {
@@ -1898,25 +2757,37 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
         "Profit on Glass Purchase": 0.0,
         "Profit on Wages": 0.0,
         "Planning / Technical Office": 0.0,
-        "Commission": 0.0
+        "Commission": 0.0,
     }
-    
+
     # Load markup percentages from settings file (use same file as addition cost settings)
     markup_settings_loaded = False
     for path_to_try_markup in unique_paths:
         if os.path.exists(path_to_try_markup):
             try:
                 print(f"   [INFO] Loading markup settings from: {path_to_try_markup}")
-                with open(path_to_try_markup, 'r') as f:
+                with open(path_to_try_markup, "r") as f:
                     settings_data = json.load(f)
-                    print(f"   [DEBUG] Settings file keys: {list(settings_data.keys())}")
+                    print(
+                        f"   [DEBUG] Settings file keys: {list(settings_data.keys())}"
+                    )
                     markup_pcts = {
-                        "Profit on Material": settings_data.get("profit_on_material_pct", 0.0),
-                        "Profit on Waste": settings_data.get("profit_on_waste_pct", 0.0),
-                        "Profit on Glass Purchase": settings_data.get("profit_on_glass_pct", 0.0),
-                        "Profit on Wages": settings_data.get("profit_on_wages_pct", 0.0),
-                        "Planning / Technical Office": settings_data.get("planning_technical_pct", 0.0),
-                        "Commission": settings_data.get("commission_pct", 0.0)
+                        "Profit on Material": settings_data.get(
+                            "profit_on_material_pct", 0.0
+                        ),
+                        "Profit on Waste": settings_data.get(
+                            "profit_on_waste_pct", 0.0
+                        ),
+                        "Profit on Glass Purchase": settings_data.get(
+                            "profit_on_glass_pct", 0.0
+                        ),
+                        "Profit on Wages": settings_data.get(
+                            "profit_on_wages_pct", 0.0
+                        ),
+                        "Planning / Technical Office": settings_data.get(
+                            "planning_technical_pct", 0.0
+                        ),
+                        "Commission": settings_data.get("commission_pct", 0.0),
                     }
                     print(f"[OK] Loaded markup percentages: {markup_pcts}")
                     # Check if any markup percentages are > 0
@@ -1925,232 +2796,415 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
                     markup_settings_loaded = True
                     break
             except Exception as e:
-                print(f"   [ERROR] Error reading markup settings from {path_to_try_markup}: {e}")
+                print(
+                    f"   [ERROR] Error reading markup settings from {path_to_try_markup}: {e}"
+                )
                 import traceback
+
                 traceback.print_exc()
                 continue
-    
+
     if not markup_settings_loaded:
         print(f"[WARNING] Could not load markup settings from any path. Tried:")
         for path_to_try_markup in unique_paths:
             exists = "[EXISTS]" if os.path.exists(path_to_try_markup) else "[NOT FOUND]"
             print(f"   {exists}: {path_to_try_markup}")
-    
+
     # Calculate markups based on appropriate bases
     markup_total = 0.0
     markup_items_list = []
-    
+
     # 1. Profit on Material: sum of profiles, accessories, gaskets, and doors
-    material_base = (category_totals["PROFILES"]["discounted"] + 
-                     category_totals["ACCESSORIES"]["discounted"] + 
-                     category_totals["GASKETS"]["discounted"] + 
-                     category_totals["DOORS"]["discounted"])
+    material_base = (
+        category_totals["PROFILES"]["discounted"]
+        + category_totals["ACCESSORIES"]["discounted"]
+        + category_totals["GASKETS"]["discounted"]
+        + category_totals["DOORS"]["discounted"]
+    )
     if markup_pcts["Profit on Material"] > 0 and material_base > 0:
         amount = material_base * (markup_pcts["Profit on Material"] / 100.0)
         markup_total += amount
         markup_items_list.append(("Profit on Material", amount))
-        print(f"   Profit on Material: {markup_pcts['Profit on Material']}% of ${material_base:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Profit on Material: {markup_pcts['Profit on Material']}% of ${material_base:.2f} = ${amount:.2f}"
+        )
+
     # 2. Profit on Waste: sum of residual discounted price
     waste_base = grand_residual_total
     if markup_pcts["Profit on Waste"] > 0 and waste_base > 0:
         amount = waste_base * (markup_pcts["Profit on Waste"] / 100.0)
         markup_total += amount
         markup_items_list.append(("Profit on Waste", amount))
-        print(f"   Profit on Waste: {markup_pcts['Profit on Waste']}% of ${waste_base:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Profit on Waste: {markup_pcts['Profit on Waste']}% of ${waste_base:.2f} = ${amount:.2f}"
+        )
+
     # 3. Profit on Glass Purchase: sum of glass
     glass_base = category_totals["GLASS"]["discounted"]
     if markup_pcts["Profit on Glass Purchase"] > 0 and glass_base > 0:
         amount = glass_base * (markup_pcts["Profit on Glass Purchase"] / 100.0)
         markup_total += amount
         markup_items_list.append(("Profit on Glass Purchase", amount))
-        print(f"   Profit on Glass Purchase: {markup_pcts['Profit on Glass Purchase']}% of ${glass_base:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Profit on Glass Purchase: {markup_pcts['Profit on Glass Purchase']}% of ${glass_base:.2f} = ${amount:.2f}"
+        )
+
     # 4. Profit on Wages: sum of fabrication (labor)
     wages_base = category_totals["LABOR"]["discounted"]
     if markup_pcts["Profit on Wages"] > 0 and wages_base > 0:
         amount = wages_base * (markup_pcts["Profit on Wages"] / 100.0)
         markup_total += amount
         markup_items_list.append(("Profit on Wages", amount))
-        print(f"   Profit on Wages: {markup_pcts['Profit on Wages']}% of ${wages_base:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Profit on Wages: {markup_pcts['Profit on Wages']}% of ${wages_base:.2f} = ${amount:.2f}"
+        )
+
     # 5. Planning / Technical Office: discounted total * percentage
     if markup_pcts["Planning / Technical Office"] > 0 and final_discounted_total > 0:
-        amount = final_discounted_total * (markup_pcts["Planning / Technical Office"] / 100.0)
+        amount = final_discounted_total * (
+            markup_pcts["Planning / Technical Office"] / 100.0
+        )
         markup_total += amount
         markup_items_list.append(("Planning / Technical Office", amount))
-        print(f"   Planning / Technical Office: {markup_pcts['Planning / Technical Office']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Planning / Technical Office: {markup_pcts['Planning / Technical Office']}% of ${final_discounted_total:.2f} = ${amount:.2f}"
+        )
+
     # 6. Commission: discounted total * percentage
     if markup_pcts["Commission"] > 0 and final_discounted_total > 0:
         amount = final_discounted_total * (markup_pcts["Commission"] / 100.0)
         markup_total += amount
         markup_items_list.append(("Commission", amount))
-        print(f"   Commission: {markup_pcts['Commission']}% of ${final_discounted_total:.2f} = ${amount:.2f}")
-    
+        print(
+            f"   Commission: {markup_pcts['Commission']}% of ${final_discounted_total:.2f} = ${amount:.2f}"
+        )
+
     # ========== STEP 3: Write ADDITIONAL COST items (conditional) ==========
     misc_items_start_row = summary_section_row
     if show_additional_costs:
         for i, (label, amount) in enumerate(misc_items_list):
             row = misc_items_start_row + i
             ws.cell(row=row, column=category_start_col, value=label)
-            ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
-            ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-            ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-        
+            ws.cell(row=row, column=category_start_col).border = Border(
+                left=Side(style="medium")
+            )
+            ws.cell(
+                row=row, column=category_start_col + 2, value=amount
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(
+                horizontal="right"
+            )
+            ws.cell(row=row, column=category_start_col + 2).border = Border(
+                right=Side(style="medium")
+            )
+
         # Add "(None configured)" if no items
         if len(misc_items_list) == 0:
-            ws.cell(row=misc_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
-            ws.cell(row=misc_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
-            ws.cell(row=misc_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+            ws.cell(
+                row=misc_items_start_row,
+                column=category_start_col,
+                value="(None configured)",
+            ).font = Font(italic=True)
+            ws.cell(
+                row=misc_items_start_row, column=category_start_col
+            ).border = Border(left=Side(style="medium"))
+            ws.cell(
+                row=misc_items_start_row, column=category_start_col + 2
+            ).border = Border(right=Side(style="medium"))
             misc_items_end_row = misc_items_start_row
         else:
             misc_items_end_row = misc_items_start_row + len(misc_items_list) - 1
-        
+
         # Additional cost SUBTOTAL
         misc_subtotal_row = misc_items_end_row + 1
-        ws.cell(row=misc_subtotal_row, column=category_start_col, value="SUBTOTAL").font = Font(bold=True)
-        ws.cell(row=misc_subtotal_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-        ws.cell(row=misc_subtotal_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-        ws.cell(row=misc_subtotal_row, column=category_start_col + 2, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=misc_subtotal_row, column=category_start_col + 2).font = Font(bold=True)
-        ws.cell(row=misc_subtotal_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-        ws.cell(row=misc_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+        ws.cell(
+            row=misc_subtotal_row, column=category_start_col, value="SUBTOTAL"
+        ).font = Font(bold=True)
+        ws.cell(row=misc_subtotal_row, column=category_start_col).border = Border(
+            left=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
+        )
+        ws.cell(row=misc_subtotal_row, column=category_start_col + 1).border = Border(
+            top=Side(style="thin"), bottom=Side(style="medium")
+        )
+        ws.cell(
+            row=misc_subtotal_row, column=category_start_col + 2, value=summary_total
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=misc_subtotal_row, column=category_start_col + 2).font = Font(
+            bold=True
+        )
+        ws.cell(
+            row=misc_subtotal_row, column=category_start_col + 2
+        ).alignment = Alignment(horizontal="right")
+        ws.cell(row=misc_subtotal_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
+        )
         misc_end_row = misc_subtotal_row
-        print(f"[OK] Additional Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}")
+        print(
+            f"[OK] Additional Cost section: {len(misc_items_list)} items, total: ${summary_total:.2f}"
+        )
     else:
         misc_end_row = overview_end_row
-    
+
     # ========== STEP 4 & 5: Write MARKUPS section (conditional) ==========
     markup_start_row = misc_end_row + 2
     markup_items_start_row = markup_start_row + 1
-    
+
     if show_markups:
-        ws.cell(row=markup_start_row, column=category_start_col, value="MARKUPS / PROFIT").font = Font(bold=True, size=11, color="FFFFFF")
-        ws.cell(row=markup_start_row, column=category_start_col).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-        ws.cell(row=markup_start_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-        ws.cell(row=markup_start_row, column=category_start_col + 1).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-        ws.cell(row=markup_start_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-        ws.cell(row=markup_start_row, column=category_start_col + 2).fill = PatternFill(start_color="C65911", end_color="C65911", fill_type="solid")
-        ws.cell(row=markup_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    
+        ws.cell(
+            row=markup_start_row, column=category_start_col, value="MARKUPS / PROFIT"
+        ).font = Font(bold=True, size=11, color="FFFFFF")
+        ws.cell(row=markup_start_row, column=category_start_col).fill = PatternFill(
+            start_color="C65911", end_color="C65911", fill_type="solid"
+        )
+        ws.cell(row=markup_start_row, column=category_start_col).border = Border(
+            left=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
+        ws.cell(row=markup_start_row, column=category_start_col + 1).fill = PatternFill(
+            start_color="C65911", end_color="C65911", fill_type="solid"
+        )
+        ws.cell(row=markup_start_row, column=category_start_col + 1).border = Border(
+            top=Side(style="medium"), bottom=Side(style="thin")
+        )
+        ws.cell(row=markup_start_row, column=category_start_col + 2).fill = PatternFill(
+            start_color="C65911", end_color="C65911", fill_type="solid"
+        )
+        ws.cell(row=markup_start_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
+
     if show_markups:
         for i, (label, amount) in enumerate(markup_items_list):
             row = markup_items_start_row + i
             ws.cell(row=row, column=category_start_col, value=label)
-            ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
-            ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-            ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-        
+            ws.cell(row=row, column=category_start_col).border = Border(
+                left=Side(style="medium")
+            )
+            ws.cell(
+                row=row, column=category_start_col + 2, value=amount
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(
+                horizontal="right"
+            )
+            ws.cell(row=row, column=category_start_col + 2).border = Border(
+                right=Side(style="medium")
+            )
+
         # Add "(None configured)" if no items
         has_configured_markups = any(pct > 0 for pct in markup_pcts.values())
         if len(markup_items_list) == 0:
             if has_configured_markups:
                 configured_markups = []
-                for label, pct_key in [("Profit on Material", "Profit on Material"),
-                                        ("Profit on Waste", "Profit on Waste"),
-                                        ("Profit on Glass Purchase", "Profit on Glass Purchase"),
-                                        ("Profit on Wages", "Profit on Wages"),
-                                        ("Planning / Technical Office", "Planning / Technical Office"),
-                                        ("Commission", "Commission")]:
+                for label, pct_key in [
+                    ("Profit on Material", "Profit on Material"),
+                    ("Profit on Waste", "Profit on Waste"),
+                    ("Profit on Glass Purchase", "Profit on Glass Purchase"),
+                    ("Profit on Wages", "Profit on Wages"),
+                    ("Planning / Technical Office", "Planning / Technical Office"),
+                    ("Commission", "Commission"),
+                ]:
                     if markup_pcts[pct_key] > 0:
                         configured_markups.append((label, 0.0))
                 for i, (label, amount) in enumerate(configured_markups):
                     row = markup_items_start_row + i
                     ws.cell(row=row, column=category_start_col, value=label)
-                    ws.cell(row=row, column=category_start_col).border = Border(left=Side(style='medium'))
-                    ws.cell(row=row, column=category_start_col + 2, value=amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                    ws.cell(row=row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-                    ws.cell(row=row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+                    ws.cell(row=row, column=category_start_col).border = Border(
+                        left=Side(style="medium")
+                    )
+                    ws.cell(
+                        row=row, column=category_start_col + 2, value=amount
+                    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                    ws.cell(
+                        row=row, column=category_start_col + 2
+                    ).alignment = Alignment(horizontal="right")
+                    ws.cell(row=row, column=category_start_col + 2).border = Border(
+                        right=Side(style="medium")
+                    )
                     markup_items_list.append((label, amount))
-                markup_items_end_row = markup_items_start_row + len(markup_items_list) - 1
+                markup_items_end_row = (
+                    markup_items_start_row + len(markup_items_list) - 1
+                )
             else:
-                ws.cell(row=markup_items_start_row, column=category_start_col, value="(None configured)").font = Font(italic=True)
-                ws.cell(row=markup_items_start_row, column=category_start_col).border = Border(left=Side(style='medium'))
-                ws.cell(row=markup_items_start_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
+                ws.cell(
+                    row=markup_items_start_row,
+                    column=category_start_col,
+                    value="(None configured)",
+                ).font = Font(italic=True)
+                ws.cell(
+                    row=markup_items_start_row, column=category_start_col
+                ).border = Border(left=Side(style="medium"))
+                ws.cell(
+                    row=markup_items_start_row, column=category_start_col + 2
+                ).border = Border(right=Side(style="medium"))
                 markup_items_end_row = markup_items_start_row
         else:
             markup_items_end_row = markup_items_start_row + len(markup_items_list) - 1
-        
+
         markup_subtotal_row = markup_items_end_row + 1
-        ws.cell(row=markup_subtotal_row, column=category_start_col, value="SUBTOTAL").font = Font(bold=True)
-        ws.cell(row=markup_subtotal_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-        ws.cell(row=markup_subtotal_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-        ws.cell(row=markup_subtotal_row, column=category_start_col + 2, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        ws.cell(row=markup_subtotal_row, column=category_start_col + 2).font = Font(bold=True)
-        ws.cell(row=markup_subtotal_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-        ws.cell(row=markup_subtotal_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
+        ws.cell(
+            row=markup_subtotal_row, column=category_start_col, value="SUBTOTAL"
+        ).font = Font(bold=True)
+        ws.cell(row=markup_subtotal_row, column=category_start_col).border = Border(
+            left=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
+        )
+        ws.cell(row=markup_subtotal_row, column=category_start_col + 1).border = Border(
+            top=Side(style="thin"), bottom=Side(style="medium")
+        )
+        ws.cell(
+            row=markup_subtotal_row, column=category_start_col + 2, value=markup_total
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=markup_subtotal_row, column=category_start_col + 2).font = Font(
+            bold=True
+        )
+        ws.cell(
+            row=markup_subtotal_row, column=category_start_col + 2
+        ).alignment = Alignment(horizontal="right")
+        ws.cell(row=markup_subtotal_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
+        )
         markup_end_row = markup_subtotal_row
-        print(f"[OK] Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}")
+        print(
+            f"[OK] Markup section: {len(markup_items_list)} items, total: ${markup_total:.2f}"
+        )
     else:
         markup_end_row = misc_end_row
-    
+
     # ============================================================================
     # FINAL TOTAL - Below markup section with spacing
     # ============================================================================
-    
+
     final_total_row = markup_end_row + 2
     final_total_amount = final_discounted_safe + summary_total + markup_total
-    
+
     # Header row with dark background (shifted right if elevation summary exists)
-    ws.cell(row=final_total_row, column=category_start_col, value="PROJECT TOTAL").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(top=Side(style='medium'), bottom=Side(style='thin'))
-    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='thin'))
-    
+    ws.cell(
+        row=final_total_row, column=category_start_col, value="PROJECT TOTAL"
+    ).font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
+        start_color="2F5496", end_color="2F5496", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(
+        left=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
+        start_color="2F5496", end_color="2F5496", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
+        top=Side(style="medium"), bottom=Side(style="thin")
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
+        start_color="2F5496", end_color="2F5496", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+        right=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
+    )
+
     # Light fill for alternating rows
-    light_fill = PatternFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
-    
+    light_fill = PatternFill(
+        start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"
+    )
+
     # Discounted Total row
     final_total_row += 1
     ws.cell(row=final_total_row, column=category_start_col, value="Discounted Total:")
     ws.cell(row=final_total_row, column=category_start_col).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(
+        left=Side(style="medium")
+    )
     ws.cell(row=final_total_row, column=category_start_col + 1).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_discounted_safe).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
+    ws.cell(
+        row=final_total_row, column=category_start_col + 2, value=final_discounted_safe
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
+        horizontal="right"
+    )
     ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Additional cost Total row
     final_total_row += 1
     ws.cell(row=final_total_row, column=category_start_col, value="+ Additional:")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=final_total_row, column=category_start_col + 2, value=summary_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(
+        left=Side(style="medium")
+    )
+    ws.cell(
+        row=final_total_row, column=category_start_col + 2, value=summary_total
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
+        horizontal="right"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Markup Total row
     final_total_row += 1
     ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'))
-    ws.cell(row=final_total_row, column=category_start_col + 2, value=markup_total).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'))
-    
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(
+        left=Side(style="medium")
+    )
+    ws.cell(
+        row=final_total_row, column=category_start_col + 2, value=markup_total
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
+        horizontal="right"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+        right=Side(style="medium")
+    )
+
     # Grand Total row (bold, highlighted with dark background)
     final_total_row += 1
-    ws.cell(row=final_total_row, column=category_start_col, value="GRAND TOTAL:").font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(left=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(top=Side(style='thin'), bottom=Side(style='medium'))
-    ws.cell(row=final_total_row, column=category_start_col + 2, value=final_total_amount).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(horizontal='right')
-    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(start_color="203764", end_color="203764", fill_type="solid")
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(right=Side(style='medium'), top=Side(style='thin'), bottom=Side(style='medium'))
-    
+    ws.cell(
+        row=final_total_row, column=category_start_col, value="GRAND TOTAL:"
+    ).font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
+        start_color="203764", end_color="203764", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col).border = Border(
+        left=Side(style="medium"), top=Side(style="thin"), bottom=Side(style="medium")
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
+        start_color="203764", end_color="203764", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
+        top=Side(style="thin"), bottom=Side(style="medium")
+    )
+    ws.cell(
+        row=final_total_row, column=category_start_col + 2, value=final_total_amount
+    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+    ws.cell(row=final_total_row, column=category_start_col + 2).font = Font(
+        bold=True, size=11, color="FFFFFF"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
+        horizontal="right"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
+        start_color="203764", end_color="203764", fill_type="solid"
+    )
+    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+        right=Side(style="medium"), top=Side(style="thin"), bottom=Side(style="medium")
+    )
+
     # Ensure value column is wide enough for currency (prevents "########" display)
     total_value_col = get_column_letter(category_start_col + 2)
-    ws.column_dimensions[total_value_col].width = max(ws.column_dimensions[total_value_col].width or 0, 14)
-    
+    ws.column_dimensions[total_value_col].width = max(
+        ws.column_dimensions[total_value_col].width or 0, 14
+    )
+
     # ============================================================================
     # PIE CHART - Cost Distribution (placed at specific location)
     # ============================================================================
@@ -2158,33 +3212,54 @@ def create_summary_sheet(ws, elevations_json_path, extra_materials_json_path, wb
     # Place it at row 40, column G (column 7)
     pie_chart_col = 7  # Column G
     pie_chart_row = 40  # Row 40
-    
+
     # Calculate active material cost (total minus residual to avoid double-counting)
     active_material_cost = max(0, final_discounted_total - reuse_total)
-    
+
     if show_diagram:
         try:
-            _add_pie_chart_to_excel(ws, pie_chart_row, pie_chart_col, active_material_cost, summary_total, markup_total, reuse_total)
-            print(f"[OK] Added pie chart at row {pie_chart_row}, column {pie_chart_col}")
-            print(f"   Active Materials: ${active_material_cost:.2f}, Additional: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}")
+            _add_pie_chart_to_excel(
+                ws,
+                pie_chart_row,
+                pie_chart_col,
+                active_material_cost,
+                summary_total,
+                markup_total,
+                reuse_total,
+            )
+            print(
+                f"[OK] Added pie chart at row {pie_chart_row}, column {pie_chart_col}"
+            )
+            print(
+                f"   Active Materials: ${active_material_cost:.2f}, Additional: ${summary_total:.2f}, Markups: ${markup_total:.2f}, Residual: ${reuse_total:.2f}"
+            )
         except Exception as e:
             print(f"[WARNING] Could not add pie chart: {e}")
-    
-    print(f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (addition) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}")
-    print(f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}")
+
+    print(
+        f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (addition) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}"
+    )
+    print(
+        f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}"
+    )
     print(f"[INFO] Final total written to row {final_total_row}")
-    
+
     _autofit_columns(ws, 1, 10, start_row, final_total_row)
     _clean_trailing_blank_rows(ws, 1)
 
-    print(f"[OK] Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor.")
+    print(
+        f"[OK] Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor."
+    )
+
 
 def _format_door_summary(calculated_outputs):
     if not calculated_outputs:
         return ""
     door_lines = []
     for item in calculated_outputs:
-        if item.get("type", "").lower() in ["door", "doors"] and item.get('manual', False):
+        if item.get("type", "").lower() in ["door", "doors"] and item.get(
+            "manual", False
+        ):
             quantity = item.get("quantity", 1)
             style = item.get("Style", "").strip()
             price = item.get("price", 0.0)
@@ -2195,19 +3270,42 @@ def _format_door_summary(calculated_outputs):
                 continue
             enabled_hw = [hw for hw, enabled in hardware.items() if enabled]
             if enabled_hw:
-                door_lines.append(f"{quantity} x {style} Door (${price:,.2f})\n  with: {', '.join(enabled_hw)}")
+                door_lines.append(
+                    f"{quantity} x {style} Door (${price:,.2f})\n  with: {', '.join(enabled_hw)}"
+                )
             else:
                 door_lines.append(f"{quantity} x {style} Door (${price:,.2f})")
     return "; \n".join(door_lines) if door_lines else "None"
 
+
 def generate_excel_report(
-    excel_path, elevations_json_path, extra_materials_json_path,
-    system_input, finish_input, elevation_type, total_count,
-    bays_wide, bays_tall, opening_width, opening_height,
-    sqft_per_type, total_sqft, perimeter_ft, total_perimeter_ft,
-    calculated_outputs, completion_callback=None, reset=False, delete_elevation_type=None,
-    doors=None, mode=None, custom_bay_widths=None, custom_bay_heights=None, summary_settings_path=None,
-    door_only=False, include_sections=None, report_config=None
+    excel_path,
+    elevations_json_path,
+    extra_materials_json_path,
+    system_input,
+    finish_input,
+    elevation_type,
+    total_count,
+    bays_wide,
+    bays_tall,
+    opening_width,
+    opening_height,
+    sqft_per_type,
+    total_sqft,
+    perimeter_ft,
+    total_perimeter_ft,
+    calculated_outputs,
+    completion_callback=None,
+    reset=False,
+    delete_elevation_type=None,
+    doors=None,
+    mode=None,
+    custom_bay_widths=None,
+    custom_bay_heights=None,
+    summary_settings_path=None,
+    door_only=False,
+    include_sections=None,
+    report_config=None,
 ):
     """Generates or updates an Excel report with detailed elevation inputs and calculated outputs.
     include_sections: optional dict e.g. {"system_input": True, "profiles": True, ...}. When None, include all.
@@ -2215,90 +3313,131 @@ def generate_excel_report(
     COL_A, COL_B, COL_E, PRICE_COL = 1, 2, 5, 9
 
     _default_sections = {
-        "system_input": True, "profiles": True, "accessories": True, "gaskets": True,
-        "doors": True, "glass": True, "fabrication": True, "diagrams": True, "summary": True
+        "system_input": True,
+        "profiles": True,
+        "accessories": True,
+        "gaskets": True,
+        "doors": True,
+        "glass": True,
+        "fabrication": True,
+        "diagrams": True,
+        "summary": True,
     }
     inc = _default_sections.copy()
     if include_sections:
-        inc.update({k: v for k, v in include_sections.items() if k in _default_sections})
+        inc.update(
+            {k: v for k, v in include_sections.items() if k in _default_sections}
+        )
 
     project_root = os.getcwd()
-    private_projects_dir = os.path.abspath(os.path.join(project_root, '.files'))
-    public_reports_dir = os.path.abspath(os.path.join(project_root, 'reports'))
+    private_projects_dir = os.path.abspath(os.path.join(project_root, ".files"))
+    public_reports_dir = os.path.abspath(os.path.join(project_root, "reports"))
 
     os.makedirs(private_projects_dir, exist_ok=True)
     os.makedirs(public_reports_dir, exist_ok=True)
-    
+
     # Normalize paths - use provided path if it exists and is in .files, otherwise construct it
     elevations_path_abs = os.path.abspath(elevations_json_path)
-    if os.path.dirname(elevations_path_abs) == private_projects_dir and os.path.exists(elevations_path_abs):
+    if os.path.dirname(elevations_path_abs) == private_projects_dir and os.path.exists(
+        elevations_path_abs
+    ):
         private_elevations_path = elevations_path_abs
     else:
-        private_elevations_path = os.path.join(private_projects_dir, os.path.basename(elevations_json_path))
-    
+        private_elevations_path = os.path.join(
+            private_projects_dir, os.path.basename(elevations_json_path)
+        )
+
     materials_path_abs = os.path.abspath(extra_materials_json_path)
-    if os.path.dirname(materials_path_abs) == private_projects_dir and os.path.exists(materials_path_abs):
+    if os.path.dirname(materials_path_abs) == private_projects_dir and os.path.exists(
+        materials_path_abs
+    ):
         private_extra_materials_path = materials_path_abs
     else:
-        private_extra_materials_path = os.path.join(private_projects_dir, os.path.basename(extra_materials_json_path))
-    
+        private_extra_materials_path = os.path.join(
+            private_projects_dir, os.path.basename(extra_materials_json_path)
+        )
+
     excel_path_abs = os.path.abspath(excel_path)
     if os.path.dirname(excel_path_abs) == private_projects_dir:
         private_excel_path = excel_path_abs
     else:
-        private_excel_path = os.path.join(private_projects_dir, os.path.basename(excel_path))
-    
+        private_excel_path = os.path.join(
+            private_projects_dir, os.path.basename(excel_path)
+        )
+
     # Debug logging
     print(f"[PATHS] Using paths:")
     print(f"   Elevations: {private_elevations_path}")
     print(f"   Materials: {private_extra_materials_path}")
     print(f"   Excel: {private_excel_path}")
-    
-    output_excel_path = public_reports_dir if mode == "export_all" else private_excel_path
-    
+
+    output_excel_path = (
+        public_reports_dir if mode == "export_all" else private_excel_path
+    )
+
     current_saved_elevations = {}
     if os.path.exists(private_elevations_path):
         try:
-            with open(private_elevations_path, 'r') as f:
+            with open(private_elevations_path, "r") as f:
                 current_saved_elevations = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading {private_elevations_path}: {e}. Starting with empty elevations in memory.")
+            print(
+                f"Error loading {private_elevations_path}: {e}. Starting with empty elevations in memory."
+            )
 
     if delete_elevation_type:
         elevation_to_delete_data = current_saved_elevations.get(delete_elevation_type)
-        if elevation_to_delete_data and 'material_impact' in elevation_to_delete_data:
-            reverse_material_impact(elevation_to_delete_data['material_impact'], extra_materials_file=private_extra_materials_path)
+        if elevation_to_delete_data and "material_impact" in elevation_to_delete_data:
+            reverse_material_impact(
+                elevation_to_delete_data["material_impact"],
+                extra_materials_file=private_extra_materials_path,
+            )
 
         if delete_elevation_type in current_saved_elevations:
             del current_saved_elevations[delete_elevation_type]
 
         try:
-            with open(private_elevations_path, 'w') as f:
+            with open(private_elevations_path, "w") as f:
                 json.dump(current_saved_elevations, f, indent=4)
         except IOError as e:
             print(f"Error saving updated {private_elevations_path} during delete: {e}")
-            if completion_callback: completion_callback(f"Error saving updated elevations after delete: {e}")
+            if completion_callback:
+                completion_callback(
+                    f"Error saving updated elevations after delete: {e}"
+                )
 
     # Handle regeneration/cleanup case
-    if delete_elevation_type and system_input == "": 
-        pass # Don't add a new empty elevation if we are just deleting
+    if delete_elevation_type and system_input == "":
+        pass  # Don't add a new empty elevation if we are just deleting
     elif mode == "export_all":
         pass
     else:
         if elevation_type in current_saved_elevations and not reset:
             old_elevation_data = current_saved_elevations[elevation_type]
-            if 'material_impact' in old_elevation_data:
-                reverse_material_impact(old_elevation_data['material_impact'], extra_materials_file=private_extra_materials_path)
+            if "material_impact" in old_elevation_data:
+                reverse_material_impact(
+                    old_elevation_data["material_impact"],
+                    extra_materials_file=private_extra_materials_path,
+                )
 
         # Build door items from UI doors, but avoid double-adding if base outputs already include doors
         base_outputs = list(calculated_outputs or [])
-        
+
         # Remove any existing door entries from base_outputs to prevent duplication/stale data
-        base_outputs = [item for item in base_outputs if not (item.get('type', '').lower() in ['door', 'doors'] and item.get('manual', False))]
-        
+        base_outputs = [
+            item
+            for item in base_outputs
+            if not (
+                item.get("type", "").lower() in ["door", "doors"]
+                and item.get("manual", False)
+            )
+        ]
+
         # Recalculate door items fresh from current inputs
-        door_items = calculate_door_info(doors, finish_input, total_count) if doors else []
-        
+        door_items = (
+            calculate_door_info(doors, finish_input, total_count) if doors else []
+        )
+
         # Avoid mutating the incoming list reference
         elevation_outputs = base_outputs + door_items
 
@@ -2307,15 +3446,28 @@ def generate_excel_report(
         old_show_total_cost_per_elev = False
         old_show_discounted_cost_per_elev = False
         if elevation_type in current_saved_elevations:
-            old_show_qty_per_elev = current_saved_elevations[elevation_type].get('show_qty_per_elevation', False)
-            old_show_total_cost_per_elev = current_saved_elevations[elevation_type].get('show_total_cost_per_elevation', False)
-            old_show_discounted_cost_per_elev = current_saved_elevations[elevation_type].get('show_discounted_cost_per_elevation', False)
+            old_show_qty_per_elev = current_saved_elevations[elevation_type].get(
+                "show_qty_per_elevation", False
+            )
+            old_show_total_cost_per_elev = current_saved_elevations[elevation_type].get(
+                "show_total_cost_per_elevation", False
+            )
+            old_show_discounted_cost_per_elev = current_saved_elevations[
+                elevation_type
+            ].get("show_discounted_cost_per_elevation", False)
 
         current_saved_elevations[elevation_type] = {
-            "system": "Door Only" if door_only else system_input, "finish": finish_input, "total_count": total_count,
-            "bays_wide": bays_wide, "bays_tall": bays_tall, "opening_width_inches": opening_width,
-            "opening_height_inches": opening_height, "sqft_per_type": sqft_per_type, "total_sqft": total_sqft,
-            "perimeter_ft": perimeter_ft, "total_perimeter_ft": total_perimeter_ft,
+            "system": "Door Only" if door_only else system_input,
+            "finish": finish_input,
+            "total_count": total_count,
+            "bays_wide": bays_wide,
+            "bays_tall": bays_tall,
+            "opening_width_inches": opening_width,
+            "opening_height_inches": opening_height,
+            "sqft_per_type": sqft_per_type,
+            "total_sqft": total_sqft,
+            "perimeter_ft": perimeter_ft,
+            "total_perimeter_ft": total_perimeter_ft,
             "calculated_outputs": elevation_outputs,
             "material_impact": [],
             "custom_bay_widths": custom_bay_widths or [],
@@ -2323,15 +3475,16 @@ def generate_excel_report(
             "show_qty_per_elevation": old_show_qty_per_elev,
             "show_total_cost_per_elevation": old_show_total_cost_per_elev,
             "show_discounted_cost_per_elevation": old_show_discounted_cost_per_elev,
-            "door_only": door_only
+            "door_only": door_only,
         }
 
         try:
-            with open(private_elevations_path, 'w') as f:
+            with open(private_elevations_path, "w") as f:
                 json.dump(current_saved_elevations, f, indent=4)
         except IOError as e:
             print(f"Error saving elevation to {private_elevations_path}: {e}")
-            if completion_callback: completion_callback(f"Error saving elevation: {e}")
+            if completion_callback:
+                completion_callback(f"Error saving elevation: {e}")
             return
 
     wb = Workbook()
@@ -2340,7 +3493,9 @@ def generate_excel_report(
         del wb["Sheet"]
 
     save_extra_materials({}, private_extra_materials_path)
-    overall_current_extra_materials_state = load_extra_materials(private_extra_materials_path)
+    overall_current_extra_materials_state = load_extra_materials(
+        private_extra_materials_path
+    )
 
     # Load settings early for discount multiplier overrides
     pricing_settings = {}
@@ -2352,11 +3507,13 @@ def generate_excel_report(
     elev_basename = os.path.basename(private_elevations_path)
     if "_Elevations.json" in elev_basename:
         project_base = elev_basename.replace("_Elevations.json", "")
-        settings_paths_to_try.append(os.path.join(private_projects_dir, f"{project_base}_Settings.json"))
+        settings_paths_to_try.append(
+            os.path.join(private_projects_dir, f"{project_base}_Settings.json")
+        )
     for p in settings_paths_to_try:
         if p and os.path.exists(p):
             try:
-                with open(p, 'r') as f:
+                with open(p, "r") as f:
                     pricing_settings = json.load(f)
                 break
             except Exception:
@@ -2365,21 +3522,31 @@ def generate_excel_report(
     full_running_grand_total = 0.0
     for elev_name in current_saved_elevations:
         elev_data = current_saved_elevations[elev_name]
-        for item in elev_data.get('calculated_outputs', []):
-            pn = item.get('part_number')
-            qty_raw = item.get('quantity', 0)
+        for item in elev_data.get("calculated_outputs", []):
+            pn = item.get("part_number")
+            qty_raw = item.get("quantity", 0)
             individual_quantities = qty_raw if isinstance(qty_raw, list) else [qty_raw]
-            manual = item.get('manual', False)
+            manual = item.get("manual", False)
             price_sum = 0.0
             for single_qty in individual_quantities:
                 if manual:
                     if pn and pn != "N/A":
-                        p, _, _ = get_price_by_part(pn, single_qty, finish=elev_data.get('finish'), summary=True, group=True)
-                        price_sum += p if p is not None else item.get('price', 0.0) * single_qty
+                        p, _, _ = get_price_by_part(
+                            pn,
+                            single_qty,
+                            finish=elev_data.get("finish"),
+                            summary=True,
+                            group=True,
+                        )
+                        price_sum += (
+                            p if p is not None else item.get("price", 0.0) * single_qty
+                        )
                     else:
-                        price_sum += item.get('price', 0.0) * single_qty
+                        price_sum += item.get("price", 0.0) * single_qty
                 else:
-                    p, _, _ = get_price_by_part(pn, single_qty, finish=elev_data.get('finish'), summary=True)
+                    p, _, _ = get_price_by_part(
+                        pn, single_qty, finish=elev_data.get("finish"), summary=True
+                    )
                     price_sum += p if p is not None else 0.0
             full_running_grand_total += price_sum
 
@@ -2399,7 +3566,9 @@ def generate_excel_report(
 
             # Per-elevation sections and columns from report_config
             elev_inc = inc.copy()
-            if report_config and report_config.get("per_elevation_sections", {}).get(elev_name):
+            if report_config and report_config.get("per_elevation_sections", {}).get(
+                elev_name
+            ):
                 pe_sec = report_config["per_elevation_sections"][elev_name]
                 elev_inc["system_input"] = pe_sec.get("system_input", True)
                 elev_inc["profiles"] = pe_sec.get("profiles", True)
@@ -2409,29 +3578,57 @@ def generate_excel_report(
                 elev_inc["doors"] = pe_sec.get("doors", True)
                 elev_inc["fabrication"] = pe_sec.get("labor", True)
                 elev_inc["diagrams"] = pe_sec.get("diagram", True)
-            pe_col = report_config.get("per_elevation_columns", {}).get(elev_name) if report_config else None
+            pe_col = (
+                report_config.get("per_elevation_columns", {}).get(elev_name)
+                if report_config
+                else None
+            )
             if pe_col:
                 elev_data = dict(elev_data)
-                elev_data["show_qty_per_elevation"] = pe_col.get("quantity_per_elevation", True)
-                elev_data["show_total_cost_per_elevation"] = pe_col.get("total_list_cost_per_elevation", True)
-                elev_data["show_discounted_cost_per_elevation"] = pe_col.get("discounted_total_list_cost_per_elevation", True)
+                elev_data["show_qty_per_elevation"] = pe_col.get(
+                    "quantity_per_elevation", True
+                )
+                elev_data["show_total_cost_per_elevation"] = pe_col.get(
+                    "total_list_cost_per_elevation", True
+                )
+                elev_data["show_discounted_cost_per_elevation"] = pe_col.get(
+                    "discounted_total_list_cost_per_elevation", True
+                )
+                # Store full column config for _write_output_section
+                elev_data["_column_config"] = pe_col
 
             # Create a fresh extra_materials state for this elevation (no leftovers from other elevations)
             # This ensures each elevation is calculated independently
             elevation_extra_materials_state = {}
 
             # Format custom bay dimensions for display
-            custom_bay_widths_str = ", ".join([f"{w:.2f} in" for w in elev_data.get('custom_bay_widths', [])]) if elev_data.get('custom_bay_widths') else "Equal distribution"
-            custom_bay_heights_str = ", ".join([f"{h:.2f} in" for h in elev_data.get('custom_bay_heights', [])]) if elev_data.get('custom_bay_heights') else "Equal distribution"
+            custom_bay_widths_str = (
+                ", ".join(
+                    [f"{w:.2f} in" for w in elev_data.get("custom_bay_widths", [])]
+                )
+                if elev_data.get("custom_bay_widths")
+                else "Equal distribution"
+            )
+            custom_bay_heights_str = (
+                ", ".join(
+                    [f"{h:.2f} in" for h in elev_data.get("custom_bay_heights", [])]
+                )
+                if elev_data.get("custom_bay_heights")
+                else "Equal distribution"
+            )
 
             # Safe formatting for potentially missing values (e.g. door-only elevations)
-            _ow = elev_data.get('opening_width_inches')
-            _oh = elev_data.get('opening_height_inches')
-            _sqft = elev_data.get('sqft_per_type')
-            _tsqft = elev_data.get('total_sqft')
-            _perim = elev_data.get('perimeter_ft')
-            _tperim = elev_data.get('total_perimeter_ft')
-            system_display = "Door Only" if elev_data.get("door_only") else (elev_data.get("system") or "N/A")
+            _ow = elev_data.get("opening_width_inches")
+            _oh = elev_data.get("opening_height_inches")
+            _sqft = elev_data.get("sqft_per_type")
+            _tsqft = elev_data.get("total_sqft")
+            _perim = elev_data.get("perimeter_ft")
+            _tperim = elev_data.get("total_perimeter_ft")
+            system_display = (
+                "Door Only"
+                if elev_data.get("door_only")
+                else (elev_data.get("system") or "N/A")
+            )
             input_data = [
                 ("System Input", system_display),
                 ("Finish", elev_data.get("finish") or "N/A"),
@@ -2446,64 +3643,102 @@ def generate_excel_report(
                 ("Sq Ft per Type", f"{_sqft:.2f} sqft" if _sqft is not None else "N/A"),
                 ("Total Sq Ft", f"{_tsqft:.2f} sqft" if _tsqft is not None else "N/A"),
                 ("Perimeter Ft", f"{_perim:.2f} ft" if _perim is not None else "N/A"),
-                ("Total Perimeter Ft", f"{_tperim:.2f} ft" if _tperim is not None else "N/A"),
-                ("Doors", _format_door_summary(elev_data.get("calculated_outputs", [])))
+                (
+                    "Total Perimeter Ft",
+                    f"{_tperim:.2f} ft" if _tperim is not None else "N/A",
+                ),
+                (
+                    "Doors",
+                    _format_door_summary(elev_data.get("calculated_outputs", [])),
+                ),
             ]
 
             current_excel_row = 1
-            thin_border = Border(left=Side(style='thin'), 
-                                 right=Side(style='thin'), 
-                                 top=Side(style='thin'), 
-                                 bottom=Side(style='thin'))
+            thin_border = Border(
+                left=Side(style="thin"),
+                right=Side(style="thin"),
+                top=Side(style="thin"),
+                bottom=Side(style="thin"),
+            )
 
             if elev_inc["system_input"]:
                 for i, (header, value) in enumerate(input_data):
-                    header_cell = ws.cell(row=current_excel_row + i, column=COL_A, value=header)
+                    header_cell = ws.cell(
+                        row=current_excel_row + i, column=COL_A, value=header
+                    )
                     header_cell.font = Font(bold=True)
                     header_cell.border = thin_border
-                    value_cell = ws.cell(row=current_excel_row + i, column=COL_B, value=value)
+                    value_cell = ws.cell(
+                        row=current_excel_row + i, column=COL_B, value=value
+                    )
                     value_cell.border = thin_border
                     if header in ["Total Count", "Bays Wide", "Bays Tall"]:
-                        value_cell.alignment = Alignment(horizontal='left')
-            
+                        value_cell.alignment = Alignment(horizontal="left")
+
             if elev_inc["diagrams"]:
                 if elev_data.get("bays_wide") and elev_data.get("bays_tall"):
                     diagram_row = current_excel_row + len(input_data) + 2
-                    custom_widths = elev_data.get('custom_bay_widths', [])
-                    custom_heights = elev_data.get('custom_bay_heights', [])
-                    label_cell = ws.cell(row=diagram_row - 2, column=COL_A, value="Bay Distribution Diagram")
+                    custom_widths = elev_data.get("custom_bay_widths", [])
+                    custom_heights = elev_data.get("custom_bay_heights", [])
+                    label_cell = ws.cell(
+                        row=diagram_row - 2,
+                        column=COL_A,
+                        value="Bay Distribution Diagram",
+                    )
                     label_cell.font = Font(bold=True, size=12)
-                    note_cell = ws.cell(row=diagram_row - 2, column=COL_B, value="*Note - C/L Dimensions")
+                    note_cell = ws.cell(
+                        row=diagram_row - 2,
+                        column=COL_B,
+                        value="*Note - C/L Dimensions",
+                    )
                     note_cell.font = Font(size=12)
-                    note_cell.alignment = Alignment(horizontal='left', vertical='top')
+                    note_cell.alignment = Alignment(horizontal="left", vertical="top")
                     _add_bay_diagram_to_excel(
-                        ws, diagram_row,
-                        elev_data.get("bays_wide", 0), elev_data.get("bays_tall", 0),
-                        elev_data.get('opening_width_inches', 0), elev_data.get('opening_height_inches', 0),
-                        custom_widths if custom_widths else None, custom_heights if custom_heights else None,
-                        doors=elev_data.get("doors")
+                        ws,
+                        diagram_row,
+                        elev_data.get("bays_wide", 0),
+                        elev_data.get("bays_tall", 0),
+                        elev_data.get("opening_width_inches", 0),
+                        elev_data.get("opening_height_inches", 0),
+                        custom_widths if custom_widths else None,
+                        custom_heights if custom_heights else None,
+                        doors=elev_data.get("doors"),
                     )
                 elif elev_data.get("door_only") and elev_data.get("doors"):
                     diagram_row = current_excel_row + len(input_data) + 2
-                    label_cell = ws.cell(row=diagram_row - 2, column=COL_A, value="Door Only Diagram(s)")
+                    label_cell = ws.cell(
+                        row=diagram_row - 2, column=COL_A, value="Door Only Diagram(s)"
+                    )
                     label_cell.font = Font(bold=True, size=12)
-                    _add_door_only_diagrams_to_excel(ws, diagram_row, elev_data.get("doors"))
-            
+                    _add_door_only_diagrams_to_excel(
+                        ws, diagram_row, elev_data.get("doors")
+                    )
+
             output_section_current_row = 1
-            profiles_for_section, accessories_for_section, gaskets_for_section, doors_for_section, other_items_for_section = [], [], [], [], []
+            (
+                profiles_for_section,
+                accessories_for_section,
+                gaskets_for_section,
+                doors_for_section,
+                other_items_for_section,
+            ) = [], [], [], [], []
 
             current_elevation_finish = elev_data.get("finish")
 
             # First pass: collect all items and combine same part numbers for profiles/gaskets
             items_by_part = {}  # Key: (part_number, finish), Value: list of items
-            
-            for item in elev_data.get('calculated_outputs', []):
-                pn, manual = item.get('part_number'), item.get('manual', False)
-                desc = item.get('description', '').strip()
-                is_gasket = "gasket" in desc.lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]
+
+            for item in elev_data.get("calculated_outputs", []):
+                pn, manual = item.get("part_number"), item.get("manual", False)
+                desc = item.get("description", "").strip()
+                is_gasket = "gasket" in desc.lower() or pn in [
+                    "E2-0052",
+                    "E2-0053",
+                    "E2-0065",
+                ]
                 is_profile = pn in PART_NUMBER_MAP.get("profiles", {})
-                is_door = item.get('type', '').lower() in ['door', 'doors']
-                
+                is_door = item.get("type", "").lower() in ["door", "doors"]
+
                 # For profiles and gaskets, combine items with same part number
                 if (is_profile or is_gasket) and pn and pn != "N/A" and not manual:
                     key = (pn, current_elevation_finish)
@@ -2521,7 +3756,10 @@ def generate_excel_report(
                             profiles_for_section.append(item)
                         elif is_gasket:
                             gaskets_for_section.append(item)
-                        elif pn in PART_NUMBER_MAP.get("accessories", {}) or item.get('type', '').lower() == 'accessory':
+                        elif (
+                            pn in PART_NUMBER_MAP.get("accessories", {})
+                            or item.get("type", "").lower() == "accessory"
+                        ):
                             accessories_for_section.append(item)
                         else:
                             other_items_for_section.append(item)
@@ -2530,7 +3768,7 @@ def generate_excel_report(
                             doors_for_section.append(item)
                         else:
                             other_items_for_section.append(item)
-            
+
             # Combine items with same part number for profiles/gaskets
             for (pn, finish), items_list in items_by_part.items():
                 if len(items_list) > 1:
@@ -2539,55 +3777,74 @@ def generate_excel_report(
                     combined_descriptions = []
                     total_qty_sum = 0.0
                     total_cost = 0.0
-                    
+
                     for item in items_list:
-                        qty = item.get('quantity', 0)
+                        qty = item.get("quantity", 0)
                         if isinstance(qty, list):
                             combined_quantities.extend(qty)
                             qty_sum = sum(qty)
                         else:
                             combined_quantities.append(qty)
                             qty_sum = qty
-                        
-                        combined_descriptions.append(item.get('description', ''))
+
+                        combined_descriptions.append(item.get("description", ""))
                         total_qty_sum += qty_sum
                         # Price is per unit, so multiply by quantity
-                        total_cost += item.get('price', 0.0) * qty_sum
-                    
+                        total_cost += item.get("price", 0.0) * qty_sum
+
                     # Create combined item with weighted average price
                     combined_item = {
-                        'description': ' / '.join(combined_descriptions) if len(set(combined_descriptions)) > 1 else combined_descriptions[0],
-                        'quantity': combined_quantities,
-                        'part_number': pn,
-                        'type': items_list[0].get('type', 'profiles'),
-                        'price': total_cost / total_qty_sum if total_qty_sum > 0 else 0.0
+                        "description": " / ".join(combined_descriptions)
+                        if len(set(combined_descriptions)) > 1
+                        else combined_descriptions[0],
+                        "quantity": combined_quantities,
+                        "part_number": pn,
+                        "type": items_list[0].get("type", "profiles"),
+                        "price": total_cost / total_qty_sum
+                        if total_qty_sum > 0
+                        else 0.0,
                     }
-                    
-                    print(f"DEBUG: Combined {len(items_list)} items for {pn}: {combined_quantities}")
-                    
+
+                    print(
+                        f"DEBUG: Combined {len(items_list)} items for {pn}: {combined_quantities}"
+                    )
+
                     # Add to appropriate section
                     if pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(combined_item)
-                    elif "gasket" in combined_item['description'].lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]:
+                    elif "gasket" in combined_item["description"].lower() or pn in [
+                        "E2-0052",
+                        "E2-0053",
+                        "E2-0065",
+                    ]:
                         gaskets_for_section.append(combined_item)
                 else:
                     # Single item, add directly
                     item = items_list[0]
                     if pn in PART_NUMBER_MAP.get("profiles", {}):
                         profiles_for_section.append(item)
-                    elif "gasket" in item.get('description', '').lower() or pn in ["E2-0052", "E2-0053", "E2-0065"]:
+                    elif "gasket" in item.get("description", "").lower() or pn in [
+                        "E2-0052",
+                        "E2-0053",
+                        "E2-0065",
+                    ]:
                         gaskets_for_section.append(item)
 
             system_total_for_this_block = [0.0]
             original_system_total_for_this_block = [0.0]
             newly_calculated_material_impacts_for_this_elevation = []
-            
+
             # Get column display preferences and total_count from elevation data
-            show_qty_per_elev = elev_data.get('show_qty_per_elevation', False)
-            show_total_cost_per_elev = elev_data.get('show_total_cost_per_elevation', False)
-            show_discounted_cost_per_elev = elev_data.get('show_discounted_cost_per_elevation', False)
-            elev_total_count = elev_data.get('total_count', 1)
-            
+            show_qty_per_elev = elev_data.get("show_qty_per_elevation", False)
+            show_total_cost_per_elev = elev_data.get(
+                "show_total_cost_per_elevation", False
+            )
+            show_discounted_cost_per_elev = elev_data.get(
+                "show_discounted_cost_per_elevation", False
+            )
+            elev_total_count = elev_data.get("total_count", 1)
+            elev_column_config = elev_data.get("_column_config", None)
+
             # Track totals row numbers for reading from Excel columns
             profile_totals_row = None
             accessory_totals_row = None
@@ -2596,52 +3853,112 @@ def generate_excel_report(
 
             _row = output_section_current_row
             if elev_inc["profiles"]:
-                next_row_after_profiles, impacts_p, profile_totals = _write_output_section(
-                    ws, "PROFILES", profiles_for_section, COL_E, current_elevation_finish,
-                    system_total_for_this_block, original_system_total_for_this_block, _row,
-                    elevation_extra_materials_state, private_extra_materials_path, multiplier,
-                    show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
-                    show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+                next_row_after_profiles, impacts_p, profile_totals = (
+                    _write_output_section(
+                        ws,
+                        "PROFILES",
+                        profiles_for_section,
+                        COL_E,
+                        current_elevation_finish,
+                        system_total_for_this_block,
+                        original_system_total_for_this_block,
+                        _row,
+                        elevation_extra_materials_state,
+                        private_extra_materials_path,
+                        multiplier,
+                        show_qty_per_elevation=show_qty_per_elev,
+                        total_count=elev_total_count,
+                        show_total_cost_per_elevation=show_total_cost_per_elev,
+                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
+                        column_config=elev_column_config,
+                    )
                 )
                 _row = next_row_after_profiles
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
-            profile_totals_row = (_row - 1) if elev_inc["profiles"] and profiles_for_section else None
+            profile_totals_row = (
+                (_row - 1) if elev_inc["profiles"] and profiles_for_section else None
+            )
 
             if elev_inc["accessories"]:
-                next_row_after_accessories, impacts_a, accessory_totals = _write_output_section(
-                    ws, "ACCESSORIES", accessories_for_section, COL_E, current_elevation_finish,
-                    system_total_for_this_block, original_system_total_for_this_block, _row,
-                    elevation_extra_materials_state, private_extra_materials_path, multiplier,
-                    show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
-                    show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+                next_row_after_accessories, impacts_a, accessory_totals = (
+                    _write_output_section(
+                        ws,
+                        "ACCESSORIES",
+                        accessories_for_section,
+                        COL_E,
+                        current_elevation_finish,
+                        system_total_for_this_block,
+                        original_system_total_for_this_block,
+                        _row,
+                        elevation_extra_materials_state,
+                        private_extra_materials_path,
+                        multiplier,
+                        show_qty_per_elevation=show_qty_per_elev,
+                        total_count=elev_total_count,
+                        show_total_cost_per_elevation=show_total_cost_per_elev,
+                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
+                        column_config=elev_column_config,
+                    )
                 )
                 _row = next_row_after_accessories
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-            accessory_totals_row = (_row - 1) if elev_inc["accessories"] and accessories_for_section else None
+            accessory_totals_row = (
+                (_row - 1)
+                if elev_inc["accessories"] and accessories_for_section
+                else None
+            )
 
             if elev_inc["gaskets"]:
-                next_row_after_gaskets, impacts_g, gasket_totals = _write_output_section(
-                    ws, "GASKETS", gaskets_for_section, COL_E, current_elevation_finish,
-                    system_total_for_this_block, original_system_total_for_this_block, _row,
-                    elevation_extra_materials_state, private_extra_materials_path, multiplier,
-                    show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
-                    show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+                next_row_after_gaskets, impacts_g, gasket_totals = (
+                    _write_output_section(
+                        ws,
+                        "GASKETS",
+                        gaskets_for_section,
+                        COL_E,
+                        current_elevation_finish,
+                        system_total_for_this_block,
+                        original_system_total_for_this_block,
+                        _row,
+                        elevation_extra_materials_state,
+                        private_extra_materials_path,
+                        multiplier,
+                        show_qty_per_elevation=show_qty_per_elev,
+                        total_count=elev_total_count,
+                        show_total_cost_per_elevation=show_total_cost_per_elev,
+                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
+                        column_config=elev_column_config,
+                    )
                 )
                 _row = next_row_after_gaskets
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
-            gasket_totals_row = (_row - 1) if elev_inc["gaskets"] and gaskets_for_section else None
+            gasket_totals_row = (
+                (_row - 1) if elev_inc["gaskets"] and gaskets_for_section else None
+            )
 
             if elev_inc["doors"]:
                 next_row_after_doors, impacts_d, door_totals = _write_output_section(
-                    ws, "DOORS", doors_for_section, COL_E, current_elevation_finish,
-                    system_total_for_this_block, original_system_total_for_this_block, _row,
-                    elevation_extra_materials_state, private_extra_materials_path, multiplier,
-                    show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
-                    show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+                    ws,
+                    "DOORS",
+                    doors_for_section,
+                    COL_E,
+                    current_elevation_finish,
+                    system_total_for_this_block,
+                    original_system_total_for_this_block,
+                    _row,
+                    elevation_extra_materials_state,
+                    private_extra_materials_path,
+                    multiplier,
+                    show_qty_per_elevation=show_qty_per_elev,
+                    total_count=elev_total_count,
+                    show_total_cost_per_elevation=show_total_cost_per_elev,
+                    show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
+                    column_config=elev_column_config,
                 )
                 _row = next_row_after_doors
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
-            door_totals_row = (_row - 1) if elev_inc["doors"] and doors_for_section else None
+            door_totals_row = (
+                (_row - 1) if elev_inc["doors"] and doors_for_section else None
+            )
 
             current_section_row = _row
             grouped_other_misc = {}
@@ -2649,21 +3966,42 @@ def generate_excel_report(
             fabrication_totals_rows = []
 
             for item in other_items_for_section:
-                item_type = item.get('type', 'ADDITIONAL ITEMS').upper()
+                item_type = item.get("type", "ADDITIONAL ITEMS").upper()
                 grouped_other_misc.setdefault(item_type, []).append(item)
 
             for grp_title, grp_items in grouped_other_misc.items():
-                is_glass_group = grp_title == "GLASS" or any(item.get('part_number') == "GLASS_AREA" or item.get('type', '').lower() == 'glass' for item in grp_items)
+                is_glass_group = grp_title == "GLASS" or any(
+                    item.get("part_number") == "GLASS_AREA"
+                    or item.get("type", "").lower() == "glass"
+                    for item in grp_items
+                )
                 is_fab_group = not is_glass_group
-                if (elev_inc["glass"] and is_glass_group) or (elev_inc["fabrication"] and is_fab_group):
-                    next_row_after_group, impacts_g, group_totals = _write_output_section(
-                        ws, grp_title, grp_items, COL_E, None,
-                        system_total_for_this_block, original_system_total_for_this_block, current_section_row,
-                        elevation_extra_materials_state, private_extra_materials_path, multiplier,
-                        show_qty_per_elevation=show_qty_per_elev, total_count=elev_total_count,
-                        show_total_cost_per_elevation=show_total_cost_per_elev, show_discounted_cost_per_elevation=show_discounted_cost_per_elev
+                if (elev_inc["glass"] and is_glass_group) or (
+                    elev_inc["fabrication"] and is_fab_group
+                ):
+                    next_row_after_group, impacts_g, group_totals = (
+                        _write_output_section(
+                            ws,
+                            grp_title,
+                            grp_items,
+                            COL_E,
+                            None,
+                            system_total_for_this_block,
+                            original_system_total_for_this_block,
+                            current_section_row,
+                            elevation_extra_materials_state,
+                            private_extra_materials_path,
+                            multiplier,
+                            show_qty_per_elevation=show_qty_per_elev,
+                            total_count=elev_total_count,
+                            show_total_cost_per_elevation=show_total_cost_per_elev,
+                            show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
+                            column_config=elev_column_config,
+                        )
                     )
-                    newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+                    newly_calculated_material_impacts_for_this_elevation.extend(
+                        impacts_g
+                    )
                     group_totals_row = next_row_after_group - 1
                     if is_glass_group:
                         glass_totals_rows.append(group_totals_row)
@@ -2672,46 +4010,62 @@ def generate_excel_report(
                     current_section_row = next_row_after_group
                     print(f"Section '{grp_title}' ended at row {current_section_row}")
 
-            current_saved_elevations[elev_name]['material_impact'] = newly_calculated_material_impacts_for_this_elevation
+            current_saved_elevations[elev_name]["material_impact"] = (
+                newly_calculated_material_impacts_for_this_elevation
+            )
 
             # Merge elevation's extra materials state into overall state
             # This accumulates leftovers from all elevations
-            print(f"DEBUG: Merging elevation state for {elev_name}, keys: {list(elevation_extra_materials_state.keys())}")
+            print(
+                f"DEBUG: Merging elevation state for {elev_name}, keys: {list(elevation_extra_materials_state.keys())}"
+            )
             for key, value in elevation_extra_materials_state.items():
                 print(f"DEBUG: Processing key {key}, value: {value}")
                 if key not in overall_current_extra_materials_state:
-                    overall_current_extra_materials_state[key] = {'quantity': 0, 'length_pieces': []}
-                
+                    overall_current_extra_materials_state[key] = {
+                        "quantity": 0,
+                        "length_pieces": [],
+                    }
+
                 # Merge length_pieces (for profiles/gaskets)
-                if 'length_pieces' in value and isinstance(value['length_pieces'], list):
-                    existing_pieces = overall_current_extra_materials_state[key].get('length_pieces', [])
+                if "length_pieces" in value and isinstance(
+                    value["length_pieces"], list
+                ):
+                    existing_pieces = overall_current_extra_materials_state[key].get(
+                        "length_pieces", []
+                    )
                     if not isinstance(existing_pieces, list):
                         existing_pieces = []
                     # Combine and sort
-                    combined = existing_pieces + value['length_pieces']
-                    overall_current_extra_materials_state[key]['length_pieces'] = sorted(combined)
-                    print(f"DEBUG: Merged length_pieces for {key}: {combined}")
-                
-                # Merge quantity (for accessories)
-                if 'quantity' in value:
-                    overall_current_extra_materials_state[key]['quantity'] = (
-                        overall_current_extra_materials_state[key].get('quantity', 0) + value.get('quantity', 0)
+                    combined = existing_pieces + value["length_pieces"]
+                    overall_current_extra_materials_state[key]["length_pieces"] = (
+                        sorted(combined)
                     )
-                    print(f"DEBUG: Merged quantity for {key}: {overall_current_extra_materials_state[key]['quantity']}")
+                    print(f"DEBUG: Merged length_pieces for {key}: {combined}")
+
+                # Merge quantity (for accessories)
+                if "quantity" in value:
+                    overall_current_extra_materials_state[key]["quantity"] = (
+                        overall_current_extra_materials_state[key].get("quantity", 0)
+                        + value.get("quantity", 0)
+                    )
+                    print(
+                        f"DEBUG: Merged quantity for {key}: {overall_current_extra_materials_state[key]['quantity']}"
+                    )
 
             # Create cost breakdown summary table
             # Use the explicitly tracked row position after the last section
             # Add spacing: explicitly create blank rows
             spacing_rows = 1  # Number of blank rows before cost summary (row 39 -> row 43 for headers)
-            
+
             # Explicitly create blank rows by writing empty cells to ensure rows exist
             for blank_row in range(1, spacing_rows + 1):
                 # Write empty cell to ensure row exists in Excel
                 ws.cell(row=current_section_row + blank_row, column=COL_A, value="")
-            
+
             # Headers start after all spacing rows, with one additional blank row
             cost_summary_row = current_section_row + spacing_rows + 1
-            
+
             # Calculate column numbers for reading from Excel
             # Use the same logic as _write_output_section uses for writing totals row
             # total_col_offset starts at 2 (after Description, Part Number, Total Quantity Required)
@@ -2719,128 +4073,306 @@ def generate_excel_report(
             total_col_offset = 2  # Start after "Total Quantity Required"
             if show_qty_per_elev and elev_total_count > 1:
                 total_col_offset += 1  # Skip "Quantity Per Elevation" column
-            total_col_offset += 1  # Skip to "Total List Cost" column (where label is written)
+            total_col_offset += (
+                1  # Skip to "Total List Cost" column (where label is written)
+            )
             total_col_offset += 1  # Skip "Total List Cost" value column
             if show_total_cost_per_elev and elev_total_count > 1:
                 total_col_offset += 1  # Skip "Total List Cost Per Elevation" column
             # Now total_col_offset points to "Discounted Total List Cost" column
-            
+
             col_k = COL_E + total_col_offset  # Discounted Total List Cost (Column K)
-            col_l = col_k + 1 if (show_discounted_cost_per_elev and elev_total_count > 1) else None  # Discounted Total List Cost Per Elevation (Column L)
-            
+            col_l = (
+                col_k + 1
+                if (show_discounted_cost_per_elev and elev_total_count > 1)
+                else None
+            )  # Discounted Total List Cost Per Elevation (Column L)
+
             # Set cost summary columns - use col_k for total elevation cost column
             header_col = PRICE_COL - 2
-            cost_per_elev_col = col_l if col_l else col_k  # Use column L if available, otherwise K
-            total_elev_cost_col = col_k  # Use the actual Discounted Total List Cost column
-            
-            print(f"Column calculation: show_qty_per_elev={show_qty_per_elev}, show_total_cost_per_elev={show_total_cost_per_elev}, show_discounted_cost_per_elev={show_discounted_cost_per_elev}")
-            print(f"Total col offset={total_col_offset}, Column K={col_k}, Column L={col_l}")
-            
+            cost_per_elev_col = (
+                col_l if col_l else col_k
+            )  # Use column L if available, otherwise K
+            total_elev_cost_col = (
+                col_k  # Use the actual Discounted Total List Cost column
+            )
+
+            print(
+                f"Column calculation: show_qty_per_elev={show_qty_per_elev}, show_total_cost_per_elev={show_total_cost_per_elev}, show_discounted_cost_per_elev={show_discounted_cost_per_elev}"
+            )
+            print(
+                f"Total col offset={total_col_offset}, Column K={col_k}, Column L={col_l}"
+            )
+
             total_count = elev_data.get("total_count", 1)
-            
+
             # Debug: print row numbers to verify
-            print(f"Cost summary for '{elev_name}': Last section row={current_section_row}, Spacing={spacing_rows} rows, Cost summary starts at row={cost_summary_row}")
+            print(
+                f"Cost summary for '{elev_name}': Last section row={current_section_row}, Spacing={spacing_rows} rows, Cost summary starts at row={cost_summary_row}"
+            )
             print(f"Column K={col_k}, Column L={col_l}")
-            
+
             # Headers on second row
-            ws.cell(row=cost_summary_row, column=header_col, value="COST/ELEVATION").font = Font(bold=True)
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value="COST/ELEVATION").font = Font(bold=True)
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value="TOTAL ELEVATION COST").font = Font(bold=True)
-            
+            ws.cell(
+                row=cost_summary_row, column=header_col, value="COST/ELEVATION"
+            ).font = Font(bold=True)
+            ws.cell(
+                row=cost_summary_row, column=cost_per_elev_col, value="COST/ELEVATION"
+            ).font = Font(bold=True)
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value="TOTAL ELEVATION COST",
+            ).font = Font(bold=True)
+
             # Add borders to headers
             for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
-                ws.cell(row=cost_summary_row, column=col).border = Border(bottom=Side(style='thin'))
-            
+                ws.cell(row=cost_summary_row, column=col).border = Border(
+                    bottom=Side(style="thin")
+                )
+
             cost_summary_row += 1
-            
+
             # Helper function to read values from Excel cells
             def read_cell_value(row, col):
                 """Read cell value, return 0 if None or empty"""
                 cell = ws.cell(row=row, column=col)
                 return cell.value if cell.value is not None else 0.0
-            
+
             # Profile Costs - read from column L (per elevation) and column K (total). Use 0 for door-only (no profiles).
-            profile_cost_per_elev = read_cell_value(profile_totals_row, col_l) if (profile_totals_row and col_l) else (read_cell_value(profile_totals_row, col_k) / total_count if profile_totals_row else 0.0)
-            profile_total_cost = read_cell_value(profile_totals_row, col_k) if profile_totals_row else 0.0
+            profile_cost_per_elev = (
+                read_cell_value(profile_totals_row, col_l)
+                if (profile_totals_row and col_l)
+                else (
+                    read_cell_value(profile_totals_row, col_k) / total_count
+                    if profile_totals_row
+                    else 0.0
+                )
+            )
+            profile_total_cost = (
+                read_cell_value(profile_totals_row, col_k)
+                if profile_totals_row
+                else 0.0
+            )
             ws.cell(row=cost_summary_row, column=header_col, value="PROFILE COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=profile_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=profile_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=profile_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value=profile_total_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
-            
+
             # Accessory Costs - Use 0 for door-only (no accessories).
-            accessory_cost_per_elev = read_cell_value(accessory_totals_row, col_l) if (accessory_totals_row and col_l) else (read_cell_value(accessory_totals_row, col_k) / total_count if accessory_totals_row else 0.0)
-            accessory_total_cost = read_cell_value(accessory_totals_row, col_k) if accessory_totals_row else 0.0
+            accessory_cost_per_elev = (
+                read_cell_value(accessory_totals_row, col_l)
+                if (accessory_totals_row and col_l)
+                else (
+                    read_cell_value(accessory_totals_row, col_k) / total_count
+                    if accessory_totals_row
+                    else 0.0
+                )
+            )
+            accessory_total_cost = (
+                read_cell_value(accessory_totals_row, col_k)
+                if accessory_totals_row
+                else 0.0
+            )
             ws.cell(row=cost_summary_row, column=header_col, value="ACCESSORY COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=accessory_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=accessory_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=accessory_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value=accessory_total_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
-            
+
             # Gasket Costs - Use 0 for door-only (no gaskets).
-            gasket_cost_per_elev = read_cell_value(gasket_totals_row, col_l) if (gasket_totals_row and col_l) else (read_cell_value(gasket_totals_row, col_k) / total_count if gasket_totals_row else 0.0)
-            gasket_total_cost = read_cell_value(gasket_totals_row, col_k) if gasket_totals_row else 0.0
+            gasket_cost_per_elev = (
+                read_cell_value(gasket_totals_row, col_l)
+                if (gasket_totals_row and col_l)
+                else (
+                    read_cell_value(gasket_totals_row, col_k) / total_count
+                    if gasket_totals_row
+                    else 0.0
+                )
+            )
+            gasket_total_cost = (
+                read_cell_value(gasket_totals_row, col_k) if gasket_totals_row else 0.0
+            )
             ws.cell(row=cost_summary_row, column=header_col, value="GASKET COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=gasket_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=gasket_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=gasket_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value=gasket_total_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
-            
+
             # Door Costs - only show if there are actually doors
-            door_cost_per_elev = read_cell_value(door_totals_row, col_l) if (door_totals_row and col_l) else (read_cell_value(door_totals_row, col_k) / total_count if door_totals_row else 0.0)
-            door_total_cost = read_cell_value(door_totals_row, col_k) if door_totals_row else 0.0
-            
+            door_cost_per_elev = (
+                read_cell_value(door_totals_row, col_l)
+                if (door_totals_row and col_l)
+                else (
+                    read_cell_value(door_totals_row, col_k) / total_count
+                    if door_totals_row
+                    else 0.0
+                )
+            )
+            door_total_cost = (
+                read_cell_value(door_totals_row, col_k) if door_totals_row else 0.0
+            )
+
             # Display door costs when we have doors (door-only or elevation with doors)
             if door_totals_row:
                 ws.cell(row=cost_summary_row, column=header_col, value="DOOR COSTS")
-                ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=door_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=door_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(
+                    row=cost_summary_row,
+                    column=cost_per_elev_col,
+                    value=door_cost_per_elev,
+                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(
+                    row=cost_summary_row,
+                    column=total_elev_cost_col,
+                    value=door_total_cost,
+                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
                 cost_summary_row += 1
             else:
                 # No doors, set to 0 for calculations but don't display
                 door_cost_per_elev = 0.0
                 door_total_cost = 0.0
-            
+
             # Glass Costs - sum from all glass sections
-            glass_cost_per_elev = sum(read_cell_value(row, col_l) if col_l else read_cell_value(row, col_k) / total_count for row in glass_totals_rows) if glass_totals_rows else 0.0
-            glass_total_cost = sum(read_cell_value(row, col_k) for row in glass_totals_rows) if glass_totals_rows else 0.0
+            glass_cost_per_elev = (
+                sum(
+                    read_cell_value(row, col_l)
+                    if col_l
+                    else read_cell_value(row, col_k) / total_count
+                    for row in glass_totals_rows
+                )
+                if glass_totals_rows
+                else 0.0
+            )
+            glass_total_cost = (
+                sum(read_cell_value(row, col_k) for row in glass_totals_rows)
+                if glass_totals_rows
+                else 0.0
+            )
             ws.cell(row=cost_summary_row, column=header_col, value="GLASS COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=glass_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=glass_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=glass_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row, column=total_elev_cost_col, value=glass_total_cost
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
-            
+
             # Fabrication Costs - sum from all fabrication sections
-            fabrication_cost_per_elev = sum(read_cell_value(row, col_l) if col_l else read_cell_value(row, col_k) / total_count for row in fabrication_totals_rows) if fabrication_totals_rows else 0.0
-            fabrication_total_cost = sum(read_cell_value(row, col_k) for row in fabrication_totals_rows) if fabrication_totals_rows else 0.0
+            fabrication_cost_per_elev = (
+                sum(
+                    read_cell_value(row, col_l)
+                    if col_l
+                    else read_cell_value(row, col_k) / total_count
+                    for row in fabrication_totals_rows
+                )
+                if fabrication_totals_rows
+                else 0.0
+            )
+            fabrication_total_cost = (
+                sum(read_cell_value(row, col_k) for row in fabrication_totals_rows)
+                if fabrication_totals_rows
+                else 0.0
+            )
             ws.cell(row=cost_summary_row, column=header_col, value="FABRICATION COSTS")
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=fabrication_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=fabrication_total_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=fabrication_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value=fabrication_total_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             cost_summary_row += 1
-            
+
             # Separator line
             for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
-                ws.cell(row=cost_summary_row, column=col).border = Border(top=Side(style='thin'))
+                ws.cell(row=cost_summary_row, column=col).border = Border(
+                    top=Side(style="thin")
+                )
             cost_summary_row += 1
-            
+
             # Total Costs - sum from column L (per elevation) and column K (total)
             # Use door costs when doors exist (door-only or elevation with doors)
             door_cost_for_total = door_cost_per_elev if door_totals_row else 0.0
             door_total_for_total = door_total_cost if door_totals_row else 0.0
-            
-            total_cost_per_elev = (profile_cost_per_elev + accessory_cost_per_elev + gasket_cost_per_elev + 
-                                   door_cost_for_total + glass_cost_per_elev + fabrication_cost_per_elev)
-            total_elevation_cost = (profile_total_cost + accessory_total_cost + gasket_total_cost + 
-                                   door_total_for_total + glass_total_cost + fabrication_total_cost)
-            
-            ws.cell(row=cost_summary_row, column=header_col, value=f"{elev_name} TOTAL COSTS").font = Font(bold=True)
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col, value=total_cost_per_elev).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col).font = Font(bold=True)
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col, value=total_elevation_cost).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col).font = Font(bold=True)
+
+            total_cost_per_elev = (
+                profile_cost_per_elev
+                + accessory_cost_per_elev
+                + gasket_cost_per_elev
+                + door_cost_for_total
+                + glass_cost_per_elev
+                + fabrication_cost_per_elev
+            )
+            total_elevation_cost = (
+                profile_total_cost
+                + accessory_total_cost
+                + gasket_total_cost
+                + door_total_for_total
+                + glass_total_cost
+                + fabrication_total_cost
+            )
+
+            ws.cell(
+                row=cost_summary_row,
+                column=header_col,
+                value=f"{elev_name} TOTAL COSTS",
+            ).font = Font(bold=True)
+            ws.cell(
+                row=cost_summary_row,
+                column=cost_per_elev_col,
+                value=total_cost_per_elev,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=cost_per_elev_col).font = Font(
+                bold=True
+            )
+            ws.cell(
+                row=cost_summary_row,
+                column=total_elev_cost_col,
+                value=total_elevation_cost,
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(row=cost_summary_row, column=total_elev_cost_col).font = Font(
+                bold=True
+            )
             cost_summary_row += 1
-            
+
             # Note
-            note_cell = ws.cell(row=cost_summary_row, column=header_col, value="*Note - Elevation costs based on discounted material costs")
+            note_cell = ws.cell(
+                row=cost_summary_row,
+                column=header_col,
+                value="*Note - Elevation costs based on discounted material costs",
+            )
             note_cell.font = Font(italic=True, size=10)
-            
-            print(f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}")
+
+            print(
+                f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}"
+            )
 
             # Calculate maximum column based on which optional columns are enabled
             # Column structure: Description (5), Part Number (6), Total Quantity Required (7),
@@ -2853,13 +4385,15 @@ def generate_excel_report(
                 max_col += 1  # Total List Cost Per Elevation (column 10)
             if show_discounted_cost_per_elev and elev_total_count > 1:
                 max_col += 1  # Discounted Total List Cost Per Elevation (column 12)
-            
+
             _autofit_columns(ws, COL_A, max_col, 1, ws.max_row)
             # Keep columns A,B tight (fit by longest word) so values aren't pushed far right
             _autofit_columns_by_longest_word(ws, COL_A, COL_B, 1, min(25, ws.max_row))
             _clean_trailing_blank_rows(ws, 1)
 
-    save_extra_materials(overall_current_extra_materials_state, private_extra_materials_path)
+    save_extra_materials(
+        overall_current_extra_materials_state, private_extra_materials_path
+    )
 
     if inc["summary"]:
         summary_ws = wb.create_sheet(title="Summary")
@@ -2868,35 +4402,60 @@ def generate_excel_report(
             elev_basename = os.path.basename(private_elevations_path)
             if "_Elevations.json" in elev_basename:
                 project_base = elev_basename.replace("_Elevations.json", "")
-                private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
+                private_summary_settings_path = os.path.join(
+                    private_projects_dir, f"{project_base}_Settings.json"
+                )
             else:
                 summary_settings_path_abs = os.path.abspath(summary_settings_path)
-                private_summary_settings_path = summary_settings_path_abs if os.path.exists(summary_settings_path_abs) else os.path.join(private_projects_dir, os.path.basename(summary_settings_path))
+                private_summary_settings_path = (
+                    summary_settings_path_abs
+                    if os.path.exists(summary_settings_path_abs)
+                    else os.path.join(
+                        private_projects_dir, os.path.basename(summary_settings_path)
+                    )
+                )
         else:
             elev_basename = os.path.basename(private_elevations_path)
             if "_Elevations.json" in elev_basename:
                 project_base = elev_basename.replace("_Elevations.json", "")
-                private_summary_settings_path = os.path.join(private_projects_dir, f"{project_base}_Settings.json")
-        summary_opts = report_config.get("summary_options", {}) if report_config else None
-        create_summary_sheet(summary_ws, private_elevations_path, private_extra_materials_path, wb,
-            summary_settings_path=private_summary_settings_path, summary_options=summary_opts)
-    
-    final_save_path = os.path.join(public_reports_dir, os.path.basename(excel_path)) if mode == "export_all" else private_excel_path
-    
+                private_summary_settings_path = os.path.join(
+                    private_projects_dir, f"{project_base}_Settings.json"
+                )
+        summary_opts = (
+            report_config.get("summary_options", {}) if report_config else None
+        )
+        create_summary_sheet(
+            summary_ws,
+            private_elevations_path,
+            private_extra_materials_path,
+            wb,
+            summary_settings_path=private_summary_settings_path,
+            summary_options=summary_opts,
+        )
+
+    final_save_path = (
+        os.path.join(public_reports_dir, os.path.basename(excel_path))
+        if mode == "export_all"
+        else private_excel_path
+    )
+
     try:
         wb.save(final_save_path)
         print(f"Excel report '{final_save_path}' fully rebuilt with separate tabs.")
     except Exception as save_err:
         print(f"[ERROR] Error saving Excel report during full rebuild: {save_err}")
-        if completion_callback: completion_callback(f"Error saving report: {save_err}")
+        if completion_callback:
+            completion_callback(f"Error saving report: {save_err}")
         return
 
     if mode != "export_all":
         try:
-            with open(private_elevations_path, 'w') as f:
+            with open(private_elevations_path, "w") as f:
                 json.dump(current_saved_elevations, f, indent=4)
         except IOError as e:
-            print(f"Error saving all elevations to {private_elevations_path} after rebuild: {e}")
+            print(
+                f"Error saving all elevations to {private_elevations_path} after rebuild: {e}"
+            )
 
     if completion_callback:
         completion_callback()
