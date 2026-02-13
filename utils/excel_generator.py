@@ -735,6 +735,7 @@ def _write_output_section(
     section_discounted_per_elev_total = (
         0.0  # Sum of actual per-elevation discounted costs
     )
+    _report_items = []  # Collect per-item data for report_data dict
 
     for item in items:
         qty_raw = item.get("quantity", 0)
@@ -1064,23 +1065,6 @@ def _write_output_section(
                 value=original_item_total_cost,
             ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
             col_offset += 1
-        ws.cell(row=current_row, column=colE + col_offset, value=pn or "N/A")
-        col_offset += 1
-        ws.cell(row=current_row, column=colE + col_offset, value=display_qty_string)
-        col_offset += 1
-
-        # Add quantity per elevation column if enabled
-        if qty_per_elev_display:
-            ws.cell(
-                row=current_row, column=colE + col_offset, value=qty_per_elev_display
-            )
-            col_offset += 1
-
-        # Total List Cost
-        ws.cell(
-            row=current_row, column=colE + col_offset, value=original_item_total_cost
-        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-        col_offset += 1
 
         # Total List Cost Per Elevation (if enabled) - calculate actual purchase cost for per-elevation quantity
         original_cost_per_elev = None
@@ -1225,6 +1209,24 @@ def _write_output_section(
             )
             col_offset += 1
 
+        # Capture item data for report_data dict
+        _ri_discounted_per = None
+        try:
+            _ri_discounted_per = discounted_cost_per_elev
+        except NameError:
+            pass
+        _report_item = {
+            "description": desc,
+            "part_number": pn or "N/A",
+            "display_qty": display_qty_string,
+            "qty_per_elev": qty_per_elev_display or "",
+            "original_cost": original_item_total_cost,
+            "discounted_cost": item_total_cost_for_display,
+            "original_cost_per_elev": original_cost_per_elev,
+            "discounted_cost_per_elev": _ri_discounted_per,
+        }
+        _report_items.append(_report_item)
+
         current_row += 1
 
     # Add Section Totals
@@ -1304,6 +1306,9 @@ def _write_output_section(
     section_totals = {
         "original": section_original_total,
         "discounted": section_discounted_total,
+        "original_per_elev": section_original_per_elev_total,
+        "discounted_per_elev": section_discounted_per_elev_total,
+        "_report_items": _report_items,
     }
     return current_row + 1, section_material_impacts, section_totals
 
@@ -1345,7 +1350,7 @@ def create_summary_sheet(
 
     # Parse summary_options for conditional display (default: show all)
     so = summary_options or {}
-    stab = so.get("summary_tab") or {}
+    stab = so.get("summary_sections") or so.get("summary_tab") or {}
     cov = so.get("cost_overview") or {}
     show_category = {
         "PROFILES": stab.get("profiles", True),
@@ -1353,7 +1358,7 @@ def create_summary_sheet(
         "GASKETS": stab.get("gaskets", True),
         "DOORS": stab.get("doors", True),
         "GLASS": stab.get("glass", True),
-        "LABOR": stab.get("labor", True),
+        "LABOR": stab.get("fabrication", stab.get("labor", True)),
     }
     show_elevation_totals = stab.get("elevation_summary", True)
     show_additional_costs = cov.get("additional_costs", True)
@@ -3134,37 +3139,39 @@ def create_summary_sheet(
         right=Side(style="medium")
     )
 
-    # Additional cost Total row
-    final_total_row += 1
-    ws.cell(row=final_total_row, column=category_start_col, value="+ Additional:")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(
-        left=Side(style="medium")
-    )
-    ws.cell(
-        row=final_total_row, column=category_start_col + 2, value=summary_total
-    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
-        horizontal="right"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-        right=Side(style="medium")
-    )
+    # Additional cost Total row (only if additional costs are enabled)
+    if show_additional_costs and summary_total > 0:
+        final_total_row += 1
+        ws.cell(row=final_total_row, column=category_start_col, value="+ Additional:")
+        ws.cell(row=final_total_row, column=category_start_col).border = Border(
+            left=Side(style="medium")
+        )
+        ws.cell(
+            row=final_total_row, column=category_start_col + 2, value=summary_total
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(
+            row=final_total_row, column=category_start_col + 2
+        ).alignment = Alignment(horizontal="right")
+        ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium")
+        )
 
-    # Markup Total row
-    final_total_row += 1
-    ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(
-        left=Side(style="medium")
-    )
-    ws.cell(
-        row=final_total_row, column=category_start_col + 2, value=markup_total
-    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
-        horizontal="right"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-        right=Side(style="medium")
-    )
+    # Markup Total row (only if markups are enabled)
+    if show_markups and markup_total > 0:
+        final_total_row += 1
+        ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
+        ws.cell(row=final_total_row, column=category_start_col).border = Border(
+            left=Side(style="medium")
+        )
+        ws.cell(
+            row=final_total_row, column=category_start_col + 2, value=markup_total
+        ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(
+            row=final_total_row, column=category_start_col + 2
+        ).alignment = Alignment(horizontal="right")
+        ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium")
+        )
 
     # Grand Total row (bold, highlighted with dark background)
     final_total_row += 1
@@ -3240,7 +3247,7 @@ def create_summary_sheet(
         f"[SUMMARY] Final Total: ${final_discounted_total:.2f} (discounted) + ${summary_total:.2f} (addition) + ${markup_total:.2f} (markups) = ${final_total_amount:.2f}"
     )
     print(
-        f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row if 'markup_end_row' in locals() else markup_section_row}"
+        f"[INFO] Markup section written to rows {markup_start_row} to {markup_end_row}"
     )
     print(f"[INFO] Final total written to row {final_total_row}")
 
@@ -3250,6 +3257,91 @@ def create_summary_sheet(
     print(
         f"[OK] Summary updated with grouped sections: Profiles, Accessories, Doors, Glass, Labor."
     )
+
+    # ---- Build and return summary report_data ----
+    _summary_categories = {}
+    for cat_name, items_list in categories.items():
+        _cat_items = []
+        for item in final_summary_data:
+            if item.get("category") == cat_name:
+                _cat_items.append(
+                    {
+                        "description": item.get("description", ""),
+                        "display": item.get("display", ""),
+                        "quantity_req_ft": item.get("quantity_req_ft", ""),
+                        "qty_stick_req": item.get("qty_stick_req", ""),
+                        "quantity_display": item.get("quantity_display", ""),
+                        "original_total_cost": item.get("original_total_cost", 0),
+                        "total_cost": item.get("total_cost", 0),
+                        "reusable_qty_display": item.get("reusable_qty_display", ""),
+                        "reusable_pct": item.get("reusable_pct", "N/A"),
+                        "reusable_cost": item.get("reusable_cost", 0),
+                    }
+                )
+        _summary_categories[cat_name] = _cat_items
+
+    # Add original totals to category_totals
+    _cat_totals_with_original = {}
+    for cat_name in category_totals:
+        _cat_totals_with_original[cat_name] = {
+            "original": sum(
+                item.get("original_total_cost", 0)
+                for item in final_summary_data
+                if item.get("category") == cat_name
+            ),
+            "discounted": category_totals[cat_name].get("discounted", 0),
+            "residual": category_totals[cat_name].get("residual", 0),
+        }
+
+    # Elevation summary data
+    _elev_summary = []
+    _elev_summary_totals = {"total_qty": 0, "total_sqft": 0, "total_perimeter": 0}
+    for elev_key, elev in data.items():
+        width = elev.get("opening_width_inches", 0) or 0
+        height = elev.get("opening_height_inches", 0) or 0
+        qty = elev.get("total_count", 0) or 0
+        sqft = elev.get("total_sqft", 0) or 0
+        perim = elev.get("total_perimeter_ft", 0) or 0
+        _elev_summary.append(
+            {
+                "name": elev_key,
+                "quantity": qty,
+                "dimensions": f'{width}" x {height}"',
+                "sqft_total": sqft,
+                "perimeter_ft_total": perim,
+            }
+        )
+        _elev_summary_totals["total_qty"] += qty
+        _elev_summary_totals["total_sqft"] += sqft
+        _elev_summary_totals["total_perimeter"] += perim
+
+    return {
+        "categories": _summary_categories,
+        "category_totals": _cat_totals_with_original,
+        "cost_overview": {
+            "list_price_total": grand_original_total,
+            "discounted_total": final_discounted_total,
+            "residual_waste_cost": reuse_total,
+            "waste_pct": reuse_pct_of_gt,
+        },
+        "additional_costs": {
+            "items": [(lbl, amt) for lbl, amt in misc_items_list],
+            "total": summary_total,
+        },
+        "markups": {
+            "items": [(lbl, amt) for lbl, amt in markup_items_list],
+            "total": markup_total,
+        },
+        "project_total_breakdown": {
+            "discounted_total": final_discounted_total,
+            "additional_total": summary_total,
+            "markup_total": markup_total,
+            "grand_total": final_total_amount,
+        },
+        "elevation_summary": _elev_summary,
+        "elevation_summary_totals": _elev_summary_totals,
+        "pie_chart_image": None,  # Pie chart is an Excel image, not easily extracted
+    }
 
 
 def _format_door_summary(calculated_outputs):
@@ -3552,6 +3644,9 @@ def generate_excel_report(
 
     multiplier = _get_multiplier(full_running_grand_total, pricing_settings)
 
+    # Accumulator for report_data dict (consumed by PDF generator)
+    _report_data = {"elevations": {}, "summary": None}
+
     sorted_elev_names = sorted(current_saved_elevations.keys())
     if report_config and report_config.get("elevations_included"):
         included = report_config["elevations_included"]
@@ -3576,7 +3671,9 @@ def generate_excel_report(
                 elev_inc["glass"] = pe_sec.get("glass", True)
                 elev_inc["gaskets"] = pe_sec.get("gaskets", True)
                 elev_inc["doors"] = pe_sec.get("doors", True)
-                elev_inc["fabrication"] = pe_sec.get("labor", True)
+                elev_inc["fabrication"] = pe_sec.get(
+                    "fabrication", pe_sec.get("labor", True)
+                )
                 elev_inc["diagrams"] = pe_sec.get("diagram", True)
             pe_col = (
                 report_config.get("per_elevation_columns", {}).get(elev_name)
@@ -3845,106 +3942,25 @@ def generate_excel_report(
             elev_total_count = elev_data.get("total_count", 1)
             elev_column_config = elev_data.get("_column_config", None)
 
-            # Track totals row numbers for reading from Excel columns
-            profile_totals_row = None
-            accessory_totals_row = None
-            gasket_totals_row = None
-            door_totals_row = None
+            # --- Scratch worksheet for computing totals of hidden sections ---
+            _scratch_ws_name = "_scratch_tmp_"
+            if _scratch_ws_name in wb.sheetnames:
+                del wb[_scratch_ws_name]
+            _scratch_ws = wb.create_sheet(_scratch_ws_name)
 
-            _row = output_section_current_row
-            if elev_inc["profiles"]:
-                next_row_after_profiles, impacts_p, profile_totals = (
-                    _write_output_section(
-                        ws,
-                        "PROFILES",
-                        profiles_for_section,
-                        COL_E,
-                        current_elevation_finish,
-                        system_total_for_this_block,
-                        original_system_total_for_this_block,
-                        _row,
-                        elevation_extra_materials_state,
-                        private_extra_materials_path,
-                        multiplier,
-                        show_qty_per_elevation=show_qty_per_elev,
-                        total_count=elev_total_count,
-                        show_total_cost_per_elevation=show_total_cost_per_elev,
-                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
-                        column_config=elev_column_config,
-                    )
-                )
-                _row = next_row_after_profiles
-                newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
-            profile_totals_row = (
-                (_row - 1) if elev_inc["profiles"] and profiles_for_section else None
-            )
-
-            if elev_inc["accessories"]:
-                next_row_after_accessories, impacts_a, accessory_totals = (
-                    _write_output_section(
-                        ws,
-                        "ACCESSORIES",
-                        accessories_for_section,
-                        COL_E,
-                        current_elevation_finish,
-                        system_total_for_this_block,
-                        original_system_total_for_this_block,
-                        _row,
-                        elevation_extra_materials_state,
-                        private_extra_materials_path,
-                        multiplier,
-                        show_qty_per_elevation=show_qty_per_elev,
-                        total_count=elev_total_count,
-                        show_total_cost_per_elevation=show_total_cost_per_elev,
-                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
-                        column_config=elev_column_config,
-                    )
-                )
-                _row = next_row_after_accessories
-                newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-            accessory_totals_row = (
-                (_row - 1)
-                if elev_inc["accessories"] and accessories_for_section
-                else None
-            )
-
-            if elev_inc["gaskets"]:
-                next_row_after_gaskets, impacts_g, gasket_totals = (
-                    _write_output_section(
-                        ws,
-                        "GASKETS",
-                        gaskets_for_section,
-                        COL_E,
-                        current_elevation_finish,
-                        system_total_for_this_block,
-                        original_system_total_for_this_block,
-                        _row,
-                        elevation_extra_materials_state,
-                        private_extra_materials_path,
-                        multiplier,
-                        show_qty_per_elevation=show_qty_per_elev,
-                        total_count=elev_total_count,
-                        show_total_cost_per_elevation=show_total_cost_per_elev,
-                        show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
-                        column_config=elev_column_config,
-                    )
-                )
-                _row = next_row_after_gaskets
-                newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
-            gasket_totals_row = (
-                (_row - 1) if elev_inc["gaskets"] and gaskets_for_section else None
-            )
-
-            if elev_inc["doors"]:
-                next_row_after_doors, impacts_d, door_totals = _write_output_section(
-                    ws,
-                    "DOORS",
-                    doors_for_section,
+            # Helper: call _write_output_section, writing to real ws when
+            # enabled and to scratch ws when disabled (so totals are always
+            # computed).  Returns (next_row, impacts, section_totals).
+            def _call_section(title, items, target_ws, start_row, finish=None):
+                return _write_output_section(
+                    target_ws,
+                    title,
+                    items,
                     COL_E,
-                    current_elevation_finish,
+                    finish if finish is not None else current_elevation_finish,
                     system_total_for_this_block,
                     original_system_total_for_this_block,
-                    _row,
+                    start_row,
                     elevation_extra_materials_state,
                     private_extra_materials_path,
                     multiplier,
@@ -3954,16 +3970,91 @@ def generate_excel_report(
                     show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
                     column_config=elev_column_config,
                 )
+
+            # Track totals row numbers for reading from Excel columns
+            profile_totals_row = None
+            accessory_totals_row = None
+            gasket_totals_row = None
+            door_totals_row = None
+
+            _row = output_section_current_row
+
+            # --- PROFILES ---
+            if elev_inc["profiles"]:
+                next_row_after_profiles, impacts_p, profile_totals = _call_section(
+                    "PROFILES", profiles_for_section, ws, _row
+                )
+                _row = next_row_after_profiles
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
+                profile_totals_row = (_row - 1) if profiles_for_section else None
+            else:
+                # Hidden: compute on scratch ws for report_data costs
+                _, impacts_p, profile_totals = _call_section(
+                    "PROFILES", profiles_for_section, _scratch_ws, 1
+                )
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
+
+            # --- ACCESSORIES ---
+            if elev_inc["accessories"]:
+                next_row_after_accessories, impacts_a, accessory_totals = _call_section(
+                    "ACCESSORIES", accessories_for_section, ws, _row
+                )
+                _row = next_row_after_accessories
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
+                accessory_totals_row = (_row - 1) if accessories_for_section else None
+            else:
+                _, impacts_a, accessory_totals = _call_section(
+                    "ACCESSORIES", accessories_for_section, _scratch_ws, 1
+                )
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
+
+            # --- GASKETS ---
+            if elev_inc["gaskets"]:
+                next_row_after_gaskets, impacts_g, gasket_totals = _call_section(
+                    "GASKETS", gaskets_for_section, ws, _row
+                )
+                _row = next_row_after_gaskets
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+                gasket_totals_row = (_row - 1) if gaskets_for_section else None
+            else:
+                _, impacts_g, gasket_totals = _call_section(
+                    "GASKETS", gaskets_for_section, _scratch_ws, 1
+                )
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+
+            # --- DOORS ---
+            if elev_inc["doors"]:
+                next_row_after_doors, impacts_d, door_totals = _call_section(
+                    "DOORS", doors_for_section, ws, _row
+                )
                 _row = next_row_after_doors
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
-            door_totals_row = (
-                (_row - 1) if elev_inc["doors"] and doors_for_section else None
-            )
+                door_totals_row = (_row - 1) if doors_for_section else None
+            else:
+                _, impacts_d, door_totals = _call_section(
+                    "DOORS", doors_for_section, _scratch_ws, 1
+                )
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
 
             current_section_row = _row
             grouped_other_misc = {}
             glass_totals_rows = []
             fabrication_totals_rows = []
+            # Accumulators for report_data (glass/fabrication)
+            _glass_report_items = []
+            _glass_totals_accum = {
+                "original": 0,
+                "discounted": 0,
+                "original_per_elev": 0,
+                "discounted_per_elev": 0,
+            }
+            _fab_report_items = []
+            _fab_totals_accum = {
+                "original": 0,
+                "discounted": 0,
+                "original_per_elev": 0,
+                "discounted_per_elev": 0,
+            }
 
             for item in other_items_for_section:
                 item_type = item.get("type", "ADDITIONAL ITEMS").upper()
@@ -3976,32 +4067,20 @@ def generate_excel_report(
                     for item in grp_items
                 )
                 is_fab_group = not is_glass_group
-                if (elev_inc["glass"] and is_glass_group) or (
-                    elev_inc["fabrication"] and is_fab_group
-                ):
-                    next_row_after_group, impacts_g, group_totals = (
-                        _write_output_section(
-                            ws,
-                            grp_title,
-                            grp_items,
-                            COL_E,
-                            None,
-                            system_total_for_this_block,
-                            original_system_total_for_this_block,
-                            current_section_row,
-                            elevation_extra_materials_state,
-                            private_extra_materials_path,
-                            multiplier,
-                            show_qty_per_elevation=show_qty_per_elev,
-                            total_count=elev_total_count,
-                            show_total_cost_per_elevation=show_total_cost_per_elev,
-                            show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
-                            column_config=elev_column_config,
-                        )
-                    )
-                    newly_calculated_material_impacts_for_this_elevation.extend(
-                        impacts_g
-                    )
+                _glass_enabled = elev_inc["glass"] and is_glass_group
+                _fab_enabled = elev_inc["fabrication"] and is_fab_group
+                # Always compute — write to real ws if enabled, scratch if not
+                if _glass_enabled or _fab_enabled:
+                    target = ws
+                    start = current_section_row
+                else:
+                    target = _scratch_ws
+                    start = 1
+                next_row_after_group, impacts_g, group_totals = _call_section(
+                    grp_title, grp_items, target, start, finish=None
+                )
+                newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
+                if _glass_enabled or _fab_enabled:
                     group_totals_row = next_row_after_group - 1
                     if is_glass_group:
                         glass_totals_rows.append(group_totals_row)
@@ -4009,6 +4088,25 @@ def generate_excel_report(
                         fabrication_totals_rows.append(group_totals_row)
                     current_section_row = next_row_after_group
                     print(f"Section '{grp_title}' ended at row {current_section_row}")
+                # Always accumulate report_data regardless of display
+                if is_glass_group:
+                    _glass_report_items.extend(group_totals.pop("_report_items", []))
+                    for _tk in (
+                        "original",
+                        "discounted",
+                        "original_per_elev",
+                        "discounted_per_elev",
+                    ):
+                        _glass_totals_accum[_tk] += group_totals.get(_tk, 0)
+                else:
+                    _fab_report_items.extend(group_totals.pop("_report_items", []))
+                    for _tk in (
+                        "original",
+                        "discounted",
+                        "original_per_elev",
+                        "discounted_per_elev",
+                    ):
+                        _fab_totals_accum[_tk] += group_totals.get(_tk, 0)
 
             current_saved_elevations[elev_name]["material_impact"] = (
                 newly_calculated_material_impacts_for_this_elevation
@@ -4374,6 +4472,80 @@ def generate_excel_report(
                 f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}"
             )
 
+            # ---- Build report_data for this elevation ----
+            _rd_si = [{"label": lbl, "value": str(val)} for lbl, val in input_data]
+            _rd_sections = {}
+            _rd_section_totals = {}
+            _empty_totals = {
+                "original": 0,
+                "discounted": 0,
+                "original_per_elev": 0,
+                "discounted_per_elev": 0,
+            }
+
+            # Extract _report_items from each section's totals dict
+            _local = locals()
+            for _sk, _var_name in [
+                ("profiles", "profile_totals"),
+                ("accessories", "accessory_totals"),
+                ("gaskets", "gasket_totals"),
+                ("doors", "door_totals"),
+            ]:
+                _st = _local.get(_var_name, {})
+                if isinstance(_st, dict) and _st:
+                    _rd_sections[_sk] = _st.pop("_report_items", [])
+                    _rd_section_totals[_sk] = {
+                        "original": _st.get("original", 0),
+                        "discounted": _st.get("discounted", 0),
+                        "original_per_elev": _st.get("original_per_elev", 0),
+                        "discounted_per_elev": _st.get("discounted_per_elev", 0),
+                    }
+                else:
+                    _rd_sections[_sk] = []
+                    _rd_section_totals[_sk] = _empty_totals.copy()
+
+            # Glass and fabrication sections (from grouped_other_misc accumulators)
+            _rd_sections["glass"] = _glass_report_items
+            _rd_sections["fabrication"] = _fab_report_items
+            _rd_section_totals["glass"] = _glass_totals_accum
+            _rd_section_totals["fabrication"] = _fab_totals_accum
+
+            # Build cost_summary from section_totals (always computed, even for
+            # hidden sections) so that report_data always has real costs.
+            _cs = {}
+            _cs_total = 0.0
+            _cs_total_per_elev = 0.0
+            _tc = elev_total_count if elev_total_count > 0 else 1
+            for _csk, _cslabel in [
+                ("profiles", "profile"),
+                ("accessories", "accessory"),
+                ("gaskets", "gasket"),
+                ("doors", "door"),
+                ("glass", "glass"),
+                ("fabrication", "fabrication"),
+            ]:
+                _st = _rd_section_totals.get(_csk, {})
+                _total = _st.get("discounted", 0)
+                _per = _st.get("discounted_per_elev", 0)
+                if not _per and _total and _tc > 1:
+                    _per = _total / _tc
+                _cs[f"{_cslabel}_total_cost"] = _total
+                _cs[f"{_cslabel}_cost_per_elev"] = _per
+                _cs_total += _total
+                _cs_total_per_elev += _per
+            _cs["total_elevation_cost"] = _cs_total
+            _cs["total_cost_per_elev"] = _cs_total_per_elev
+
+            _report_data["elevations"][elev_name] = {
+                "system_input": _rd_si,
+                "sections": _rd_sections,
+                "section_totals": _rd_section_totals,
+                "has_doors": bool(doors_for_section),
+                "total_count": elev_total_count,
+                "cost_summary": _cs,
+                "diagram_image": None,
+            }
+
             # Calculate maximum column based on which optional columns are enabled
             # Column structure: Description (5), Part Number (6), Total Quantity Required (7),
             # [Quantity Per Elevation (8) - optional], Total List Cost (9),
@@ -4424,7 +4596,7 @@ def generate_excel_report(
         summary_opts = (
             report_config.get("summary_options", {}) if report_config else None
         )
-        create_summary_sheet(
+        _summary_rd = create_summary_sheet(
             summary_ws,
             private_elevations_path,
             private_extra_materials_path,
@@ -4432,6 +4604,11 @@ def generate_excel_report(
             summary_settings_path=private_summary_settings_path,
             summary_options=summary_opts,
         )
+        _report_data["summary"] = _summary_rd
+
+    # Clean up scratch worksheet used for hidden-section cost computation
+    if "_scratch_tmp_" in wb.sheetnames:
+        del wb["_scratch_tmp_"]
 
     final_save_path = (
         os.path.join(public_reports_dir, os.path.basename(excel_path))
@@ -4459,3 +4636,5 @@ def generate_excel_report(
 
     if completion_callback:
         completion_callback()
+
+    return _report_data

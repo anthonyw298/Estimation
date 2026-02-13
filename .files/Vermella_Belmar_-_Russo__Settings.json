@@ -1,0 +1,15 @@
+{
+    "commission_pct": 0.0,
+    "commissions_pct": 1.5,
+    "engineering_pct": 3.0,
+    "overhead_labor_pct": 10.0,
+    "profit_on_glass_pct": 0.0,
+    "profit_on_wages_pct": 0.0,
+    "profit_on_waste_pct": 0.0,
+    "admin_management_pct": 5.0,
+    "overhead_materials_pct": 5.0,
+    "planning_technical_pct": 0.0,
+    "profit_on_material_pct": 0.0,
+    "shipping_transport_pct": 3.0,
+    "packaging_materials_pct": 0.5
+}

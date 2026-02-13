@@ -1,0 +1,99 @@
+{
+    "BE9-2513-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            9.333333333333332
+        ]
+    },
+    "BE9-2515-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            15.999999999999998,
+            17.333333333333336
+        ]
+    },
+    "BE9-2514-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            15.999999999999998,
+            17.333333333333336
+        ]
+    },
+    "BE9-2578-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            16.0,
+            17.333333333333336
+        ]
+    },
+    "E9-2519-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            15.999999999999998,
+            17.333333333333336
+        ]
+    },
+    "E1-0199": {
+        "quantity": 34,
+        "length_pieces": []
+    },
+    "E2-0047": {
+        "quantity": 90,
+        "length_pieces": []
+    },
+    "PC-1220": {
+        "quantity": 160,
+        "length_pieces": []
+    },
+    "PM-1006-SS": {
+        "quantity": 185,
+        "length_pieces": []
+    },
+    "UA-1212": {
+        "quantity": 188,
+        "length_pieces": []
+    },
+    "E1-2530": {
+        "quantity": 0,
+        "length_pieces": []
+    },
+    "E2-0166": {
+        "quantity": 48,
+        "length_pieces": []
+    },
+    "E2-0177": {
+        "quantity": 90,
+        "length_pieces": []
+    },
+    "E2-0545": {
+        "quantity": 94,
+        "length_pieces": []
+    },
+    "E2-0154": {
+        "quantity": 48,
+        "length_pieces": []
+    },
+    "E2-0611": {
+        "quantity": 90,
+        "length_pieces": []
+    },
+    "E2-0052-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            372.0,
+            409.3333333333333
+        ]
+    },
+    "E9-2512-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            8.0
+        ]
+    },
+    "BE9-2511-black": {
+        "quantity": 0.0,
+        "length_pieces": [
+            8.0
+        ]
+    }
+}

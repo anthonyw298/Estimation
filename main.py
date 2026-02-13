@@ -3752,19 +3752,18 @@ def main(page: ft.Page):
         def gen_full_report(e):
             temp_paths = None
             try:
-                settings = {
-                    k: get_input_pct(k)
-                    for k in [
-                        "overhead_materials_pct",
-                        "overhead_labor_pct",
-                        "admin_management_pct",
-                        "engineering_pct",
-                        "packaging_materials_pct",
-                        "shipping_transport_pct",
-                        "commissions_pct",
-                    ]
-                }
-                save_project_settings(state["current_project"], settings)
+                existing_settings = load_project_settings(state["current_project"])
+                for k in [
+                    "overhead_materials_pct",
+                    "overhead_labor_pct",
+                    "admin_management_pct",
+                    "engineering_pct",
+                    "packaging_materials_pct",
+                    "shipping_transport_pct",
+                    "commissions_pct",
+                ]:
+                    existing_settings[k] = get_input_pct(k)
+                save_project_settings(state["current_project"], existing_settings)
 
                 # Use in-memory elevations so Excel reflects all elevations (including door-only) as shown in app
                 temp_paths = prepare_temp_files_for_excel(
@@ -3837,19 +3836,18 @@ def main(page: ft.Page):
                     os.makedirs("reports", exist_ok=True)
 
                     # Save settings first
-                    settings = {
-                        k: get_input_pct(k)
-                        for k in [
-                            "overhead_materials_pct",
-                            "overhead_labor_pct",
-                            "admin_management_pct",
-                            "engineering_pct",
-                            "packaging_materials_pct",
-                            "shipping_transport_pct",
-                            "commissions_pct",
-                        ]
-                    }
-                    save_project_settings(state["current_project"], settings)
+                    existing_settings = load_project_settings(state["current_project"])
+                    for k in [
+                        "overhead_materials_pct",
+                        "overhead_labor_pct",
+                        "admin_management_pct",
+                        "engineering_pct",
+                        "packaging_materials_pct",
+                        "shipping_transport_pct",
+                        "commissions_pct",
+                    ]:
+                        existing_settings[k] = get_input_pct(k)
+                    save_project_settings(state["current_project"], existing_settings)
 
                     temp_paths = prepare_temp_files_for_excel(
                         state["current_project"],
@@ -5780,34 +5778,41 @@ def main(page: ft.Page):
         )
 
     def build_report_options_view():
-        """Multi-layer dropdown stock list for report customization."""
+        """Multi-layer dropdown stock list for report customization.
+        Layer 1: Which sheets (elevations + summary)
+        Layer 2: Per-elevation sections
+        Layer 3: Per-elevation columns
+        """
         elev_names = sorted(state.get("saved_elevations", {}).keys())
         elev_count = len(elev_names)
 
-        # Layer 2: per-elevation subsections (maps to excel sections)
+        # ── Layer 2: per-elevation subsections ──
         L2_KEYS = [
             "system_input",
             "profiles",
             "accessories",
-            "glass",
-            "labor",
             "gaskets",
             "doors",
+            "glass",
+            "fabrication",
+            "elevation_cost_summary",
             "diagram",
-            "elevation_summary",
         ]
         L2_LABELS = {
-            "system_input": "System inputs (dimensions, system type, finish)",
-            "profiles": "Profiles (aluminum extrusions)",
-            "accessories": "Accessories (hardware, fasteners, clips)",
-            "glass": "Glass (panels, glazing)",
-            "labor": "Labor / Fabrication costs",
-            "gaskets": "Gaskets (seals, weatherstripping)",
-            "doors": "Doors (door hardware, frames)",
-            "diagram": "Bay / door diagrams",
-            "elevation_summary": "Elevation summary table (name, qty, dimensions, sqft, perimeter)",
+            "system_input": "System Input",
+            "profiles": "Profiles",
+            "accessories": "Accessories",
+            "gaskets": "Gaskets",
+            "doors": "Doors",
+            "glass": "Glass",
+            "fabrication": "Fabrication",
+            "elevation_cost_summary": "Elevation Cost Summary",
+            "diagram": "Diagram",
         }
-        # Layer 3: column headers (elevation tabs — all column headers from _write_output_section)
+        L2_DEFAULTS = {k: True for k in L2_KEYS}
+        L2_DEFAULTS["fabrication"] = False  # hidden by default per user request
+
+        # ── Layer 3: per-elevation column headers ──
         L3_KEYS = [
             "description",
             "part_number",
@@ -5819,16 +5824,27 @@ def main(page: ft.Page):
             "discounted_total_list_cost_per_elevation",
         ]
         L3_LABELS = {
-            "description": "Item description (material name)",
-            "part_number": "Part number (catalog ID)",
-            "total_quantity_required": "Total quantity required (all elevations combined)",
-            "quantity_per_elevation": "Quantity per single elevation",
-            "total_list_cost": "Total list cost (before discount)",
-            "total_list_cost_per_elevation": "List cost per single elevation (before discount)",
-            "discounted_total_list_cost": "Discounted total cost (after multiplier)",
-            "discounted_total_list_cost_per_elevation": "Discounted cost per single elevation",
+            "description": "Description",
+            "part_number": "Part Number",
+            "total_quantity_required": "Total Quantity",
+            "quantity_per_elevation": "Qty Per Elevation",
+            "total_list_cost": "Total List Cost",
+            "total_list_cost_per_elevation": "Total List Cost Per Elev",
+            "discounted_total_list_cost": "Discounted Total List Cost",
+            "discounted_total_list_cost_per_elevation": "Discounted Per Elev",
         }
-        # Summary table columns (from get_headers_for_category — union of all category columns)
+
+        # ── Summary sections (same material sections) ──
+        SUMMARY_SECTION_KEYS = [
+            "profiles",
+            "accessories",
+            "gaskets",
+            "doors",
+            "glass",
+            "fabrication",
+        ]
+
+        # ── Summary-specific columns ──
         SUMMARY_COLUMN_KEYS = [
             "description",
             "project_total_materials",
@@ -5849,46 +5865,53 @@ def main(page: ft.Page):
             "residual_material_cost",
         ]
         SUMMARY_COLUMN_LABELS = {
-            "description": "Item description (material name)",
-            "project_total_materials": "Project total materials (part number + finish)",
-            "total_feet_required": "Total linear feet required (profiles/gaskets)",
-            "sticks_required": "Number of sticks required (profiles)",
-            "total_pieces_required": "Total pieces required (accessories)",
-            "quantity_per_order": "Qty per order (min order size for accessories)",
-            "orders_required": "Number of orders required (accessories)",
-            "rolls_required": "Number of rolls required (gaskets)",
-            "unit_price": "Unit price per item (glass/labor/doors)",
-            "quantity_req_ft": "Quantity required in feet (profiles/gaskets)",
-            "qty_stick_req": "Sticks or rolls needed (profiles/gaskets)",
-            "total_quantity_required": "Total quantity required (all elevations)",
-            "total_list_cost": "Total list cost (before discount)",
-            "discounted_total_list_cost": "Discounted total cost (after multiplier)",
-            "residual_material_quantity": "Leftover / residual material quantity",
-            "residual_waste_pct": "Residual waste percentage (%)",
-            "residual_material_cost": "Residual material cost ($)",
-        }
-        # Summary: (1) same subsections as elevation, (2) summary table columns, (3) cost overview
-        COST_OVERVIEW_KEYS = ["additional_costs", "markups", "diagram"]
-        COST_OVERVIEW_LABELS = {
-            "additional_costs": "Additional costs (overhead, shipping, engineering, etc.)",
-            "markups": "Markups / profit margins",
-            "diagram": "Cost breakdown pie chart",
+            "description": "Description",
+            "project_total_materials": "Project Total Materials",
+            "total_feet_required": "Total Feet Required",
+            "sticks_required": "Sticks Required",
+            "total_pieces_required": "Total Pieces Required",
+            "quantity_per_order": "Qty Per Order",
+            "orders_required": "Orders Required",
+            "rolls_required": "Rolls Required",
+            "unit_price": "Unit Price",
+            "quantity_req_ft": "Quantity Req (ft)",
+            "qty_stick_req": "Sticks/Rolls Needed",
+            "total_quantity_required": "Total Quantity Required",
+            "total_list_cost": "Total List Cost",
+            "discounted_total_list_cost": "Discounted Total Cost",
+            "residual_material_quantity": "Residual Material Qty",
+            "residual_waste_pct": "Waste %",
+            "residual_material_cost": "Residual Material Cost",
         }
 
-        # Build checkbox state: {elev_name: {L2: {k: cb}, L3: {k: cb}}} and summary state
+        # ── Summary cost overview sub-checkboxes ──
+        COST_OVERVIEW_KEYS = ["additional_costs", "markups", "project_total", "diagram"]
+        COST_OVERVIEW_LABELS = {
+            "additional_costs": "Additional Costs",
+            "markups": "Markups",
+            "project_total": "Project Total",
+            "diagram": "Pie Chart",
+        }
+
+        # ── Checkbox state containers ──
         elev_included_cbs = {}
         elev_l2_cbs = {}
         elev_l3_cbs = {}
         summary_included_cb = None
-        summary_tab_cbs = {}
+        summary_section_cbs = {}
         summary_column_cbs = {}
         summary_cost_cbs = {}
 
+        # ── Helper: make per-elevation panel ──
         def make_elev_panel(elev_name):
-            inc_cb = ft.Checkbox(label=f"Include", value=True, fill_color=COLOR_ACCENT)
+            inc_cb = ft.Checkbox(label="Include", value=True, fill_color=COLOR_ACCENT)
             elev_included_cbs[elev_name] = inc_cb
             l2 = {
-                k: ft.Checkbox(label=L2_LABELS[k], value=True, fill_color=COLOR_ACCENT)
+                k: ft.Checkbox(
+                    label=L2_LABELS[k],
+                    value=L2_DEFAULTS[k],
+                    fill_color=COLOR_ACCENT,
+                )
                 for k in L2_KEYS
             }
             l3 = {
@@ -5918,6 +5941,18 @@ def main(page: ft.Page):
                     cb.value = False
                 page.update()
 
+            # Note about qty-per-elevation columns: only relevant when elevation count > 1
+            qty_note = (
+                ft.Text(
+                    "  'Per Elevation' columns only apply when elevation count > 1",
+                    color=COLOR_TEXT_DIM,
+                    size=10,
+                    italic=True,
+                )
+                if elev_count > 1
+                else ft.Container()
+            )
+
             layer2_content = ft.Column(
                 [
                     ft.Row(
@@ -5941,26 +5976,17 @@ def main(page: ft.Page):
                         spacing=10,
                     ),
                     ft.Column([l3[k] for k in L3_KEYS], spacing=4),
+                    qty_note,
                 ],
                 spacing=8,
             )
 
             expanded_content = ft.Column(
                 [
-                    ft.Text(
-                        "Layer 2 — Subsections",
-                        size=12,
-                        weight="bold",
-                        color=COLOR_ACCENT,
-                    ),
+                    ft.Text("Sections", size=12, weight="bold", color=COLOR_ACCENT),
                     layer2_content,
                     ft.Container(height=12),
-                    ft.Text(
-                        "Layer 3 — Column headers",
-                        size=12,
-                        weight="bold",
-                        color=COLOR_ACCENT,
-                    ),
+                    ft.Text("Columns", size=12, weight="bold", color=COLOR_ACCENT),
                     layer3_content,
                 ],
                 spacing=4,
@@ -5978,39 +6004,44 @@ def main(page: ft.Page):
                 can_tap_header=True,
             )
 
+        # ── Helper: make summary panel ──
         def make_summary_panel():
             nonlocal \
                 summary_included_cb, \
-                summary_tab_cbs, \
+                summary_section_cbs, \
                 summary_column_cbs, \
                 summary_cost_cbs
             summary_included_cb = ft.Checkbox(
                 label="Include", value=True, fill_color=COLOR_ACCENT
             )
-            summary_tab_cbs = {
+            summary_section_cbs = {
                 k: ft.Checkbox(label=L2_LABELS[k], value=True, fill_color=COLOR_ACCENT)
-                for k in L2_KEYS
+                for k in SUMMARY_SECTION_KEYS
             }
             summary_column_cbs = {
                 k: ft.Checkbox(
-                    label=SUMMARY_COLUMN_LABELS[k], value=True, fill_color=COLOR_ACCENT
+                    label=SUMMARY_COLUMN_LABELS[k],
+                    value=True,
+                    fill_color=COLOR_ACCENT,
                 )
                 for k in SUMMARY_COLUMN_KEYS
             }
             summary_cost_cbs = {
                 k: ft.Checkbox(
-                    label=COST_OVERVIEW_LABELS[k], value=True, fill_color=COLOR_ACCENT
+                    label=COST_OVERVIEW_LABELS[k],
+                    value=True,
+                    fill_color=COLOR_ACCENT,
                 )
                 for k in COST_OVERVIEW_KEYS
             }
 
-            def tab_all(e):
-                for cb in summary_tab_cbs.values():
+            def sec_all(e):
+                for cb in summary_section_cbs.values():
                     cb.value = True
                 page.update()
 
-            def tab_none(e):
-                for cb in summary_tab_cbs.values():
+            def sec_none(e):
+                for cb in summary_section_cbs.values():
                     cb.value = False
                 page.update()
 
@@ -6046,23 +6077,28 @@ def main(page: ft.Page):
                 content=ft.Container(
                     content=ft.Column(
                         [
+                            # Summary material sections
                             ft.Text(
-                                "Same as elevation — subsections",
+                                "Material Sections",
                                 size=12,
                                 weight="bold",
                                 color=COLOR_ACCENT,
                             ),
                             ft.Row(
                                 [
-                                    ft.TextButton("All", on_click=tab_all),
-                                    ft.TextButton("None", on_click=tab_none),
+                                    ft.TextButton("All", on_click=sec_all),
+                                    ft.TextButton("None", on_click=sec_none),
                                 ],
                                 spacing=10,
                             ),
-                            ft.Column([summary_tab_cbs[k] for k in L2_KEYS], spacing=4),
+                            ft.Column(
+                                [summary_section_cbs[k] for k in SUMMARY_SECTION_KEYS],
+                                spacing=4,
+                            ),
                             ft.Container(height=12),
+                            # Summary columns
                             ft.Text(
-                                "Summary table — column headers",
+                                "Summary Columns",
                                 size=12,
                                 weight="bold",
                                 color=COLOR_ACCENT,
@@ -6079,8 +6115,9 @@ def main(page: ft.Page):
                                 spacing=4,
                             ),
                             ft.Container(height=12),
+                            # Cost overview
                             ft.Text(
-                                "Cost overview — additional costs, markups, diagram",
+                                "Cost Overview",
                                 size=12,
                                 weight="bold",
                                 color=COLOR_ACCENT,
@@ -6116,7 +6153,7 @@ def main(page: ft.Page):
         def apply_to_all(e):
             if not elev_names:
                 return
-            src = elev_names[0]  # Use first as template
+            src = elev_names[0]
             if src not in elev_l2_cbs or src not in elev_l3_cbs:
                 return
             for name in elev_names[1:]:
@@ -6126,15 +6163,16 @@ def main(page: ft.Page):
                 if name in elev_l3_cbs:
                     for k in L3_KEYS:
                         elev_l3_cbs[name][k].value = elev_l3_cbs[src][k].value
-            show_snack(f"Applied {src}'s sections & columns to all elevations", "green")
+            show_snack(f"Applied {src}'s settings to all elevations", "green")
             page.update()
 
+        # ── Generate handler ──
         def do_generate(e):
             temp_paths = None
             try:
                 intent = state.get("report_intent") or "excel"
                 elevations_included = (
-                    {e: elev_included_cbs[e].value for e in elev_names}
+                    {en: elev_included_cbs[en].value for en in elev_names}
                     if elev_included_cbs
                     else {}
                 )
@@ -6142,10 +6180,11 @@ def main(page: ft.Page):
                     summary_included_cb.value if summary_included_cb else True
                 )
 
+                # Read per-elevation sections and columns from checkboxes
                 per_elev_sections = {}
                 per_elev_columns = {}
                 for name in elev_names:
-                    if name not in elevations_included or not elevations_included[name]:
+                    if not elevations_included.get(name, False):
                         continue
                     per_elev_sections[name] = {
                         k: elev_l2_cbs[name][k].value for k in L2_KEYS
@@ -6154,46 +6193,48 @@ def main(page: ft.Page):
                         k: elev_l3_cbs[name][k].value for k in L3_KEYS
                     }
 
+                # Read summary options from checkboxes
                 summary_options = {}
-                if summary_included and summary_tab_cbs:
-                    summary_options["summary_tab"] = {
-                        k: summary_tab_cbs[k].value for k in L2_KEYS
-                    }
-                if summary_included and summary_column_cbs:
-                    summary_options["summary_columns"] = {
-                        k: summary_column_cbs[k].value for k in SUMMARY_COLUMN_KEYS
-                    }
-                if summary_included and summary_cost_cbs:
-                    summary_options["cost_overview"] = {
-                        k: summary_cost_cbs[k].value for k in COST_OVERVIEW_KEYS
-                    }
+                if summary_included:
+                    if summary_section_cbs:
+                        summary_options["summary_sections"] = {
+                            k: summary_section_cbs[k].value
+                            for k in SUMMARY_SECTION_KEYS
+                        }
+                    if summary_column_cbs:
+                        summary_options["summary_columns"] = {
+                            k: summary_column_cbs[k].value for k in SUMMARY_COLUMN_KEYS
+                        }
+                    if summary_cost_cbs:
+                        summary_options["cost_overview"] = {
+                            k: summary_cost_cbs[k].value for k in COST_OVERVIEW_KEYS
+                        }
 
-                # Map L2 to excel include_sections keys (labor->fabrication, diagram->diagrams, elevation_summary folded into summary)
+                # Build include_sections for Excel generator (OR across all elevations)
+                # Maps UI keys to Excel generator keys
+                _KEY_MAP = {
+                    "fabrication": "fabrication",
+                    "diagram": "diagrams",
+                }
                 include_sections = {"summary": summary_included}
                 for name, sec in per_elev_sections.items():
-                    include_sections["system_input"] = include_sections.get(
-                        "system_input", False
-                    ) or sec.get("system_input", True)
-                    include_sections["profiles"] = include_sections.get(
-                        "profiles", False
-                    ) or sec.get("profiles", True)
-                    include_sections["accessories"] = include_sections.get(
-                        "accessories", False
-                    ) or sec.get("accessories", True)
-                    include_sections["glass"] = include_sections.get(
-                        "glass", False
-                    ) or sec.get("glass", True)
-                    include_sections["gaskets"] = include_sections.get(
-                        "gaskets", False
-                    ) or sec.get("gaskets", True)
-                    include_sections["fabrication"] = include_sections.get(
-                        "fabrication", False
-                    ) or sec.get("labor", True)
-                    include_sections["diagrams"] = include_sections.get(
-                        "diagrams", False
-                    ) or sec.get("diagram", True)
-                    include_sections["doors"] = include_sections.get("doors", True)
+                    for ui_key in [
+                        "system_input",
+                        "profiles",
+                        "accessories",
+                        "gaskets",
+                        "doors",
+                        "glass",
+                        "fabrication",
+                        "diagram",
+                    ]:
+                        excel_key = _KEY_MAP.get(ui_key, ui_key)
+                        include_sections[excel_key] = include_sections.get(
+                            excel_key, False
+                        ) or sec.get(ui_key, True)
+
                 if not per_elev_sections:
+                    # No elevations selected — default all sections on
                     include_sections = {
                         k: True
                         for k in [
@@ -6217,20 +6258,21 @@ def main(page: ft.Page):
                     "summary_options": summary_options,
                 }
 
-                settings = {
-                    k: get_input_pct(k)
-                    for k in [
-                        "overhead_materials_pct",
-                        "overhead_labor_pct",
-                        "admin_management_pct",
-                        "engineering_pct",
-                        "packaging_materials_pct",
-                        "shipping_transport_pct",
-                        "commissions_pct",
-                    ]
-                }
-                save_project_settings(state["current_project"], settings)
+                # Save current percentage settings
+                existing_settings = load_project_settings(state["current_project"])
+                for k in [
+                    "overhead_materials_pct",
+                    "overhead_labor_pct",
+                    "admin_management_pct",
+                    "engineering_pct",
+                    "packaging_materials_pct",
+                    "shipping_transport_pct",
+                    "commissions_pct",
+                ]:
+                    existing_settings[k] = get_input_pct(k)
+                save_project_settings(state["current_project"], existing_settings)
 
+                # Prepare temp files and generate Excel
                 temp_paths = prepare_temp_files_for_excel(
                     state["current_project"],
                     elevations_override=state.get("saved_elevations"),
@@ -6239,7 +6281,7 @@ def main(page: ft.Page):
                 out = os.path.join("reports", f"{state['current_project']}_{ts}.xlsx")
                 os.makedirs("reports", exist_ok=True)
 
-                generate_excel_report(
+                report_data = generate_excel_report(
                     out,
                     temp_paths["elevations"],
                     temp_paths["materials"],
@@ -6265,6 +6307,15 @@ def main(page: ft.Page):
                 )
                 sync_from_temp_files(state["current_project"], temp_paths)
 
+                # Attach report_options and project_name to report_data for PDF
+                if report_data is not None:
+                    report_data["report_options"] = report_config
+                    report_data["project_name"] = state["current_project"]
+                    # Save report_data to DB for later use
+                    rd_settings = load_project_settings(state["current_project"])
+                    rd_settings["report_data"] = report_data
+                    save_project_settings(state["current_project"], rd_settings)
+
                 if intent == "pdf":
                     if not REPORTLAB_AVAILABLE:
                         show_snack(
@@ -6272,8 +6323,13 @@ def main(page: ft.Page):
                             "red",
                         )
                         return
+                    if report_data is None:
+                        show_snack("Excel generation failed — cannot create PDF", "red")
+                        return
                     pdf_path = export_project_to_pdf(
-                        state["current_project"], excel_path=out, include_logo=True
+                        state["current_project"],
+                        report_data=report_data,
+                        include_logo=True,
                     )
                     if os.path.exists(pdf_path):
                         show_snack(f"PDF exported: {pdf_path}", "green")
@@ -6309,7 +6365,7 @@ def main(page: ft.Page):
                             icon_color=COLOR_TEXT,
                         ),
                         ft.Text(
-                            "Report Stock List — Choose Sections",
+                            "Report Stock List",
                             size=20,
                             weight="bold",
                             color=COLOR_TEXT,
@@ -6317,9 +6373,9 @@ def main(page: ft.Page):
                     ],
                     spacing=10,
                 ),
-                ft.Container(height=12),
+                ft.Container(height=8),
                 ft.Text(
-                    "Layer 1: Select elevations and Summary to include. Expand each to configure subsections and column headers.",
+                    "Select which elevations and Summary to include, then expand to configure sections and columns.",
                     color=COLOR_TEXT_DIM,
                     size=12,
                 ),
@@ -6329,7 +6385,7 @@ def main(page: ft.Page):
                 ft.Row(
                     [
                         ft.OutlinedButton(
-                            "Apply first elevation's sections & columns to all",
+                            "Apply first elevation to all",
                             on_click=apply_to_all,
                         )
                         if elev_count > 1
