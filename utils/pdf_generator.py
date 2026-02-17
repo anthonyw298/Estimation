@@ -20,7 +20,6 @@ try:
         Spacer,
         Image,
         PageBreak,
-        KeepTogether,
     )
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
@@ -87,37 +86,91 @@ def _create_pdf_table(
     if not table_data or not headers:
         return elements
 
+    num_cols = len(headers)
+    total_width = 7.2 * inch
+
+    # Scale font down for wide tables so cells don't exceed page height
+    if num_cols >= 10:
+        font_size = 5
+    elif num_cols >= 8:
+        font_size = 6
+    elif num_cols >= 6:
+        font_size = 7
+    else:
+        font_size = 8
+
+    cell_style = ParagraphStyle(
+        "CellStyle",
+        parent=normal_style,
+        fontSize=font_size,
+        leading=font_size + 2,
+    )
+    cell_style_bold = ParagraphStyle(
+        "CellStyleBold",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+    )
+
+    # Abbreviation map for wide table headers
+    _HEADER_ABBREV = {
+        "Project Total Materials": "Proj Total",
+        "Total Quantity Required": "Total Qty",
+        "Total Feet Required": "Total FT",
+        "Total Pieces Required": "Total PCS",
+        "Total List Cost": "List Cost",
+        "Discounted Total List Cost": "Disc. Cost",
+        "Discounted Total Cost": "Disc. Cost",
+        "Residual Material Quantity": "Resid. Qty",
+        "Residual Qty": "Res. Qty",
+        "Residual Material Cost": "Resid. Cost",
+        "Residual Cost": "Res. $",
+        "Sticks Required": "Sticks",
+        "Quantity Per Order": "Qty/Ord",
+        "Orders Required": "Orders",
+        "Rolls Required": "Rolls",
+        "Qty Per Elevation": "Qty/Elev",
+        "List Cost Per Elev": "List/Elev",
+        "Discounted Per Elev": "Disc/Elev",
+        "Part Number": "Part #",
+        "Waste %": "W%",
+        "Unit Price": "Unit $",
+    }
+
+    # Max chars for description column (col 0) — scales with column count
+    if num_cols >= 8:
+        max_desc_chars = 35
+    elif num_cols >= 6:
+        max_desc_chars = 50
+    else:
+        max_desc_chars = 100
+
+    # Max chars for data columns (non-description)
+    max_data_chars = 18 if num_cols >= 8 else 25
+
     full_data = []
 
-    # Header row with wrapping
+    # Header row — use abbreviated labels for wide tables
     wrapped_headers = []
     for h in headers:
         if h:
-            if len(str(h)) > 20:
-                words = str(h).split()
-                lines, current = [], ""
-                for word in words:
-                    test = current + " " + word if current else word
-                    if len(test) <= 20:
-                        current = test
-                    else:
-                        if current:
-                            lines.append(current)
-                        current = word
-                if current:
-                    lines.append(current)
-                wrapped_headers.append(Paragraph("<br/>".join(lines), normal_style))
-            else:
-                wrapped_headers.append(Paragraph(str(h), normal_style))
+            h_str = str(h)
+            # Abbreviate headers in wide tables
+            if num_cols >= 6 and len(h_str) > 10:
+                h_str = _HEADER_ABBREV.get(h_str, h_str[:12])
+            elif num_cols >= 5 and len(h_str) > 18:
+                h_str = _HEADER_ABBREV.get(h_str, h_str[:18])
+            # Use plain string for header — no Paragraph wrapping
+            wrapped_headers.append(h_str)
         else:
             wrapped_headers.append("")
     full_data.append(wrapped_headers)
 
-    # Data rows
+    # Data rows — use plain strings (NOT Paragraph) for data columns.
+    # Only column 0 (description) uses Paragraph for controlled wrapping.
     for row in table_data:
         formatted = []
         for i, cell in enumerate(row):
-            if i >= len(headers):
+            if i >= num_cols:
                 break
             cell_value = cell
             is_bold = False
@@ -125,25 +178,31 @@ def _create_pdf_table(
                 cell_value, is_bold = cell
             if cell_value is not None:
                 cell_str = str(cell_value).strip()
-                if cell_str:
-                    if is_bold:
-                        formatted.append(Paragraph(f"<b>{cell_str}</b>", normal_style))
+                if i == 0:
+                    # Description column: use Paragraph for wrapping
+                    if len(cell_str) > max_desc_chars:
+                        cell_str = cell_str[: max_desc_chars - 2] + ".."
+                    if cell_str:
+                        style = cell_style_bold if is_bold else cell_style
+                        formatted.append(Paragraph(cell_str, style))
                     else:
-                        formatted.append(Paragraph(cell_str, normal_style))
+                        formatted.append("")
                 else:
-                    formatted.append("")
+                    # Data columns: plain string — no Paragraph, no wrapping
+                    if len(cell_str) > max_data_chars:
+                        cell_str = cell_str[: max_data_chars - 2] + ".."
+                    formatted.append(cell_str)
             else:
                 formatted.append("")
-        while len(formatted) < len(headers):
+        while len(formatted) < num_cols:
             formatted.append("")
-        full_data.append(formatted[: len(headers)])
+        full_data.append(formatted[:num_cols])
 
     if len(full_data) <= 1:
         return elements
 
-    num_cols = len(headers)
-    total_width = 7.2 * inch
-
+    # Column widths — give description more room, enforce a minimum for others
+    min_col_width = 0.5 * inch
     if num_cols <= 3:
         col_widths = [total_width / num_cols] * num_cols
     elif num_cols <= 5:
@@ -151,27 +210,33 @@ def _create_pdf_table(
         other_width = (total_width - desc_width) / (num_cols - 1)
         col_widths = [desc_width] + [other_width] * (num_cols - 1)
     else:
-        desc_width = total_width * 0.22
-        other_width = (total_width - desc_width) / (num_cols - 1)
-        col_widths = [desc_width] + [other_width] * (num_cols - 1)
+        # Equal split but give description 1.5x share
+        share = total_width / (num_cols + 0.5)
+        desc_width = share * 1.5
+        other_width = share
+        if other_width < min_col_width:
+            other_width = min_col_width
+            desc_width = total_width - other_width * (num_cols - 1)
+        if desc_width < min_col_width:
+            col_widths = [total_width / num_cols] * num_cols
+        else:
+            col_widths = [desc_width] + [other_width] * (num_cols - 1)
 
     table_style = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8E8E8")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1A1A1A")),
         ("ALIGN", (0, 0), (-1, 0), "LEFT"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-        ("TOPPADDING", (0, 0), (-1, 0), 6),
-        ("LEFTPADDING", (0, 0), (-1, 0), 4),
-        ("RIGHTPADDING", (0, 0), (-1, 0), 4),
+        ("FONTSIZE", (0, 0), (-1, 0), font_size),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+        ("TOPPADDING", (0, 0), (-1, 0), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 8),
-        ("TOPPADDING", (0, 1), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-        ("LEFTPADDING", (0, 1), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 1), (-1, -1), 4),
+        ("FONTSIZE", (0, 1), (-1, -1), font_size),
+        ("TOPPADDING", (0, 1), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
         ("VALIGN", (0, 1), (-1, -1), "TOP"),
         (
             "ROWBACKGROUNDS",
@@ -189,17 +254,14 @@ def _create_pdf_table(
     )
     tbl.setStyle(TableStyle(table_style))
 
+    # NEVER use KeepTogether — it causes "Flowable too large" crashes
+    # when the wrapped content exceeds page frame height.
     if section_header and section_style:
-        keep = [
-            Paragraph(f"<b>{section_header}</b>", section_style),
-            Spacer(1, 0.1 * inch),
-            tbl,
-        ]
-        elements.append(KeepTogether(keep))
-        elements.append(Spacer(1, 0.2 * inch))
-    else:
-        elements.append(tbl)
-        elements.append(Spacer(1, 0.2 * inch))
+        header_para = Paragraph(f"<b>{section_header}</b>", section_style)
+        elements.append(header_para)
+        elements.append(Spacer(1, 0.1 * inch))
+    elements.append(tbl)
+    elements.append(Spacer(1, 0.2 * inch))
 
     return elements
 
@@ -864,8 +926,72 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                     except Exception:
                         pass
 
-    # Build PDF
-    doc.build(story)
+    # Build PDF — with retry on "Flowable too large" errors.
+    # If the first attempt fails, strip all Paragraph objects from the story
+    # and rebuild using plain-string tables only.
+    try:
+        doc.build(story)
+    except Exception as build_err:
+        err_msg = str(build_err).lower()
+        if "flowable" not in err_msg and "too large" not in err_msg:
+            raise  # Not a flowable error — re-raise as-is
+
+        print(f"[WARN] PDF build failed ({build_err}), retrying with plain tables...")
+        # Rebuild: replace every Table in story with a plain-string version
+        plain_story = []
+        for elem in story:
+            if isinstance(elem, Table):
+                try:
+                    raw = elem._cellvalues  # internal reportlab attribute
+                    plain_rows = []
+                    for row in raw:
+                        plain_row = []
+                        for cell in row:
+                            if hasattr(cell, "text"):
+                                plain_row.append(cell.text)
+                            elif isinstance(cell, str):
+                                plain_row.append(cell)
+                            else:
+                                plain_row.append(str(cell) if cell else "")
+                        plain_rows.append(plain_row)
+                    num_c = len(plain_rows[0]) if plain_rows else 1
+                    tw = 7.2 * inch
+                    cw = [tw / num_c] * num_c
+                    plain_tbl = Table(
+                        plain_rows, colWidths=cw, repeatRows=1, splitByRow=True
+                    )
+                    plain_tbl.setStyle(
+                        TableStyle(
+                            [
+                                ("FONTSIZE", (0, 0), (-1, -1), 6),
+                                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                            ]
+                        )
+                    )
+                    plain_story.append(plain_tbl)
+                except Exception:
+                    pass  # skip tables that can't be converted
+            else:
+                plain_story.append(elem)
+        # Re-create doc (first build consumed it)
+        doc2 = SimpleDocTemplate(
+            pdf_path,
+            pagesize=letter,
+            rightMargin=0.4 * inch,
+            leftMargin=0.4 * inch,
+            topMargin=0.75 * inch,
+            bottomMargin=0.5 * inch,
+        )
+        doc2.build(plain_story)
+        print(f"[OK] PDF exported (plain fallback) to: {pdf_path}")
+        return pdf_path
+
     print(f"[OK] PDF exported to: {pdf_path}")
     return pdf_path
 

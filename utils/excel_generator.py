@@ -798,20 +798,24 @@ def _write_output_section(
                         f"{qty_raw[0]:.2f} {display_unit} x {len(qty_raw)}"
                     )
             else:
-                # For profiles, show individual cuts without decimals when whole numbers, with decimals otherwise
-                if is_profile:
-                    display_qty_string = ", ".join(
-                        [
-                            f"{int(q)}{display_unit}"
-                            if q == int(q)
-                            else f"{q:.2f}{display_unit}"
-                            for q in qty_raw
-                        ]
-                    )
-                else:
-                    display_qty_string = ", ".join(
-                        [f"{q:.2f} {display_unit}" for q in qty_raw]
-                    )
+                # Group identical values with Counter: "3ft x2, 8ft x1"
+                length_counter = Counter([round(q, 2) for q in qty_raw])
+                parts = []
+                for length_val, count in sorted(
+                    length_counter.items(), key=lambda x: x[0], reverse=True
+                ):
+                    if is_profile:
+                        if length_val == int(length_val):
+                            lbl = f"{int(length_val)}{display_unit}"
+                        else:
+                            lbl = f"{length_val:.2f}{display_unit}"
+                    else:
+                        lbl = f"{length_val:.2f} {display_unit}"
+                    if count > 1:
+                        parts.append(f"{lbl} x{count}")
+                    else:
+                        parts.append(lbl)
+                display_qty_string = ", ".join(parts)
         else:
             # For profiles, show without decimals when whole number
             if is_profile and qty_raw == int(qty_raw):
@@ -4375,8 +4379,9 @@ def generate_excel_report(
             _rd_section_totals["glass"] = _glass_totals_accum
             _rd_section_totals["fabrication"] = _fab_totals_accum
 
-            # Build cost_summary from section_totals (always computed, even for
-            # hidden sections) so that report_data always has real costs.
+            # Build cost_summary from section_totals.
+            # Each section's cost is always computed and stored, but only
+            # sections that are checked in elev_inc contribute to the total.
             _cs = {}
             _cs_total = 0.0
             _cs_total_per_elev = 0.0
@@ -4396,8 +4401,10 @@ def generate_excel_report(
                     _per = _total / _tc
                 _cs[f"{_cslabel}_total_cost"] = _total
                 _cs[f"{_cslabel}_cost_per_elev"] = _per
-                _cs_total += _total
-                _cs_total_per_elev += _per
+                # Only add to elevation total if this section is included
+                if elev_inc.get(_csk, True):
+                    _cs_total += _total
+                    _cs_total_per_elev += _per
             _cs["total_elevation_cost"] = _cs_total
             _cs["total_cost_per_elev"] = _cs_total_per_elev
 
