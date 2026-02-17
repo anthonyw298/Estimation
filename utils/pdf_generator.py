@@ -471,7 +471,9 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
             )
 
         # --- Elevation Cost Summary ---
-        if elev_sec.get("elevation_summary", True):
+        if elev_sec.get(
+            "elevation_cost_summary", elev_sec.get("elevation_summary", True)
+        ):
             cs = elev_data.get("cost_summary", {})
             if cs:
                 cs_headers = ["Category"]

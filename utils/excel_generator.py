@@ -1320,12 +1320,15 @@ def create_summary_sheet(
     wb=None,
     summary_settings_path=None,
     summary_options=None,
+    report_config=None,
 ):
     """
     Reads elevation data, aggregates quantities and prices by part number across all elevations,
     and writes a clean summary section into the worksheet, grouped by profiles, accessories, doors, glass, and labor.
     summary_options: optional dict with "summary_tab" (aggregated_stock, elevation_totals) and "cost_overview" (additional_costs, markups, diagram).
-    When provided, conditionally include sections based on these flags.
+    When provided, conditionally include/hide display sections based on these flags.
+    report_config: optional dict from stock list UI. Stock list controls are display-only;
+    all calculations always include every elevation and every section so totals remain accurate.
     """
     try:
         with open(elevations_json_path, "r") as f:
@@ -1363,6 +1366,7 @@ def create_summary_sheet(
     show_elevation_totals = stab.get("elevation_summary", True)
     show_additional_costs = cov.get("additional_costs", True)
     show_markups = cov.get("markups", True)
+    show_project_total = cov.get("project_total", True)
     show_diagram = cov.get("diagram", True)
 
     # Summary column filtering from Stock List checkboxes
@@ -1380,10 +1384,9 @@ def create_summary_sheet(
         3: scols.get("sticks_required", True)
         or scols.get("quantity_per_order", True)
         or scols.get("rolls_required", True)
-        or scols.get("unit_price", True)
-        or scols.get("qty_stick_req", True),
+        or scols.get("unit_price", True),
         4: scols.get("total_quantity_required", True)
-        or scols.get("quantity_req_ft", True),
+        or scols.get("orders_required", True),
         5: scols.get("total_list_cost", True),
         6: scols.get("discounted_total_list_cost", True),
         7: scols.get("residual_material_quantity", True),
@@ -1427,6 +1430,7 @@ def create_summary_sheet(
                 pass
 
     # Step 1: Calculate full_running_grand_total for multiplier
+    # Always includes ALL elevations and ALL sections — stock list controls are display-only
     full_running_grand_total = 0.0
     for elev_key, elev in data.items():
         elevation_finish = elev.get("finish", "").lower()
@@ -1458,6 +1462,7 @@ def create_summary_sheet(
     multiplier = _get_multiplier(full_running_grand_total, pricing_settings)
 
     # Step 2: Aggregate quantities and prices across all elevations, grouped by category
+    # Always aggregates ALL elevations and ALL sections — stock list controls are display-only.
     categories = {
         "PROFILES": [],
         "ACCESSORIES": [],
@@ -2086,12 +2091,10 @@ def create_summary_sheet(
         if not items:
             continue
         if not show_category.get(category, True):
-            # Still compute category_totals for markups, but don't write to sheet
-            section_original_total = sum(
-                item["original_total_cost"]
-                for item in final_summary_data
-                if item["category"] == category
-            )
+            # Category unchecked in the stock list — still compute and STORE
+            # category_totals (data is preserved for report_data / PDF), but
+            # do NOT add to grand totals so the cost overview and grand total
+            # only reflect sections the user chose to include.
             section_total_cost = sum(
                 item["total_cost"]
                 for item in final_summary_data
@@ -2102,9 +2105,6 @@ def create_summary_sheet(
                 for item in final_summary_data
                 if item["category"] == category
             )
-            grand_original_total += section_original_total
-            grand_discounted_total += section_total_cost
-            grand_residual_total += section_residual_total
             if category in category_totals:
                 category_totals[category]["discounted"] = section_total_cost
                 category_totals[category]["residual"] = section_residual_total
@@ -2227,36 +2227,13 @@ def create_summary_sheet(
     # ============================================================================
     gt_row = current_row + 2
 
-    # Calculate discounted total from column G (adjusted for elevation summary offset)
-    discounted_total_col = category_start_col + 6  # Column G was 7, now shifted
-    sum_from_column_g = 0.0
-    try:
-        for row in range(1, gt_row):
-            label_cell = ws.cell(
-                row=row, column=category_start_col + 4
-            )  # Column E was 5, now shifted
-            value_cell = ws.cell(row=row, column=discounted_total_col)
-            if label_cell.value and isinstance(label_cell.value, str):
-                if "Total" in label_cell.value and "Cost" in label_cell.value:
-                    if value_cell.value is not None:
-                        try:
-                            sum_from_column_g += float(value_cell.value)
-                            print(
-                                f"Found section total '{label_cell.value}' in row {row}, column 7: ${value_cell.value}"
-                            )
-                        except (ValueError, TypeError):
-                            pass
-    except Exception as e:
-        print(f"Error reading from column G: {e}")
-        sum_from_column_g = 0.0
-
-    final_discounted_total = (
-        sum_from_column_g if sum_from_column_g > 0 else grand_discounted_total
+    # grand_discounted_total only includes sections that the user checked in the
+    # stock list (show_category).  Hidden sections are still stored in category_totals
+    # for report_data / PDF, but excluded from the displayed grand total.
+    final_discounted_total = grand_discounted_total
+    print(
+        f"Summary discounted total (included sections only): ${final_discounted_total:.2f}"
     )
-    if sum_from_column_g > 0:
-        print(
-            f"Summary discounted total from column G: ${sum_from_column_g:.2f}, calculated: ${grand_discounted_total:.2f}, using: ${final_discounted_total:.2f}"
-        )
 
     reuse_total = total_reusable_cost
     reuse_pct_of_gt = min(
@@ -2615,7 +2592,7 @@ def create_summary_sheet(
         total_sqft = 0.0
         total_perimeter = 0.0
 
-        # Data rows
+        # Data rows — always includes ALL elevations (stock list is display-only)
         for elev_key, elev in data.items():
             col_idx = 0
             if elevation_summary_settings["show_elevation_names"]:
@@ -3092,125 +3069,140 @@ def create_summary_sheet(
     final_total_row = markup_end_row + 2
     final_total_amount = final_discounted_safe + summary_total + markup_total
 
-    # Header row with dark background (shifted right if elevation summary exists)
-    ws.cell(
-        row=final_total_row, column=category_start_col, value="PROJECT TOTAL"
-    ).font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
-        start_color="2F5496", end_color="2F5496", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(
-        left=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
-        start_color="2F5496", end_color="2F5496", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
-        top=Side(style="medium"), bottom=Side(style="thin")
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
-        start_color="2F5496", end_color="2F5496", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-        right=Side(style="medium"), top=Side(style="medium"), bottom=Side(style="thin")
-    )
+    if show_project_total:
+        # Header row with dark background (shifted right if elevation summary exists)
+        ws.cell(
+            row=final_total_row, column=category_start_col, value="PROJECT TOTAL"
+        ).font = Font(bold=True, size=11, color="FFFFFF")
+        ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
+            start_color="2F5496", end_color="2F5496", fill_type="solid"
+        )
+        ws.cell(row=final_total_row, column=category_start_col).border = Border(
+            left=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
+            start_color="2F5496", end_color="2F5496", fill_type="solid"
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
+            top=Side(style="medium"), bottom=Side(style="thin")
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
+            start_color="2F5496", end_color="2F5496", fill_type="solid"
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+            right=Side(style="medium"),
+            top=Side(style="medium"),
+            bottom=Side(style="thin"),
+        )
 
-    # Light fill for alternating rows
-    light_fill = PatternFill(
-        start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"
-    )
+        # Light fill for alternating rows
+        light_fill = PatternFill(
+            start_color="D6DCE4", end_color="D6DCE4", fill_type="solid"
+        )
 
-    # Discounted Total row
-    final_total_row += 1
-    ws.cell(row=final_total_row, column=category_start_col, value="Discounted Total:")
-    ws.cell(row=final_total_row, column=category_start_col).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(
-        left=Side(style="medium")
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 1).fill = light_fill
-    ws.cell(
-        row=final_total_row, column=category_start_col + 2, value=final_discounted_safe
-    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
-        horizontal="right"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-        right=Side(style="medium")
-    )
-
-    # Additional cost Total row (only if additional costs are enabled)
-    if show_additional_costs and summary_total > 0:
+        # Discounted Total row
         final_total_row += 1
-        ws.cell(row=final_total_row, column=category_start_col, value="+ Additional:")
+        ws.cell(
+            row=final_total_row, column=category_start_col, value="Discounted Total:"
+        )
+        ws.cell(row=final_total_row, column=category_start_col).fill = light_fill
         ws.cell(row=final_total_row, column=category_start_col).border = Border(
             left=Side(style="medium")
         )
+        ws.cell(row=final_total_row, column=category_start_col + 1).fill = light_fill
         ws.cell(
-            row=final_total_row, column=category_start_col + 2, value=summary_total
+            row=final_total_row,
+            column=category_start_col + 2,
+            value=final_discounted_safe,
         ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
         ws.cell(
             row=final_total_row, column=category_start_col + 2
         ).alignment = Alignment(horizontal="right")
+        ws.cell(row=final_total_row, column=category_start_col + 2).fill = light_fill
         ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
             right=Side(style="medium")
         )
 
-    # Markup Total row (only if markups are enabled)
-    if show_markups and markup_total > 0:
+        # Additional cost Total row (only if additional costs are enabled)
+        if show_additional_costs and summary_total > 0:
+            final_total_row += 1
+            ws.cell(
+                row=final_total_row, column=category_start_col, value="+ Additional:"
+            )
+            ws.cell(row=final_total_row, column=category_start_col).border = Border(
+                left=Side(style="medium")
+            )
+            ws.cell(
+                row=final_total_row, column=category_start_col + 2, value=summary_total
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=final_total_row, column=category_start_col + 2
+            ).alignment = Alignment(horizontal="right")
+            ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+                right=Side(style="medium")
+            )
+
+        # Markup Total row (only if markups are enabled)
+        if show_markups and markup_total > 0:
+            final_total_row += 1
+            ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
+            ws.cell(row=final_total_row, column=category_start_col).border = Border(
+                left=Side(style="medium")
+            )
+            ws.cell(
+                row=final_total_row, column=category_start_col + 2, value=markup_total
+            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+            ws.cell(
+                row=final_total_row, column=category_start_col + 2
+            ).alignment = Alignment(horizontal="right")
+            ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
+                right=Side(style="medium")
+            )
+
+        # Grand Total row (bold, highlighted with dark background)
         final_total_row += 1
-        ws.cell(row=final_total_row, column=category_start_col, value="+ Markups:")
+        ws.cell(
+            row=final_total_row, column=category_start_col, value="GRAND TOTAL:"
+        ).font = Font(bold=True, size=11, color="FFFFFF")
+        ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
+            start_color="203764", end_color="203764", fill_type="solid"
+        )
         ws.cell(row=final_total_row, column=category_start_col).border = Border(
-            left=Side(style="medium")
+            left=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
+            start_color="203764", end_color="203764", fill_type="solid"
+        )
+        ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
+            top=Side(style="thin"), bottom=Side(style="medium")
         )
         ws.cell(
-            row=final_total_row, column=category_start_col + 2, value=markup_total
+            row=final_total_row, column=category_start_col + 2, value=final_total_amount
         ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+        ws.cell(row=final_total_row, column=category_start_col + 2).font = Font(
+            bold=True, size=11, color="FFFFFF"
+        )
         ws.cell(
             row=final_total_row, column=category_start_col + 2
         ).alignment = Alignment(horizontal="right")
+        ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
+            start_color="203764", end_color="203764", fill_type="solid"
+        )
         ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-            right=Side(style="medium")
+            right=Side(style="medium"),
+            top=Side(style="thin"),
+            bottom=Side(style="medium"),
         )
 
-    # Grand Total row (bold, highlighted with dark background)
-    final_total_row += 1
-    ws.cell(
-        row=final_total_row, column=category_start_col, value="GRAND TOTAL:"
-    ).font = Font(bold=True, size=11, color="FFFFFF")
-    ws.cell(row=final_total_row, column=category_start_col).fill = PatternFill(
-        start_color="203764", end_color="203764", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col).border = Border(
-        left=Side(style="medium"), top=Side(style="thin"), bottom=Side(style="medium")
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 1).fill = PatternFill(
-        start_color="203764", end_color="203764", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 1).border = Border(
-        top=Side(style="thin"), bottom=Side(style="medium")
-    )
-    ws.cell(
-        row=final_total_row, column=category_start_col + 2, value=final_total_amount
-    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-    ws.cell(row=final_total_row, column=category_start_col + 2).font = Font(
-        bold=True, size=11, color="FFFFFF"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).alignment = Alignment(
-        horizontal="right"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).fill = PatternFill(
-        start_color="203764", end_color="203764", fill_type="solid"
-    )
-    ws.cell(row=final_total_row, column=category_start_col + 2).border = Border(
-        right=Side(style="medium"), top=Side(style="thin"), bottom=Side(style="medium")
-    )
-
-    # Ensure value column is wide enough for currency (prevents "########" display)
-    total_value_col = get_column_letter(category_start_col + 2)
-    ws.column_dimensions[total_value_col].width = max(
-        ws.column_dimensions[total_value_col].width or 0, 14
-    )
+        # Ensure value column is wide enough for currency (prevents "########" display)
+        total_value_col = get_column_letter(category_start_col + 2)
+        ws.column_dimensions[total_value_col].width = max(
+            ws.column_dimensions[total_value_col].width or 0, 14
+        )
 
     # ============================================================================
     # PIE CHART - Cost Distribution (placed at specific location)
@@ -3293,7 +3285,7 @@ def create_summary_sheet(
             "residual": category_totals[cat_name].get("residual", 0),
         }
 
-    # Elevation summary data
+    # Elevation summary data — always includes ALL elevations (stock list is display-only)
     _elev_summary = []
     _elev_summary_totals = {"total_qty": 0, "total_sqft": 0, "total_perimeter": 0}
     for elev_key, elev in data.items():
@@ -3675,6 +3667,9 @@ def generate_excel_report(
                     "fabrication", pe_sec.get("labor", True)
                 )
                 elev_inc["diagrams"] = pe_sec.get("diagram", True)
+                elev_inc["elevation_cost_summary"] = pe_sec.get(
+                    "elevation_cost_summary", False
+                )
             pe_col = (
                 report_config.get("per_elevation_columns", {}).get(elev_name)
                 if report_config
@@ -3682,17 +3677,24 @@ def generate_excel_report(
             )
             if pe_col:
                 elev_data = dict(elev_data)
-                elev_data["show_qty_per_elevation"] = pe_col.get(
-                    "quantity_per_elevation", True
+                # pe_col is {section_key: {col_key: bool}} — per-section column configs
+                # Derive per-elevation display flags by OR-ing across all sections
+                _section_dicts = [sc for sc in pe_col.values() if isinstance(sc, dict)]
+
+                def _any_col(key):
+                    if not _section_dicts:
+                        return True  # Default to show if no config
+                    return any(sc.get(key, True) for sc in _section_dicts)
+
+                elev_data["show_qty_per_elevation"] = _any_col("quantity_per_elevation")
+                elev_data["show_total_cost_per_elevation"] = _any_col(
+                    "total_list_cost_per_elevation"
                 )
-                elev_data["show_total_cost_per_elevation"] = pe_col.get(
-                    "total_list_cost_per_elevation", True
+                elev_data["show_discounted_cost_per_elevation"] = _any_col(
+                    "discounted_total_list_cost_per_elevation"
                 )
-                elev_data["show_discounted_cost_per_elevation"] = pe_col.get(
-                    "discounted_total_list_cost_per_elevation", True
-                )
-                # Store full column config for _write_output_section
-                elev_data["_column_config"] = pe_col
+                # Store per-section column configs for _write_output_section
+                elev_data["_per_section_column_config"] = pe_col
 
             # Create a fresh extra_materials state for this elevation (no leftovers from other elevations)
             # This ensures each elevation is calculated independently
@@ -3940,7 +3942,7 @@ def generate_excel_report(
                 "show_discounted_cost_per_elevation", False
             )
             elev_total_count = elev_data.get("total_count", 1)
-            elev_column_config = elev_data.get("_column_config", None)
+            _per_section_col_cfg = elev_data.get("_per_section_column_config", None)
 
             # --- Scratch worksheet for computing totals of hidden sections ---
             _scratch_ws_name = "_scratch_tmp_"
@@ -3951,7 +3953,13 @@ def generate_excel_report(
             # Helper: call _write_output_section, writing to real ws when
             # enabled and to scratch ws when disabled (so totals are always
             # computed).  Returns (next_row, impacts, section_totals).
-            def _call_section(title, items, target_ws, start_row, finish=None):
+            def _call_section(
+                title, items, target_ws, start_row, finish=None, section_key=None
+            ):
+                # Get section-specific column config if available
+                sec_col_config = None
+                if _per_section_col_cfg and section_key:
+                    sec_col_config = _per_section_col_cfg.get(section_key)
                 return _write_output_section(
                     target_ws,
                     title,
@@ -3968,71 +3976,77 @@ def generate_excel_report(
                     total_count=elev_total_count,
                     show_total_cost_per_elevation=show_total_cost_per_elev,
                     show_discounted_cost_per_elevation=show_discounted_cost_per_elev,
-                    column_config=elev_column_config,
+                    column_config=sec_col_config,
                 )
-
-            # Track totals row numbers for reading from Excel columns
-            profile_totals_row = None
-            accessory_totals_row = None
-            gasket_totals_row = None
-            door_totals_row = None
 
             _row = output_section_current_row
 
             # --- PROFILES ---
             if elev_inc["profiles"]:
                 next_row_after_profiles, impacts_p, profile_totals = _call_section(
-                    "PROFILES", profiles_for_section, ws, _row
+                    "PROFILES", profiles_for_section, ws, _row, section_key="profiles"
                 )
                 _row = next_row_after_profiles
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
-                profile_totals_row = (_row - 1) if profiles_for_section else None
             else:
-                # Hidden: compute on scratch ws for report_data costs
+                # Hidden: compute on scratch ws so totals are still available
                 _, impacts_p, profile_totals = _call_section(
-                    "PROFILES", profiles_for_section, _scratch_ws, 1
+                    "PROFILES",
+                    profiles_for_section,
+                    _scratch_ws,
+                    1,
+                    section_key="profiles",
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_p)
 
             # --- ACCESSORIES ---
             if elev_inc["accessories"]:
                 next_row_after_accessories, impacts_a, accessory_totals = _call_section(
-                    "ACCESSORIES", accessories_for_section, ws, _row
+                    "ACCESSORIES",
+                    accessories_for_section,
+                    ws,
+                    _row,
+                    section_key="accessories",
                 )
                 _row = next_row_after_accessories
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
-                accessory_totals_row = (_row - 1) if accessories_for_section else None
             else:
                 _, impacts_a, accessory_totals = _call_section(
-                    "ACCESSORIES", accessories_for_section, _scratch_ws, 1
+                    "ACCESSORIES",
+                    accessories_for_section,
+                    _scratch_ws,
+                    1,
+                    section_key="accessories",
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_a)
 
             # --- GASKETS ---
             if elev_inc["gaskets"]:
                 next_row_after_gaskets, impacts_g, gasket_totals = _call_section(
-                    "GASKETS", gaskets_for_section, ws, _row
+                    "GASKETS", gaskets_for_section, ws, _row, section_key="gaskets"
                 )
                 _row = next_row_after_gaskets
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
-                gasket_totals_row = (_row - 1) if gaskets_for_section else None
             else:
                 _, impacts_g, gasket_totals = _call_section(
-                    "GASKETS", gaskets_for_section, _scratch_ws, 1
+                    "GASKETS",
+                    gaskets_for_section,
+                    _scratch_ws,
+                    1,
+                    section_key="gaskets",
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
 
             # --- DOORS ---
             if elev_inc["doors"]:
                 next_row_after_doors, impacts_d, door_totals = _call_section(
-                    "DOORS", doors_for_section, ws, _row
+                    "DOORS", doors_for_section, ws, _row, section_key="doors"
                 )
                 _row = next_row_after_doors
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
-                door_totals_row = (_row - 1) if doors_for_section else None
             else:
                 _, impacts_d, door_totals = _call_section(
-                    "DOORS", doors_for_section, _scratch_ws, 1
+                    "DOORS", doors_for_section, _scratch_ws, 1, section_key="doors"
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_d)
 
@@ -4076,8 +4090,14 @@ def generate_excel_report(
                 else:
                     target = _scratch_ws
                     start = 1
+                _grp_sec_key = "glass" if is_glass_group else "fabrication"
                 next_row_after_group, impacts_g, group_totals = _call_section(
-                    grp_title, grp_items, target, start, finish=None
+                    grp_title,
+                    grp_items,
+                    target,
+                    start,
+                    finish=None,
+                    section_key=_grp_sec_key,
                 )
                 newly_calculated_material_impacts_for_this_elevation.extend(impacts_g)
                 if _glass_enabled or _fab_enabled:
@@ -4151,322 +4171,167 @@ def generate_excel_report(
                         f"DEBUG: Merged quantity for {key}: {overall_current_extra_materials_state[key]['quantity']}"
                     )
 
-            # Create cost breakdown summary table
-            # Use the explicitly tracked row position after the last section
-            # Add spacing: explicitly create blank rows
-            spacing_rows = 1  # Number of blank rows before cost summary (row 39 -> row 43 for headers)
+            # Create cost breakdown summary table (only if elevation_cost_summary is enabled)
+            _show_elev_cost_summary = elev_inc.get("elevation_cost_summary", True)
 
-            # Explicitly create blank rows by writing empty cells to ensure rows exist
-            for blank_row in range(1, spacing_rows + 1):
-                # Write empty cell to ensure row exists in Excel
-                ws.cell(row=current_section_row + blank_row, column=COL_A, value="")
+            if _show_elev_cost_summary:
+                # Use the explicitly tracked row position after the last section
+                # Add spacing: explicitly create blank rows
+                spacing_rows = 1
 
-            # Headers start after all spacing rows, with one additional blank row
-            cost_summary_row = current_section_row + spacing_rows + 1
+                # Explicitly create blank rows by writing empty cells to ensure rows exist
+                for blank_row in range(1, spacing_rows + 1):
+                    ws.cell(row=current_section_row + blank_row, column=COL_A, value="")
 
-            # Calculate column numbers for reading from Excel
-            # Use the same logic as _write_output_section uses for writing totals row
-            # total_col_offset starts at 2 (after Description, Part Number, Total Quantity Required)
-            # Then: +1 if qty_per_elev, +1 (label), +1 (Total List Cost), +1 if total_cost_per_elev, then Discounted Total List Cost
-            total_col_offset = 2  # Start after "Total Quantity Required"
-            if show_qty_per_elev and elev_total_count > 1:
-                total_col_offset += 1  # Skip "Quantity Per Elevation" column
-            total_col_offset += (
-                1  # Skip to "Total List Cost" column (where label is written)
-            )
-            total_col_offset += 1  # Skip "Total List Cost" value column
-            if show_total_cost_per_elev and elev_total_count > 1:
-                total_col_offset += 1  # Skip "Total List Cost Per Elevation" column
-            # Now total_col_offset points to "Discounted Total List Cost" column
+                cost_summary_row = current_section_row + spacing_rows + 1
 
-            col_k = COL_E + total_col_offset  # Discounted Total List Cost (Column K)
-            col_l = (
-                col_k + 1
-                if (show_discounted_cost_per_elev and elev_total_count > 1)
-                else None
-            )  # Discounted Total List Cost Per Elevation (Column L)
+                # Calculate column numbers for reading from Excel
+                total_col_offset = 2
+                if show_qty_per_elev and elev_total_count > 1:
+                    total_col_offset += 1
+                total_col_offset += 1
+                total_col_offset += 1
+                if show_total_cost_per_elev and elev_total_count > 1:
+                    total_col_offset += 1
 
-            # Set cost summary columns - use col_k for total elevation cost column
-            header_col = PRICE_COL - 2
-            cost_per_elev_col = (
-                col_l if col_l else col_k
-            )  # Use column L if available, otherwise K
-            total_elev_cost_col = (
-                col_k  # Use the actual Discounted Total List Cost column
-            )
-
-            print(
-                f"Column calculation: show_qty_per_elev={show_qty_per_elev}, show_total_cost_per_elev={show_total_cost_per_elev}, show_discounted_cost_per_elev={show_discounted_cost_per_elev}"
-            )
-            print(
-                f"Total col offset={total_col_offset}, Column K={col_k}, Column L={col_l}"
-            )
-
-            total_count = elev_data.get("total_count", 1)
-
-            # Debug: print row numbers to verify
-            print(
-                f"Cost summary for '{elev_name}': Last section row={current_section_row}, Spacing={spacing_rows} rows, Cost summary starts at row={cost_summary_row}"
-            )
-            print(f"Column K={col_k}, Column L={col_l}")
-
-            # Headers on second row
-            ws.cell(
-                row=cost_summary_row, column=header_col, value="COST/ELEVATION"
-            ).font = Font(bold=True)
-            ws.cell(
-                row=cost_summary_row, column=cost_per_elev_col, value="COST/ELEVATION"
-            ).font = Font(bold=True)
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value="TOTAL ELEVATION COST",
-            ).font = Font(bold=True)
-
-            # Add borders to headers
-            for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
-                ws.cell(row=cost_summary_row, column=col).border = Border(
-                    bottom=Side(style="thin")
+                col_k = COL_E + total_col_offset
+                col_l = (
+                    col_k + 1
+                    if (show_discounted_cost_per_elev and elev_total_count > 1)
+                    else None
                 )
 
-            cost_summary_row += 1
+                header_col = PRICE_COL - 2
+                cost_per_elev_col = col_l if col_l else col_k
+                total_elev_cost_col = col_k
 
-            # Helper function to read values from Excel cells
-            def read_cell_value(row, col):
-                """Read cell value, return 0 if None or empty"""
-                cell = ws.cell(row=row, column=col)
-                return cell.value if cell.value is not None else 0.0
+                total_count = elev_data.get("total_count", 1)
 
-            # Profile Costs - read from column L (per elevation) and column K (total). Use 0 for door-only (no profiles).
-            profile_cost_per_elev = (
-                read_cell_value(profile_totals_row, col_l)
-                if (profile_totals_row and col_l)
-                else (
-                    read_cell_value(profile_totals_row, col_k) / total_count
-                    if profile_totals_row
-                    else 0.0
-                )
-            )
-            profile_total_cost = (
-                read_cell_value(profile_totals_row, col_k)
-                if profile_totals_row
-                else 0.0
-            )
-            ws.cell(row=cost_summary_row, column=header_col, value="PROFILE COSTS")
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=profile_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value=profile_total_cost,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            cost_summary_row += 1
-
-            # Accessory Costs - Use 0 for door-only (no accessories).
-            accessory_cost_per_elev = (
-                read_cell_value(accessory_totals_row, col_l)
-                if (accessory_totals_row and col_l)
-                else (
-                    read_cell_value(accessory_totals_row, col_k) / total_count
-                    if accessory_totals_row
-                    else 0.0
-                )
-            )
-            accessory_total_cost = (
-                read_cell_value(accessory_totals_row, col_k)
-                if accessory_totals_row
-                else 0.0
-            )
-            ws.cell(row=cost_summary_row, column=header_col, value="ACCESSORY COSTS")
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=accessory_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value=accessory_total_cost,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            cost_summary_row += 1
-
-            # Gasket Costs - Use 0 for door-only (no gaskets).
-            gasket_cost_per_elev = (
-                read_cell_value(gasket_totals_row, col_l)
-                if (gasket_totals_row and col_l)
-                else (
-                    read_cell_value(gasket_totals_row, col_k) / total_count
-                    if gasket_totals_row
-                    else 0.0
-                )
-            )
-            gasket_total_cost = (
-                read_cell_value(gasket_totals_row, col_k) if gasket_totals_row else 0.0
-            )
-            ws.cell(row=cost_summary_row, column=header_col, value="GASKET COSTS")
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=gasket_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value=gasket_total_cost,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            cost_summary_row += 1
-
-            # Door Costs - only show if there are actually doors
-            door_cost_per_elev = (
-                read_cell_value(door_totals_row, col_l)
-                if (door_totals_row and col_l)
-                else (
-                    read_cell_value(door_totals_row, col_k) / total_count
-                    if door_totals_row
-                    else 0.0
-                )
-            )
-            door_total_cost = (
-                read_cell_value(door_totals_row, col_k) if door_totals_row else 0.0
-            )
-
-            # Display door costs when we have doors (door-only or elevation with doors)
-            if door_totals_row:
-                ws.cell(row=cost_summary_row, column=header_col, value="DOOR COSTS")
+                # Headers on second row
+                ws.cell(
+                    row=cost_summary_row, column=header_col, value="COST/ELEVATION"
+                ).font = Font(bold=True)
                 ws.cell(
                     row=cost_summary_row,
                     column=cost_per_elev_col,
-                    value=door_cost_per_elev,
-                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                    value="COST/ELEVATION",
+                ).font = Font(bold=True)
                 ws.cell(
                     row=cost_summary_row,
                     column=total_elev_cost_col,
-                    value=door_total_cost,
-                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                    value="TOTAL ELEVATION COST",
+                ).font = Font(bold=True)
+
+                for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
+                    ws.cell(row=cost_summary_row, column=col).border = Border(
+                        bottom=Side(style="thin")
+                    )
+
                 cost_summary_row += 1
-            else:
-                # No doors, set to 0 for calculations but don't display
-                door_cost_per_elev = 0.0
-                door_total_cost = 0.0
 
-            # Glass Costs - sum from all glass sections
-            glass_cost_per_elev = (
-                sum(
-                    read_cell_value(row, col_l)
-                    if col_l
-                    else read_cell_value(row, col_k) / total_count
-                    for row in glass_totals_rows
+                # ── Use the always-computed section totals dicts instead of
+                #    reading from cell positions.  This guarantees the cost
+                #    summary shows the real numbers even when a section is
+                #    hidden (display-only) on the elevation tab. ──
+                def _sec_cost(totals_dict, key, fallback_key=None, divisor=1):
+                    """Extract a cost from a section_totals dict safely."""
+                    if not isinstance(totals_dict, dict):
+                        return 0.0
+                    val = totals_dict.get(key, 0.0)
+                    if (not val or val == 0.0) and fallback_key:
+                        val = totals_dict.get(fallback_key, 0.0)
+                    try:
+                        return float(val) / divisor if divisor > 1 else float(val)
+                    except (TypeError, ValueError):
+                        return 0.0
+
+                _tc = total_count if total_count > 1 else 1
+
+                # ── Per-section cost rows ──
+                # Only DISPLAY and INCLUDE in the elevation total the sections
+                # that are checked in elev_inc.  Data is always computed & stored
+                # (via scratch worksheet) regardless, so the Summary tab can
+                # independently choose to include them.
+                _cost_rows = [
+                    ("profiles", "PROFILE COSTS", profile_totals),
+                    ("accessories", "ACCESSORY COSTS", accessory_totals),
+                    ("gaskets", "GASKET COSTS", gasket_totals),
+                    ("doors", "DOOR COSTS", door_totals),
+                    ("glass", "GLASS COSTS", _glass_totals_accum),
+                    ("fabrication", "FABRICATION COSTS", _fab_totals_accum),
+                ]
+
+                # Accumulators for the elevation total (only checked sections)
+                _elev_total_cost = 0.0
+                _elev_cost_per_elev = 0.0
+
+                for _sec_key, _sec_label, _sec_totals in _cost_rows:
+                    _total = _sec_cost(_sec_totals, "discounted")
+                    _per = _sec_cost(_sec_totals, "discounted_per_elev")
+                    if not _per and _total and _tc > 1:
+                        _per = _total / _tc
+
+                    # Skip display + skip from total if section is unchecked
+                    if not elev_inc.get(_sec_key, True):
+                        continue
+                    # Skip display for doors with zero cost (no doors configured)
+                    if _sec_key == "doors" and _total <= 0:
+                        continue
+
+                    ws.cell(row=cost_summary_row, column=header_col, value=_sec_label)
+                    ws.cell(
+                        row=cost_summary_row,
+                        column=cost_per_elev_col,
+                        value=_per,
+                    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                    ws.cell(
+                        row=cost_summary_row,
+                        column=total_elev_cost_col,
+                        value=_total,
+                    ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                    cost_summary_row += 1
+
+                    _elev_total_cost += _total
+                    _elev_cost_per_elev += _per
+
+                # Separator line
+                for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
+                    ws.cell(row=cost_summary_row, column=col).border = Border(
+                        top=Side(style="thin")
+                    )
+                cost_summary_row += 1
+
+                # Total — only sums the sections that were included above
+                ws.cell(
+                    row=cost_summary_row,
+                    column=header_col,
+                    value=f"{elev_name} TOTAL COSTS",
+                ).font = Font(bold=True)
+                ws.cell(
+                    row=cost_summary_row,
+                    column=cost_per_elev_col,
+                    value=_elev_cost_per_elev,
+                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=cost_summary_row, column=cost_per_elev_col).font = Font(
+                    bold=True
                 )
-                if glass_totals_rows
-                else 0.0
-            )
-            glass_total_cost = (
-                sum(read_cell_value(row, col_k) for row in glass_totals_rows)
-                if glass_totals_rows
-                else 0.0
-            )
-            ws.cell(row=cost_summary_row, column=header_col, value="GLASS COSTS")
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=glass_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(
-                row=cost_summary_row, column=total_elev_cost_col, value=glass_total_cost
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            cost_summary_row += 1
-
-            # Fabrication Costs - sum from all fabrication sections
-            fabrication_cost_per_elev = (
-                sum(
-                    read_cell_value(row, col_l)
-                    if col_l
-                    else read_cell_value(row, col_k) / total_count
-                    for row in fabrication_totals_rows
+                ws.cell(
+                    row=cost_summary_row,
+                    column=total_elev_cost_col,
+                    value=_elev_total_cost,
+                ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                ws.cell(row=cost_summary_row, column=total_elev_cost_col).font = Font(
+                    bold=True
                 )
-                if fabrication_totals_rows
-                else 0.0
-            )
-            fabrication_total_cost = (
-                sum(read_cell_value(row, col_k) for row in fabrication_totals_rows)
-                if fabrication_totals_rows
-                else 0.0
-            )
-            ws.cell(row=cost_summary_row, column=header_col, value="FABRICATION COSTS")
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=fabrication_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value=fabrication_total_cost,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            cost_summary_row += 1
+                cost_summary_row += 1
 
-            # Separator line
-            for col in [header_col, cost_per_elev_col, total_elev_cost_col]:
-                ws.cell(row=cost_summary_row, column=col).border = Border(
-                    top=Side(style="thin")
+                # Note
+                note_cell = ws.cell(
+                    row=cost_summary_row,
+                    column=header_col,
+                    value="*Note - Elevation costs based on discounted material costs",
                 )
-            cost_summary_row += 1
-
-            # Total Costs - sum from column L (per elevation) and column K (total)
-            # Use door costs when doors exist (door-only or elevation with doors)
-            door_cost_for_total = door_cost_per_elev if door_totals_row else 0.0
-            door_total_for_total = door_total_cost if door_totals_row else 0.0
-
-            total_cost_per_elev = (
-                profile_cost_per_elev
-                + accessory_cost_per_elev
-                + gasket_cost_per_elev
-                + door_cost_for_total
-                + glass_cost_per_elev
-                + fabrication_cost_per_elev
-            )
-            total_elevation_cost = (
-                profile_total_cost
-                + accessory_total_cost
-                + gasket_total_cost
-                + door_total_for_total
-                + glass_total_cost
-                + fabrication_total_cost
-            )
-
-            ws.cell(
-                row=cost_summary_row,
-                column=header_col,
-                value=f"{elev_name} TOTAL COSTS",
-            ).font = Font(bold=True)
-            ws.cell(
-                row=cost_summary_row,
-                column=cost_per_elev_col,
-                value=total_cost_per_elev,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=cost_per_elev_col).font = Font(
-                bold=True
-            )
-            ws.cell(
-                row=cost_summary_row,
-                column=total_elev_cost_col,
-                value=total_elevation_cost,
-            ).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=cost_summary_row, column=total_elev_cost_col).font = Font(
-                bold=True
-            )
-            cost_summary_row += 1
-
-            # Note
-            note_cell = ws.cell(
-                row=cost_summary_row,
-                column=header_col,
-                value="*Note - Elevation costs based on discounted material costs",
-            )
-            note_cell.font = Font(italic=True, size=10)
+                note_cell.font = Font(italic=True, size=10)
 
             print(
                 f"Rebuilt System Total for '{elev_name}': ${system_total_for_this_block[0]:.2f}"
@@ -4603,6 +4468,7 @@ def generate_excel_report(
             wb,
             summary_settings_path=private_summary_settings_path,
             summary_options=summary_opts,
+            report_config=report_config,
         )
         _report_data["summary"] = _summary_rd
 
