@@ -1980,6 +1980,23 @@ def main(page: ft.Page):
                                             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                             expand=True,
                                         ),
+                                        ft.Column(
+                                            [
+                                                ft.Text(
+                                                    "Avg Cost/Sqft",
+                                                    size=11,
+                                                    color=COLOR_TEXT_DIM,
+                                                ),
+                                                ft.Text(
+                                                    f"${patterns.get('avg_cost_per_sqft', 0):,.2f}",
+                                                    size=16,
+                                                    weight="bold",
+                                                    color=COLOR_TEXT,
+                                                ),
+                                            ],
+                                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                            expand=True,
+                                        ),
                                     ],
                                     alignment=ft.MainAxisAlignment.SPACE_AROUND,
                                 ),

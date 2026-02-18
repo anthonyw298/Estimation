@@ -37,5 +37,18 @@
     "finish": "Clear",
     "cost": 3939.5833333333335,
     "timestamp": "2026-01-26T03:01:03.768947"
+  },
+  {
+    "id": "SHON IS COOL TEST_SF3_60.0_120.0_2x2_Black",
+    "project": "SHON IS COOL TEST",
+    "width": 60.0,
+    "height": 120.0,
+    "bays": 4,
+    "bays_wide": 2,
+    "bays_tall": 2,
+    "sqft": 250.0,
+    "finish": "Black",
+    "cost": 12711.04,
+    "timestamp": "2026-02-17T19:33:39.170127"
   }
 ]
