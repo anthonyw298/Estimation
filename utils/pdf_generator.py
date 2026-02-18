@@ -443,31 +443,38 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
             sec_title = SECTION_TITLES.get(sec_key, sec_key.upper())
 
             # Build headers based on column config
+            # elev_col is {section_key: {col_key: bool}} — drill into the
+            # current section so column visibility is checked correctly.
+            sec_col = (
+                elev_col.get(sec_key, {})
+                if isinstance(elev_col.get(sec_key), dict)
+                else elev_col
+            )
             headers = []
             col_keys = []  # track which keys map to which column
-            if elev_col.get("description", True):
+            if sec_col.get("description", True):
                 headers.append("Description")
                 col_keys.append("description")
-            if elev_col.get("part_number", True):
+            if sec_col.get("part_number", True):
                 headers.append("Part Number")
                 col_keys.append("part_number")
-            if elev_col.get("total_quantity_required", True):
+            if sec_col.get("total_quantity_required", True):
                 headers.append("Total Quantity Required")
                 col_keys.append("display_qty")
-            if elev_col.get("quantity_per_elevation", True) and total_count > 1:
+            if sec_col.get("quantity_per_elevation", True) and total_count > 1:
                 headers.append("Qty Per Elevation")
                 col_keys.append("qty_per_elev")
-            if elev_col.get("total_list_cost", True):
+            if sec_col.get("total_list_cost", True):
                 headers.append("Total List Cost")
                 col_keys.append("original_cost")
-            if elev_col.get("total_list_cost_per_elevation", True) and total_count > 1:
+            if sec_col.get("total_list_cost_per_elevation", True) and total_count > 1:
                 headers.append("List Cost Per Elev")
                 col_keys.append("original_cost_per_elev")
-            if elev_col.get("discounted_total_list_cost", True):
+            if sec_col.get("discounted_total_list_cost", True):
                 headers.append("Discounted Total Cost")
                 col_keys.append("discounted_cost")
             if (
-                elev_col.get("discounted_total_list_cost_per_elevation", True)
+                sec_col.get("discounted_total_list_cost_per_elevation", True)
                 and total_count > 1
             ):
                 headers.append("Discounted Per Elev")
@@ -546,32 +553,45 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                 cs_headers.append("Total Elevation Cost")
                 cs_col_keys.append("total")
 
+                # (label, sec_key, per_elev_key, total_key)
                 COST_ROWS = [
-                    ("Profile Costs", "profile_cost_per_elev", "profile_total_cost"),
+                    (
+                        "Profile Costs",
+                        "profiles",
+                        "profile_cost_per_elev",
+                        "profile_total_cost",
+                    ),
                     (
                         "Accessory Costs",
+                        "accessories",
                         "accessory_cost_per_elev",
                         "accessory_total_cost",
                     ),
-                    ("Gasket Costs", "gasket_cost_per_elev", "gasket_total_cost"),
-                    ("Door Costs", "door_cost_per_elev", "door_total_cost"),
-                    ("Glass Costs", "glass_cost_per_elev", "glass_total_cost"),
+                    (
+                        "Gasket Costs",
+                        "gaskets",
+                        "gasket_cost_per_elev",
+                        "gasket_total_cost",
+                    ),
+                    ("Door Costs", "doors", "door_cost_per_elev", "door_total_cost"),
+                    ("Glass Costs", "glass", "glass_cost_per_elev", "glass_total_cost"),
                     (
                         "Fabrication Costs",
+                        "fabrication",
                         "fabrication_cost_per_elev",
                         "fabrication_total_cost",
                     ),
                 ]
 
                 cs_table = []
-                for label, per_key, total_key in COST_ROWS:
-                    total_val = cs.get(total_key, 0)
-                    if (
-                        total_val == 0
-                        and "Door" in label
-                        and not elev_data.get("has_doors", False)
-                    ):
+                for label, sec_key, per_key, total_key in COST_ROWS:
+                    # Skip sections not included for this elevation
+                    if not elev_sec.get(sec_key, True):
                         continue
+                    # Skip doors if elevation has no doors
+                    if sec_key == "doors" and not elev_data.get("has_doors", False):
+                        continue
+                    total_val = cs.get(total_key, 0)
                     row = [label]
                     if total_count > 1:
                         row.append(_fmt_currency(cs.get(per_key, 0)))

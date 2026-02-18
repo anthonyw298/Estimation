@@ -5812,8 +5812,6 @@ def main(page: ft.Page):
             "diagram": "Diagram",
         }
         SECTION_DEFAULTS = {k: True for k in ALL_SECTIONS}
-        SECTION_DEFAULTS["fabrication"] = False
-        SECTION_DEFAULTS["elevation_cost_summary"] = False
 
         # ── Column definitions for elevation tabs ──
         # Per-section quantity label differs by material type.

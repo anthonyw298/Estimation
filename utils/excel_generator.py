@@ -697,6 +697,19 @@ def _write_output_section(
     show_total_qty = cc.get("total_quantity_required", True)
     show_total_list_cost = cc.get("total_list_cost", True)
     show_discounted_list_cost = cc.get("discounted_total_list_cost", True)
+    # Per-elevation columns: override global OR'd params with section-specific
+    # config when available so each section respects its own checkbox state.
+    if column_config:
+        show_qty_per_elevation = cc.get(
+            "quantity_per_elevation", show_qty_per_elevation
+        )
+        show_total_cost_per_elevation = cc.get(
+            "total_list_cost_per_elevation", show_total_cost_per_elevation
+        )
+        show_discounted_cost_per_elevation = cc.get(
+            "discounted_total_list_cost_per_elevation",
+            show_discounted_cost_per_elevation,
+        )
 
     current_row = start_output_row
     title_cell = ws.cell(row=current_row, column=colE, value=title)
@@ -2095,10 +2108,14 @@ def create_summary_sheet(
         if not items:
             continue
         if not show_category.get(category, True):
-            # Category unchecked in the stock list — still compute and STORE
-            # category_totals (data is preserved for report_data / PDF), but
-            # do NOT add to grand totals so the cost overview and grand total
-            # only reflect sections the user chose to include.
+            # Category unchecked — don't write rows to Excel, but still
+            # accumulate into grand totals.  Summary cost overview always
+            # reflects the FULL project cost regardless of display toggles.
+            section_original_total = sum(
+                item["original_total_cost"]
+                for item in final_summary_data
+                if item["category"] == category
+            )
             section_total_cost = sum(
                 item["total_cost"]
                 for item in final_summary_data
@@ -2109,6 +2126,9 @@ def create_summary_sheet(
                 for item in final_summary_data
                 if item["category"] == category
             )
+            grand_original_total += section_original_total
+            grand_discounted_total += section_total_cost
+            grand_residual_total += section_residual_total
             if category in category_totals:
                 category_totals[category]["discounted"] = section_total_cost
                 category_totals[category]["residual"] = section_residual_total
@@ -2231,13 +2251,10 @@ def create_summary_sheet(
     # ============================================================================
     gt_row = current_row + 2
 
-    # grand_discounted_total only includes sections that the user checked in the
-    # stock list (show_category).  Hidden sections are still stored in category_totals
-    # for report_data / PDF, but excluded from the displayed grand total.
+    # grand_discounted_total always includes ALL sections — summary cost overview
+    # reflects the full project cost regardless of which display toggles are on.
     final_discounted_total = grand_discounted_total
-    print(
-        f"Summary discounted total (included sections only): ${final_discounted_total:.2f}"
-    )
+    print(f"Summary discounted total (all sections): ${final_discounted_total:.2f}")
 
     reuse_total = total_reusable_cost
     reuse_pct_of_gt = min(
@@ -3688,7 +3705,10 @@ def generate_excel_report(
                 def _any_col(key):
                     if not _section_dicts:
                         return True  # Default to show if no config
-                    return any(sc.get(key, True) for sc in _section_dicts)
+                    # Use default=False so sections that don't offer this column
+                    # (e.g. accessories with total_count=1 has no per-elevation keys)
+                    # don't override an explicit False from sections that do.
+                    return any(sc.get(key, False) for sc in _section_dicts)
 
                 elev_data["show_qty_per_elevation"] = _any_col("quantity_per_elevation")
                 elev_data["show_total_cost_per_elevation"] = _any_col(
