@@ -4,6 +4,7 @@ import type {
   ExtraMaterial,
   CalculatedOutput,
   DoorConfig,
+  ReportConfig,
 } from '@/types';
 import { getUnitPriceByPart, getPriceByPart, applyMaterialImpactInMemory, parseLengthToFeet } from '@/lib/pricing';
 import { partsData } from '@/data/parts-data';
@@ -125,6 +126,31 @@ function setFont(cell: Cell, opts: { size?: number; color?: string; bold?: boole
     size: opts.size ?? 11,
     color: opts.color ? { argb: `FF${opts.color}` } : undefined,
   };
+}
+
+/**
+ * Auto-fit column widths by scanning cell content.
+ * Matches the Python _autofit_columns behaviour so descriptions are never
+ * truncated.  For currency/number columns the minimum width is 14 to avoid
+ * '######' in Excel.
+ */
+function autofitColumns(sheet: Worksheet, startCol: number, endCol: number, minWidth = 8) {
+  for (let c = startCol; c <= endCol; c++) {
+    let maxLen = 0;
+    let hasNumbers = false;
+    sheet.getColumn(c).eachCell({ includeEmpty: false }, (cell) => {
+      const val = cell.value;
+      if (val != null) {
+        maxLen = Math.max(maxLen, String(val).length);
+        if (typeof val === 'number' || (cell.numFmt && cell.numFmt.includes('$'))) {
+          hasNumbers = true;
+        }
+      }
+    });
+    if (hasNumbers) maxLen = Math.max(maxLen, 12);
+    const width = Math.max(maxLen + 2, hasNumbers ? 14 : minWidth);
+    sheet.getColumn(c).width = width;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +482,7 @@ function writeElevationCostSummary(
   totalCount: number,
   startRow: number,
   startCol: number,
+  includedSections?: Record<string, boolean>,
 ): number {
   let row = startRow;
 
@@ -484,6 +511,8 @@ function writeElevationCostSummary(
   let totalCostAll = 0;
 
   for (const [key, label] of catOrder) {
+    // Skip categories whose material section was unchecked
+    if (includedSections?.[key] === false) continue;
     const cat = categories[key];
     if (cat.total_discounted === 0) continue;
 
@@ -533,10 +562,10 @@ function writeElevationCostSummary(
 interface SummaryItem {
   description: string;
   part_number: string;
-  display: string;                 // (unused — kept for data compatibility)
-  quantity_req_ft: string;         // Python col 1: "Total Feet Required" / "Total Pieces Required" / "N/A"
-  qty_stick_req: string;           // Python col 2: "Sticks Required" / "Rolls Required" / "Quantity Per Order" / "Unit Price"
-  quantity_display: string;        // Python col 3: "Total Quantity Required" / "Orders Required"
+  project_total_materials: string; // Python col 1: "BE9-2513 (black)" – part number with finish
+  quantity_req_ft: string;         // Python col 2: "Total Feet Required" / "Total Pieces Required" / "N/A"
+  qty_stick_req: string;           // Python col 3: "Sticks Required" / "Rolls Required" / "Quantity Per Order" / "Unit Price"
+  quantity_display: string;        // Python col 4: "Total Quantity Required" / "Orders Required"
   total_qty_required: number;
   unit_price: number;
   total_list_cost: number;
@@ -544,8 +573,8 @@ interface SummaryItem {
   residual_qty: number;
   residual_waste_pct: number;
   residual_cost: number;
-  reusable_qty_display: string;    // Python col 7: formatted residual qty
-  reusable_pct_display: string;    // Python col 8: formatted residual pct
+  reusable_qty_display: string;    // Python col 8: formatted residual qty (grouped pieces)
+  reusable_pct_display: string;    // Python col 9: formatted residual pct
 }
 
 interface SummaryCategory {
@@ -690,6 +719,11 @@ function buildSummaryCategories(
 
     const numElevations = Object.keys(elevations).length;
 
+    // Compute "Project Total Materials" display (part number with finish)
+    const projectTotalMaterials = (isProfile || isGasket) && data.finish
+      ? `${data.part_number} (${data.finish})`
+      : data.part_number;
+
     // Compute category-specific column values (matching Python)
     let quantityReqFt = 'N/A';
     let qtyStickReq = 'N/A';
@@ -704,7 +738,8 @@ function buildSummaryCategories(
         const numUnits = Math.ceil(data.total_qty / minPurchaseLength);
         const unitLabel = isGasket ? 'rolls' : 'sticks';
         qtyStickReq = `${numUnits} (${minPurchaseLength.toFixed(0)}ft per)`;
-        quantityDisplay = `${numUnits} ${unitLabel}`;
+        // Show grouped individual cut list: "10ft x70, 6ft x10, 5ft x20"
+        quantityDisplay = formatQtyDisplay(data.quantity_list, data.category);
       }
     } else if (isAccessory && data.part_number && data.part_number !== 'N/A') {
       const partInfo = partsData[data.part_number];
@@ -736,10 +771,14 @@ function buildSummaryCategories(
       quantityDisplay = `${data.total_qty.toFixed(2)}`;
     }
 
-    // Format residual display
-    const reusableQtyDisplay = (isProfile || isGasket || isAccessory) && residualQty > 0
-      ? `${residualQty.toFixed(2)}${isProfile || isGasket ? ' ft' : ' pcs'}`
-      : 'N/A';
+    // Format residual display — show grouped individual leftover pieces
+    let reusableQtyDisplay = 'N/A';
+    if ((isProfile || isGasket) && partState && partState.length_pieces && partState.length_pieces.length > 0) {
+      // Group leftover pieces: "4ft x18, 3ft x1, 1.50ft x1"
+      reusableQtyDisplay = formatQtyDisplay(partState.length_pieces, data.category);
+    } else if (isAccessory && residualQty > 0) {
+      reusableQtyDisplay = `${residualQty.toFixed(2)} pcs`;
+    }
     const reusablePctDisplay = (isProfile || isGasket || isAccessory) && typeof residualPct === 'number' && residualPct > 0
       ? `${residualPct.toFixed(2)}%`
       : 'N/A';
@@ -747,7 +786,7 @@ function buildSummaryCategories(
     cat.items.push({
       description: data.description,
       part_number: data.part_number,
-      display: `${numElevations} elevation${numElevations !== 1 ? 's' : ''}`,
+      project_total_materials: projectTotalMaterials,
       quantity_req_ft: quantityReqFt,
       qty_stick_req: qtyStickReq,
       quantity_display: quantityDisplay,
@@ -770,35 +809,35 @@ function buildSummaryCategories(
   return categories;
 }
 
-// Per-category header definitions matching Python exactly (9 columns each)
+// Per-category header definitions matching Python exactly (10 columns each)
 const SUMMARY_HEADERS: Record<string, string[]> = {
   profiles: [
-    'Description', 'Total Feet Required', 'Sticks Required',
+    'Description', 'Project Total Materials', 'Total Feet Required', 'Sticks Required',
     'Total Quantity Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
   accessories: [
-    'Description', 'Total Pieces Required', 'Quantity Per Order',
+    'Description', 'Project Total Materials', 'Total Pieces Required', 'Quantity Per Order',
     'Orders Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
   gaskets: [
-    'Description', 'Total Feet Required', 'Rolls Required',
+    'Description', 'Project Total Materials', 'Total Feet Required', 'Rolls Required',
     'Total Quantity Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
   glass: [
-    'Description', 'N/A', 'Unit Price',
+    'Description', 'Project Total Materials', 'N/A', 'Unit Price',
     'Total Quantity Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
   doors: [
-    'Description', 'N/A', 'Unit Price',
+    'Description', 'Project Total Materials', 'N/A', 'Unit Price',
     'Total Quantity Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
   fabrication: [
-    'Description', 'N/A', 'Unit Price',
+    'Description', 'Project Total Materials', 'N/A', 'Unit Price',
     'Total Quantity Required', 'Total List Cost', 'Discounted Total List Cost',
     'Residual Material Quantity', 'Residual Waste %', 'Residual Material Cost',
   ],
@@ -833,30 +872,32 @@ function writeSummaryCategorySection(
   });
   row++;
 
-  // Data rows (9 columns matching Python's _get_item_values mapping)
+  // Data rows (10 columns matching Python's _get_item_values mapping)
   for (const item of cat.items) {
     const r = sheet.getRow(row);
     // Col 0: Description
     r.getCell(startCol + 0).value = item.description;
-    // Col 1: quantity_req_ft (Total Feet Required / Total Pieces Required / N/A)
-    r.getCell(startCol + 1).value = item.quantity_req_ft;
-    // Col 2: qty_stick_req (Sticks Required / Rolls Required / Qty Per Order / Unit Price)
-    r.getCell(startCol + 2).value = item.qty_stick_req;
-    // Col 3: quantity_display (Total Quantity Required / Orders Required)
-    r.getCell(startCol + 3).value = item.quantity_display;
-    // Col 4: Total List Cost
-    r.getCell(startCol + 4).value = item.total_list_cost;
-    setCurrency(r.getCell(startCol + 4));
-    // Col 5: Discounted Total List Cost
-    r.getCell(startCol + 5).value = item.discounted_total;
+    // Col 1: Project Total Materials (part number with finish)
+    r.getCell(startCol + 1).value = item.project_total_materials;
+    // Col 2: quantity_req_ft (Total Feet Required / Total Pieces Required / N/A)
+    r.getCell(startCol + 2).value = item.quantity_req_ft;
+    // Col 3: qty_stick_req (Sticks Required / Rolls Required / Qty Per Order / Unit Price)
+    r.getCell(startCol + 3).value = item.qty_stick_req;
+    // Col 4: quantity_display (Total Quantity Required / Orders Required)
+    r.getCell(startCol + 4).value = item.quantity_display;
+    // Col 5: Total List Cost
+    r.getCell(startCol + 5).value = item.total_list_cost;
     setCurrency(r.getCell(startCol + 5));
-    // Col 6: Residual Material Quantity
-    r.getCell(startCol + 6).value = item.reusable_qty_display;
-    // Col 7: Residual Waste %
-    r.getCell(startCol + 7).value = item.reusable_pct_display;
-    // Col 8: Residual Material Cost
-    r.getCell(startCol + 8).value = item.residual_cost;
-    setCurrency(r.getCell(startCol + 8));
+    // Col 6: Discounted Total List Cost
+    r.getCell(startCol + 6).value = item.discounted_total;
+    setCurrency(r.getCell(startCol + 6));
+    // Col 7: Residual Material Quantity
+    r.getCell(startCol + 7).value = item.reusable_qty_display;
+    // Col 8: Residual Waste %
+    r.getCell(startCol + 8).value = item.reusable_pct_display;
+    // Col 9: Residual Material Cost
+    r.getCell(startCol + 9).value = item.residual_cost;
+    setCurrency(r.getCell(startCol + 9));
     row++;
   }
 
@@ -871,21 +912,21 @@ function writeSummaryCategorySection(
   const totRow = sheet.getRow(row);
   totRow.getCell(startCol).value = `Total ${categoryLabel} Cost`;
   setBoldFont(totRow.getCell(startCol), 10);
-  // Total List Cost (col 4)
-  totRow.getCell(startCol + 4).value = cat.total_original;
-  setCurrency(totRow.getCell(startCol + 4));
-  setBoldFont(totRow.getCell(startCol + 4), 10);
-  totRow.getCell(startCol + 4).border = { top: thinBorder() };
-  // Discounted Total (col 5)
-  totRow.getCell(startCol + 5).value = cat.total_discounted;
+  // Total List Cost (col 5)
+  totRow.getCell(startCol + 5).value = cat.total_original;
   setCurrency(totRow.getCell(startCol + 5));
   setBoldFont(totRow.getCell(startCol + 5), 10);
   totRow.getCell(startCol + 5).border = { top: thinBorder() };
-  // Residual Cost total (col 8)
-  totRow.getCell(startCol + 8).value = cat.total_residual;
-  setCurrency(totRow.getCell(startCol + 8));
-  setBoldFont(totRow.getCell(startCol + 8), 10);
-  totRow.getCell(startCol + 8).border = { top: thinBorder() };
+  // Discounted Total (col 6)
+  totRow.getCell(startCol + 6).value = cat.total_discounted;
+  setCurrency(totRow.getCell(startCol + 6));
+  setBoldFont(totRow.getCell(startCol + 6), 10);
+  totRow.getCell(startCol + 6).border = { top: thinBorder() };
+  // Residual Cost total (col 9)
+  totRow.getCell(startCol + 9).value = cat.total_residual;
+  setCurrency(totRow.getCell(startCol + 9));
+  setBoldFont(totRow.getCell(startCol + 9), 10);
+  totRow.getCell(startCol + 9).border = { top: thinBorder() };
   row += 2;
 
   return row;
@@ -1583,6 +1624,7 @@ export async function exportToExcel(
   doors: Record<string, DoorConfig[]>,
   settings: ProjectSettings,
   materials: Record<string, ExtraMaterial>,
+  reportConfig?: ReportConfig,
 ): Promise<void> {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
@@ -1636,7 +1678,7 @@ export async function exportToExcel(
     const showPerElev = totalCount > 1;
     const elevDoors = doors[elevName] || [];
 
-    // Column widths
+    // Column widths — initial defaults (autofit runs after data is written)
     sheet.getColumn(1).width = 22;
     sheet.getColumn(2).width = 22;
     sheet.getColumn(3).width = 4; // spacer
@@ -1646,8 +1688,14 @@ export async function exportToExcel(
       sheet.getColumn(c).width = 18;
     }
 
+    // Per-elevation section config
+    const elevSections = reportConfig?.per_elevation_sections?.[elevName];
+
     // --- System Input (cols A-B, rows 1-15) ---
-    const inputEndRow = writeSystemInput(sheet, elevName, elev, elevDoors, 1);
+    let inputEndRow = 1;
+    if (elevSections?.system_input !== false) {
+      inputEndRow = writeSystemInput(sheet, elevName, elev, elevDoors, 1);
+    }
 
     // --- Material sections (starting col E) ---
     const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier);
@@ -1664,19 +1712,29 @@ export async function exportToExcel(
     ];
 
     for (const [key, label] of catOrder) {
+      // Skip section if unchecked in stock list
+      if (elevSections?.[key] === false) continue;
       sectionRow = writeMaterialSection(sheet, label, categories[key], totalCount, showPerElev, sectionRow, startCol);
     }
 
     // --- Elevation Cost Summary ---
-    sectionRow = writeElevationCostSummary(sheet, categories, elevName, totalCount, sectionRow, startCol);
+    if (elevSections?.elevation_cost_summary !== false) {
+      sectionRow = writeElevationCostSummary(sheet, categories, elevName, totalCount, sectionRow, startCol, elevSections);
+    }
 
-    // --- Bay Diagram (embedded as PNG, matching Python _add_bay_diagram_to_excel) ---
-    if (elev.bays_wide > 0 && elev.bays_tall > 0) {
-      const diagramRow = Math.max(sectionRow, inputEndRow + 2);
-      // Note label
-      const noteCell = sheet.getRow(diagramRow - 1).getCell(1);
+    // Auto-fit all material columns so descriptions are never truncated
+    autofitColumns(sheet, 5, 16);
+
+    // --- Bay Diagram (embedded as PNG, directly under system input / Doors row) ---
+    if (elevSections?.diagram !== false && elev.bays_wide > 0 && elev.bays_tall > 0) {
+      // *Note - C/L Dimensions label: directly under system input, above diagram
+      const noteRow = inputEndRow;
+      const noteCell = sheet.getRow(noteRow).getCell(1);
       noteCell.value = '*Note - C/L Dimensions';
       setFont(noteCell, { size: 12 });
+
+      // Diagram image starts one row below the note
+      const diagramRow = noteRow + 1;
 
       const diagramBase64 = createBayDiagram(
         elev.bays_wide,
@@ -1690,7 +1748,7 @@ export async function exportToExcel(
       if (diagramBase64) {
         const imageId = workbook.addImage({ base64: diagramBase64, extension: 'png' });
         sheet.addImage(imageId, {
-          tl: { col: 0, row: diagramRow - 1 },
+          tl: { col: 0, row: diagramRow - 1 },  // 0-based row
           ext: { width: 400, height: 300 },
         });
       }
@@ -1701,10 +1759,17 @@ export async function exportToExcel(
   // Summary sheet
   // ========================================================================
 
+  const summaryIncluded = reportConfig?.summary_included !== false;
+
+  if (summaryIncluded) {
   const summarySheet = workbook.addWorksheet('Summary');
-  for (let c = 1; c <= 12; c++) {
+  // 10 data columns + extra for cost overview side placement
+  for (let c = 1; c <= 14; c++) {
     summarySheet.getColumn(c).width = c <= 2 ? 28 : c <= 5 ? 22 : 18;
   }
+
+  const sumSections = reportConfig?.summary_options?.sections;
+  const sumCostOverview = reportConfig?.summary_options?.cost_overview;
 
   // Build summary categories
   const summaryCategories = buildSummaryCategories(elevations, materials, multiplier);
@@ -1734,38 +1799,55 @@ export async function exportToExcel(
   ];
 
   for (const [key, label] of summaryCatOrder) {
+    // Skip section if unchecked in stock list
+    if (sumSections?.[key] === false) continue;
     currentRow = writeSummaryCategorySection(summarySheet, label, key, summaryCategories[key], currentRow, 1);
   }
 
   // Elevation Summary Table
   currentRow = writeElevationSummaryTable(summarySheet, elevations, settings, currentRow, 1);
 
-  // Cost Overview Box
+  // Cost Overview Box — track start row for diagram placement
+  const costOverviewStartRow = currentRow + 1;
   currentRow += 1;
   currentRow = writeCostOverviewBox(summarySheet, totalListPrice, totalDiscountedPrice, totalResidual, wastePct, currentRow, 1);
 
   // Additional Costs
-  currentRow += 1;
-  const { row: afterAdditional, total: additionalTotal } = writeAdditionalCostsSection(
-    summarySheet, settings, totalDiscountedPrice, currentRow, 1,
-  );
-  currentRow = afterAdditional;
+  let additionalTotal = 0;
+  if (sumCostOverview?.additional_costs !== false) {
+    currentRow += 1;
+    const result = writeAdditionalCostsSection(
+      summarySheet, settings, totalDiscountedPrice, currentRow, 1,
+    );
+    currentRow = result.row;
+    additionalTotal = result.total;
+  }
 
   // Markups
-  currentRow += 1;
-  const { row: afterMarkups, total: markupTotal } = writeMarkupsSection(
-    summarySheet, settings, summaryCategories, totalDiscountedPrice, totalResidual, currentRow, 1,
-  );
-  currentRow = afterMarkups;
+  let markupTotal = 0;
+  if (sumCostOverview?.markups !== false) {
+    currentRow += 1;
+    const result = writeMarkupsSection(
+      summarySheet, settings, summaryCategories, totalDiscountedPrice, totalResidual, currentRow, 1,
+    );
+    currentRow = result.row;
+    markupTotal = result.total;
+  }
 
   // Project Total
-  currentRow += 1;
-  currentRow = writeProjectTotalSection(summarySheet, totalDiscountedPrice, additionalTotal, markupTotal, currentRow, 1);
+  if (sumCostOverview?.project_total !== false) {
+    currentRow += 1;
+    currentRow = writeProjectTotalSection(summarySheet, totalDiscountedPrice, additionalTotal, markupTotal, currentRow, 1);
+  }
+
+  // Auto-fit summary columns so descriptions are never truncated
+  autofitColumns(summarySheet, 1, 14);
 
   // ========================================================================
-  // Pie Chart - Cost Distribution (Column G, Row 40)
+  // Pie Chart - Cost Distribution (adjacent to Cost Overview, right side)
   // ========================================================================
 
+  if (sumCostOverview?.diagram !== false) {
   try {
     const activeMaterialCost = Math.max(0, totalDiscountedPrice - totalResidual);
     const pieChartBase64 = createCostPieChart(
@@ -1781,15 +1863,17 @@ export async function exportToExcel(
         extension: 'png',
       });
 
-      // Place at row 40, column G (col index 6 in 0-based) - matching Python
+      // Place adjacent to cost overview (column D/E, same row as cost overview start)
       summarySheet.addImage(imageId, {
-        tl: { col: 6, row: 39 },  // 0-based: col G = 6, row 40 = 39
+        tl: { col: 3, row: costOverviewStartRow - 1 },  // 0-based: col D = 3
         ext: { width: 380, height: 360 },
       });
     }
   } catch (e) {
     console.warn('Could not generate pie chart:', e);
   }
+  } // end diagram check
+  } // end summaryIncluded
 
   // ========================================================================
   // Write buffer and trigger download

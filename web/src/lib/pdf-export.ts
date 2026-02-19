@@ -4,6 +4,7 @@ import type {
   ExtraMaterial,
   CalculatedOutput,
   DoorConfig,
+  ReportConfig,
 } from '@/types';
 import { getUnitPriceByPart } from '@/lib/pricing';
 
@@ -179,6 +180,7 @@ export async function exportToPdf(
   doors: Record<string, DoorConfig[]>,
   settings: ProjectSettings,
   materials: Record<string, ExtraMaterial>,
+  reportConfig?: ReportConfig,
 ): Promise<void> {
   // Dynamic import for browser
   const { default: jsPDF } = await import('jspdf');
@@ -264,11 +266,16 @@ export async function exportToPdf(
       ['doors', 'DOORS'], ['glass', 'GLASS'], ['fabrication', 'LABOR'],
     ];
 
+    // Per-elevation section config from report options
+    const elevSections = reportConfig?.per_elevation_sections?.[elevName];
+
     // Track per-category discounted totals for elevation cost summary
     const elevCatTotals: Record<string, number> = {};
     let currentY = 33;
 
     for (const [catKey, catTitle] of catOrder) {
+      // Skip section if unchecked in stock list
+      if (elevSections?.[catKey] === false) continue;
       const items = elev.calculated_outputs.filter(o => classifyOutput(o) === catKey);
       if (items.length === 0) continue;
 
@@ -374,6 +381,8 @@ export async function exportToPdf(
 
     let elevTotalCost = 0;
     for (const [label, key] of costRowDefs) {
+      // Skip categories whose material section was unchecked
+      if (elevSections?.[key] === false) continue;
       const total = elevCatTotals[key] ?? 0;
       if (total === 0) continue;
       elevTotalCost += total;

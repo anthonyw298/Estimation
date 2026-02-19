@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+/* ================================================================
+   Design System - United Glass Ventures Estimator
+   Dark-first professional aesthetic
+   ================================================================ */
+
+:root {
+  /* Backgrounds */
+  --bg: #06060a;
+  --surface: #111118;
+  --surface-hover: #16161f;
+  --surface-raised: #1a1a24;
+  --border: #1e1e2a;
+  --border-light: #2a2a3a;
+
+  /* Accent */
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-muted: rgba(59, 130, 246, 0.12);
+
+  /* Text */
+  --text: #eeeef2;
+  --text-secondary: #8b8d9a;
+  --text-dim: #55566a;
+
+  /* Semantic */
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --danger-hover: #ef4444;
+
+  /* Input */
+  --input-bg: #0c0c12;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+/* ================================================================
+   Base
+   ================================================================ */
+
+html {
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: #fff;
+}
+
+/* ================================================================
+   Scrollbar
+   ================================================================ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a50; }
+
+/* ================================================================
+   Number Inputs
+   ================================================================ */
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+/* ================================================================
+   Animations
+   ================================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes overlayShow {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s var(--ease-out) forwards;
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.4s var(--ease-out) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.25s var(--ease-out) forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s var(--ease-out) forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.25s var(--ease-out) forwards;
+}
+
+.animate-overlay {
+  animation: overlayShow 0.2s ease-out forwards;
+}
+
+/* Stagger delays for list animations */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+
+/* ================================================================
+   Glassmorphism
+   ================================================================ */
+
+.glass {
+  background: rgba(10, 10, 16, 0.75);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+
+/* ================================================================
+   Subtle Glow
+   ================================================================ */
+
+.glow-blue-hover:hover {
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.08), 0 0 48px rgba(59, 130, 246, 0.04);
+}
+
+/* ================================================================
+   Gradient Top Border
+   ================================================================ */
+
+.gradient-border-top {
+  position: relative;
+}
+
+.gradient-border-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.25;
+}

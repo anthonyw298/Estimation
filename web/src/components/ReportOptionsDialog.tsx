@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   X,
   FileSpreadsheet,
@@ -10,7 +10,7 @@ import {
   Check,
   Copy,
 } from 'lucide-react';
-import type { ElevationData, DoorConfig, ProjectSettings, ExtraMaterial } from '@/types';
+import type { ElevationData, DoorConfig, ProjectSettings, ExtraMaterial, ReportConfig } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,6 +124,45 @@ export default function ReportOptionsDialog({
   // State: collapsed panels
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
 
+  // Sync inclusion / section / column state when elevations change (e.g. after async load)
+  useEffect(() => {
+    const names = Object.keys(elevations).sort();
+    if (names.length === 0) return;
+
+    setElevIncluded(prev => {
+      const next = { ...prev };
+      for (const n of names) {
+        if (next[n] === undefined) next[n] = true;
+      }
+      return next;
+    });
+
+    setElevSections(prev => {
+      const next = { ...prev };
+      for (const n of names) {
+        if (!next[n]) {
+          next[n] = Object.fromEntries(ALL_SECTIONS.map(s => [s, true]));
+        }
+      }
+      return next;
+    });
+
+    setElevColumns(prev => {
+      const next = { ...prev };
+      for (const n of names) {
+        if (!next[n]) {
+          next[n] = Object.fromEntries(
+            MATERIAL_SECTIONS.map(s => [
+              s,
+              Object.fromEntries(ELEV_COLUMN_DEFS.map(c => [c.key, true])),
+            ]),
+          );
+        }
+      }
+      return next;
+    });
+  }, [elevations]);
+
   // State: Elevation Summary Display (persisted to settings)
   const [showElevationNames, setShowElevationNames] = useState(settings.show_elevation_names ?? false);
   const [showElevationQuantity, setShowElevationQuantity] = useState(settings.show_elevation_quantity ?? false);
@@ -163,7 +202,7 @@ export default function ReportOptionsDialog({
   // Export handlers
   // Check if any included elevation has calculated data
   const hasCalculatedData = elevationNames.some(
-    name => elevIncluded[name] && elevations[name]?.calculated_outputs && elevations[name].calculated_outputs!.length > 0
+    name => (elevIncluded[name] ?? true) && elevations[name]?.calculated_outputs && elevations[name].calculated_outputs!.length > 0
   );
 
   const handleExportExcel = useCallback(async () => {
@@ -182,7 +221,19 @@ export default function ReportOptionsDialog({
           filteredDoors[name] = doors[name] || [];
         }
       }
-      await exportToExcel(projectName, filteredElevations, filteredDoors, settings, materials);
+      // Build ReportConfig from dialog state to pass stock list selections
+      const reportConfig: ReportConfig = {
+        elevations_included: elevIncluded,
+        summary_included: summaryIncluded,
+        per_elevation_sections: elevSections,
+        per_elevation_columns: elevColumns,
+        summary_options: {
+          sections: summarySections,
+          columns: {},
+          cost_overview: costOverview,
+        },
+      };
+      await exportToExcel(projectName, filteredElevations, filteredDoors, settings, materials, reportConfig);
       onClose();
     } catch (error) {
       console.error('Export failed:', error);
@@ -190,7 +241,7 @@ export default function ReportOptionsDialog({
     } finally {
       setExporting(false);
     }
-  }, [elevationNames, elevIncluded, elevations, doors, settings, materials, projectName, onClose, hasCalculatedData]);
+  }, [elevationNames, elevIncluded, elevations, doors, settings, materials, projectName, onClose, hasCalculatedData, summaryIncluded, elevSections, elevColumns, summarySections, costOverview]);
 
   const handleExportPDF = useCallback(async () => {
     if (!hasCalculatedData) {
@@ -208,7 +259,18 @@ export default function ReportOptionsDialog({
           filteredDoors[name] = doors[name] || [];
         }
       }
-      await exportToPdf(projectName, filteredElevations, filteredDoors, settings, materials);
+      const reportConfig: ReportConfig = {
+        elevations_included: elevIncluded,
+        summary_included: summaryIncluded,
+        per_elevation_sections: elevSections,
+        per_elevation_columns: elevColumns,
+        summary_options: {
+          sections: summarySections,
+          columns: {},
+          cost_overview: costOverview,
+        },
+      };
+      await exportToPdf(projectName, filteredElevations, filteredDoors, settings, materials, reportConfig);
       onClose();
     } catch (error) {
       console.error('PDF export failed:', error);
@@ -216,7 +278,7 @@ export default function ReportOptionsDialog({
     } finally {
       setExporting(false);
     }
-  }, [elevationNames, elevIncluded, elevations, doors, settings, materials, projectName, onClose, hasCalculatedData]);
+  }, [elevationNames, elevIncluded, elevations, doors, settings, materials, projectName, onClose, hasCalculatedData, summaryIncluded, elevSections, elevColumns, summarySections, costOverview]);
 
   if (!isOpen) return null;
 
@@ -408,6 +470,32 @@ export default function ReportOptionsDialog({
                     ))}
                   </div>
                 </div>
+
+                <div>
+                  <p className="text-[10px] text-[#3e3f4d] uppercase tracking-wider font-semibold mb-1.5">Elevation Summary Columns</p>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {([
+                      { label: 'Elevation Name', key: 'show_elevation_names' as const, checked: showElevationNames, setter: setShowElevationNames },
+                      { label: 'Quantity (EA)', key: 'show_elevation_quantity' as const, checked: showElevationQuantity, setter: setShowElevationQuantity },
+                      { label: 'Dimensions', key: 'show_elevation_dimensions' as const, checked: showElevationDimensions, setter: setShowElevationDimensions },
+                      { label: 'SQFT Total (SQFT)', key: 'show_elevation_sqft' as const, checked: showElevationSqft, setter: setShowElevationSqft },
+                      { label: 'Perimeter FT Total (FT)', key: 'show_elevation_perimeter' as const, checked: showElevationPerimeter, setter: setShowElevationPerimeter },
+                    ] as const).map(({ label, key, checked, setter }) => (
+                      <label key={key} className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setter(e.target.checked);
+                            handleElevDisplayToggle(key, e.target.checked);
+                          }}
+                          className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -423,52 +511,7 @@ export default function ReportOptionsDialog({
             </button>
           )}
 
-          {/* Elevation Summary Display */}
-          <div className="border border-[#1e1e2a] rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a0a10]">
-              <span className="text-sm font-medium text-[#eeeef2]">Elevation Summary</span>
-              <button
-                onClick={() => togglePanel('elevSummaryDisplay')}
-                className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
-              >
-                {expandedPanels.elevSummaryDisplay ? (
-                  <ChevronUp className="w-4 h-4 transition-transform duration-200" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 transition-transform duration-200" />
-                )}
-              </button>
-            </div>
 
-            {expandedPanels.elevSummaryDisplay && (
-              <div className="px-4 py-3 space-y-2 bg-[#08080e]">
-                <p className="text-[10px] text-[#3e3f4d]">
-                  Select which columns to include in the elevation summary table in exported reports.
-                </p>
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                  {([
-                    { label: 'Elevation Name', key: 'show_elevation_names' as const, checked: showElevationNames, setter: setShowElevationNames },
-                    { label: 'Quantity (EA)', key: 'show_elevation_quantity' as const, checked: showElevationQuantity, setter: setShowElevationQuantity },
-                    { label: 'Dimensions', key: 'show_elevation_dimensions' as const, checked: showElevationDimensions, setter: setShowElevationDimensions },
-                    { label: 'SQFT Total (SQFT)', key: 'show_elevation_sqft' as const, checked: showElevationSqft, setter: setShowElevationSqft },
-                    { label: 'Perimeter FT Total (FT)', key: 'show_elevation_perimeter' as const, checked: showElevationPerimeter, setter: setShowElevationPerimeter },
-                  ] as const).map(({ label, key, checked, setter }) => (
-                    <label key={key} className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          setter(e.target.checked);
-                          handleElevDisplayToggle(key, e.target.checked);
-                        }}
-                        className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Footer - export buttons */}

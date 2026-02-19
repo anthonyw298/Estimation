@@ -1,0 +1,1497 @@
+'use client';
+
+import { useState, useCallback, useMemo } from 'react';
+import {
+  ElevationData,
+  DoorConfig,
+  CalculatedOutput,
+  ProjectSettings,
+  ExtraMaterial,
+  MaterialImpactDetails,
+} from '@/types';
+import { calculateYes45tuQuantities } from '@/lib/yes45tu';
+import {
+  getPriceByPart,
+  getUnitPriceByPart,
+  applyMaterialImpactInMemory,
+  reverseMaterialImpact,
+} from '@/lib/pricing';
+import { calculate_door_info } from '@/lib/formulas';
+import { Calculator, Save, ChevronDown, ChevronUp, DoorOpen, Layers, CheckCircle2, Eye, EyeOff, Table } from 'lucide-react';
+import { PART_NUMBER_MAP } from '@/data/part-number';
+import BayDiagram from './BayDiagram';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ElevationEditorProps {
+  projectName: string;
+  elevationName: string;
+  elevationData: ElevationData;
+  doors: DoorConfig[];
+  materials: Record<string, ExtraMaterial>;
+  onSave: (
+    name: string,
+    data: ElevationData,
+    doors: DoorConfig[],
+    materials: Record<string, ExtraMaterial>,
+  ) => void;
+  settings: ProjectSettings;
+}
+
+const SYSTEM_TYPES = ['YES 45TU Front Set (OG)'];
+const FINISHES = ['Clear', 'Black', 'Paint'];
+const DOOR_SIZES = [
+  "3' X 7'",
+  "3' X 8'",
+  "3' X 9'",
+  "6' X 7'",
+  "6' X 8'",
+  "6' X 9'",
+];
+const STILE_TYPES = ['Narrow', 'Medium', 'Wide'];
+const HARDWARE_OPTIONS = [
+  'Concealed Closer',
+  'Exit Devices',
+  'Continuous Hinges',
+  'Latch Lock w/ Lever Handle',
+  'Lever Handle',
+  'Electric Strike',
+  'Extended Ladder Pull (B2B)',
+  'Extended Ladder Pull (Single)',
+];
+
+// ---------------------------------------------------------------------------
+// Material section ordering & labels (matching Python excel_generator)
+// ---------------------------------------------------------------------------
+
+const MATERIAL_SECTION_ORDER = ['profiles', 'accessories', 'gaskets', 'Glass', 'Fabrication', 'Doors'] as const;
+const MATERIAL_SECTION_LABELS: Record<string, string> = {
+  profiles: 'Profiles',
+  accessories: 'Accessories',
+  gaskets: 'Gaskets',
+  Glass: 'Glass',
+  Fabrication: 'Fabrication',
+  Doors: 'Doors',
+};
+
+/** Types that receive the discount multiplier */
+const DISCOUNTABLE_TYPES = new Set(['profiles', 'accessories', 'gaskets']);
+
+/** Canonical column definitions matching Python's _build_elev_cols */
+interface ColumnDef {
+  key: string;
+  label: string;
+  perElev?: boolean; // only shown when totalCount > 1
+}
+
+const RESULTS_COLUMN_DEFS: ColumnDef[] = [
+  { key: 'description', label: 'Description' },
+  { key: 'part_number', label: 'Part Number' },
+  { key: 'total_quantity_required', label: 'Total Quantity Required' },
+  { key: 'quantity_per_elevation', label: 'Quantity Per Elevation', perElev: true },
+  { key: 'total_list_cost', label: 'Total List Cost' },
+  { key: 'total_list_cost_per_elevation', label: 'Total List Cost Per Elevation', perElev: true },
+  { key: 'discounted_total_list_cost', label: 'Discounted Total List Cost' },
+  { key: 'discounted_total_list_cost_per_elevation', label: 'Discounted Total List Cost Per Elevation', perElev: true },
+];
+
+// ---------------------------------------------------------------------------
+// Shared input styling
+// ---------------------------------------------------------------------------
+
+const inputClass =
+  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-all duration-200';
+const selectClass =
+  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-all duration-200 appearance-none';
+const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1';
+const cardClass =
+  'bg-[#111118] border border-[#1e1e2a] rounded-xl p-5 space-y-4 shadow-lg shadow-black/10';
+const sectionTitleClass = 'text-lg font-semibold text-white tracking-tight';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function sumArray(arr: number[]): number {
+  return arr.reduce((s, v) => s + v, 0);
+}
+
+function formatCurrency(value: number): string {
+  return `$${value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatQuantity(
+  qty: number | number[],
+  type: string,
+  unit?: string,
+): string {
+  if (type === 'profiles') {
+    if (Array.isArray(qty)) {
+      const total = sumArray(qty);
+      return `${total.toFixed(2)} ft (${qty.length} pcs)`;
+    }
+    return `${Number(qty).toFixed(2)} ft`;
+  }
+  if (type === 'Glass') {
+    return `${Number(qty).toFixed(2)} sqft`;
+  }
+  if (type === 'Fabrication') {
+    return `${qty} joints`;
+  }
+  if (type === 'Calculations') {
+    return `${Number(qty).toFixed(2)} ${unit ?? 'sqft'}`;
+  }
+  if (type === 'Doors') {
+    return String(qty);
+  }
+  // accessories or unknown
+  if (Array.isArray(qty)) {
+    return String(sumArray(qty));
+  }
+  return String(qty);
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function ElevationEditor({
+  projectName,
+  elevationName,
+  elevationData,
+  doors: initialDoors,
+  materials: initialMaterials,
+  onSave,
+  settings,
+}: ElevationEditorProps) {
+  // --- Door-only mode ---
+  const [doorOnly, setDoorOnly] = useState(elevationData.door_only ?? false);
+
+  // --- Form state ---
+  const [systemType, setSystemType] = useState(
+    elevationData.system_type || SYSTEM_TYPES[0],
+  );
+  const [finish, setFinish] = useState(elevationData.finish || 'Clear');
+  const [totalCount, setTotalCount] = useState(elevationData.total_count || 1);
+  const [openingWidth, setOpeningWidth] = useState(
+    elevationData.opening_width_inches || 0,
+  );
+  const [openingHeight, setOpeningHeight] = useState(
+    elevationData.opening_height_inches || 0,
+  );
+  const [baysWide, setBaysWide] = useState(elevationData.bays_wide || 1);
+  const [baysTall, setBaysTall] = useState(elevationData.bays_tall || 1);
+  const [customBayWidths, setCustomBayWidths] = useState<number[]>(
+    () => {
+      if (
+        elevationData.custom_bay_widths &&
+        elevationData.custom_bay_widths.length === elevationData.bays_wide
+      ) {
+        return elevationData.custom_bay_widths;
+      }
+      const w = elevationData.bays_wide || 1;
+      const ow = elevationData.opening_width_inches || 0;
+      return Array(w).fill(w > 0 ? ow / w : 0);
+    },
+  );
+  const [customBayHeights, setCustomBayHeights] = useState<number[]>(
+    () => {
+      if (
+        elevationData.custom_bay_heights &&
+        elevationData.custom_bay_heights.length === elevationData.bays_tall
+      ) {
+        return elevationData.custom_bay_heights;
+      }
+      const h = elevationData.bays_tall || 1;
+      const oh = elevationData.opening_height_inches || 0;
+      return Array(h).fill(h > 0 ? oh / h : 0);
+    },
+  );
+  // Glass & Fabrication pricing is controlled from the Pricing tab (settings),
+  // not per-elevation. Read from settings (fallback to elevation data for legacy).
+  const glassPerSqft = settings.glass_per_sqft ?? elevationData.glass_per_sqft ?? 10.5;
+  const fabCostPerJoint = settings.fabrication_cost_per_joint ?? elevationData.fabrication_cost_per_joint ?? 15.0;
+
+  // --- Doors ---
+  const [doors, setDoors] = useState<DoorConfig[]>(initialDoors);
+
+  // --- Results ---
+  const [results, setResults] = useState<CalculatedOutput[] | null>(
+    elevationData.calculated_outputs ?? null,
+  );
+  const [materialImpacts, setMaterialImpacts] = useState<
+    MaterialImpactDetails[]
+  >(elevationData.material_impacts ?? []);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  // --- Save success indicator ---
+  const [justSaved, setJustSaved] = useState(false);
+
+  // --- Column visibility for results table ---
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
+    () => new Set(['description', 'part_number', 'total_quantity_required', 'total_list_cost', 'discounted_total_list_cost']),
+  );
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+
+  const toggleColumnVisibility = useCallback((key: string) => {
+    setVisibleColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  // --- Results table expand/collapse ---
+  const [resultsTableExpanded, setResultsTableExpanded] = useState(false);
+
+  // --- Section collapse (results/materialImpact collapsed by default) ---
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<string, boolean>
+  >({ results: true, materialImpact: true });
+  const toggleSection = (key: string) =>
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // ---------------------------------------------------------------------------
+  // Bay width logic
+  // ---------------------------------------------------------------------------
+
+  const bayWidthSum = useMemo(() => sumArray(customBayWidths), [customBayWidths]);
+  const bayWidthMismatch = useMemo(
+    () => baysWide > 1 && Math.abs(bayWidthSum - openingWidth) > 0.01,
+    [baysWide, bayWidthSum, openingWidth],
+  );
+
+  const handleBaysWideChange = useCallback(
+    (newBaysWide: number) => {
+      const clamped = Math.max(1, newBaysWide);
+      setBaysWide(clamped);
+      if (openingWidth > 0) {
+        setCustomBayWidths(
+          Array(clamped).fill(
+            Math.round((openingWidth / clamped) * 100) / 100,
+          ),
+        );
+      } else {
+        setCustomBayWidths(Array(clamped).fill(0));
+      }
+    },
+    [openingWidth],
+  );
+
+  const handleOpeningWidthChange = useCallback(
+    (newWidth: number) => {
+      setOpeningWidth(newWidth);
+      if (baysWide > 1 && newWidth > 0) {
+        setCustomBayWidths(
+          Array(baysWide).fill(
+            Math.round((newWidth / baysWide) * 100) / 100,
+          ),
+        );
+      }
+    },
+    [baysWide],
+  );
+
+  const handleCustomBayWidthChange = useCallback(
+    (index: number, value: number) => {
+      setCustomBayWidths((prev) => {
+        const next = [...prev];
+        next[index] = value;
+        return next;
+      });
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Bay height logic
+  // ---------------------------------------------------------------------------
+
+  const bayHeightSum = useMemo(() => sumArray(customBayHeights), [customBayHeights]);
+  const bayHeightMismatch = useMemo(
+    () => baysTall > 1 && Math.abs(bayHeightSum - openingHeight) > 0.01,
+    [baysTall, bayHeightSum, openingHeight],
+  );
+
+  const handleBaysTallChange = useCallback(
+    (newBaysTall: number) => {
+      const clamped = Math.max(1, newBaysTall);
+      setBaysTall(clamped);
+      if (openingHeight > 0) {
+        setCustomBayHeights(
+          Array(clamped).fill(
+            Math.round((openingHeight / clamped) * 100) / 100,
+          ),
+        );
+      } else {
+        setCustomBayHeights(Array(clamped).fill(0));
+      }
+    },
+    [openingHeight],
+  );
+
+  const handleOpeningHeightChange = useCallback(
+    (newHeight: number) => {
+      setOpeningHeight(newHeight);
+      if (baysTall > 1 && newHeight > 0) {
+        setCustomBayHeights(
+          Array(baysTall).fill(
+            Math.round((newHeight / baysTall) * 100) / 100,
+          ),
+        );
+      }
+    },
+    [baysTall],
+  );
+
+  const handleCustomBayHeightChange = useCallback(
+    (index: number, value: number) => {
+      setCustomBayHeights((prev) => {
+        const next = [...prev];
+        next[index] = value;
+        return next;
+      });
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Door management
+  // ---------------------------------------------------------------------------
+
+  const addDoor = useCallback(() => {
+    setDoors((prev) => [
+      ...prev,
+      {
+        size: "3' X 7'",
+        count: 1,
+        stile: 'Narrow',
+        hardware: Object.fromEntries(HARDWARE_OPTIONS.map((h) => [h, false])),
+      },
+    ]);
+  }, []);
+
+  const removeDoor = useCallback((index: number) => {
+    setDoors((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const updateDoor = useCallback(
+    (index: number, field: keyof DoorConfig, value: unknown) => {
+      setDoors((prev) => {
+        const next = [...prev];
+        next[index] = { ...next[index], [field]: value };
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateDoorHardware = useCallback(
+    (doorIndex: number, hw: string, checked: boolean) => {
+      setDoors((prev) => {
+        const next = [...prev];
+        next[doorIndex] = {
+          ...next[doorIndex],
+          hardware: { ...next[doorIndex].hardware, [hw]: checked },
+        };
+        return next;
+      });
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Calculate
+  // ---------------------------------------------------------------------------
+
+  // Whether this elevation has already been saved (has calculated_outputs)
+  const hasBeenSaved = !!(elevationData.calculated_outputs && elevationData.calculated_outputs.length > 0);
+
+  const handleCalculate = useCallback(() => {
+    setIsCalculating(true);
+
+    try {
+      const pricedOutputs: CalculatedOutput[] = [];
+      const impacts: MaterialImpactDetails[] = [];
+
+      // Deep-clone materials so we can track impact without mutating props
+      const materialsClone: Record<string, ExtraMaterial> = {};
+      for (const [k, v] of Object.entries(initialMaterials)) {
+        materialsClone[k] = {
+          quantity: v.quantity,
+          length_pieces: [...v.length_pieces],
+        };
+      }
+
+      // CRITICAL: Reverse old material impacts before recalculating
+      // Without this, leftovers from previous calc cause $0 pricing on re-calc
+      if (elevationData.material_impacts && elevationData.material_impacts.length > 0) {
+        reverseMaterialImpact(elevationData.material_impacts, materialsClone);
+      }
+
+      if (doorOnly) {
+        // ---- Door-only mode: only calculate doors ----
+        if (doors.length === 0) {
+          alert('Please add at least one door for door-only mode.');
+          setIsCalculating(false);
+          return;
+        }
+
+        const doorItems = calculate_door_info(doors, finish, 1);
+        for (const doorItem of doorItems) {
+          pricedOutputs.push({
+            description: doorItem.description,
+            quantity: doorItem.quantity,
+            part_number: doorItem.part_number,
+            type: doorItem.type,
+            price: doorItem.price * doorItem.quantity,
+            manual: true,
+            hardware: doorItem.hardware,
+            Style: doorItem.Style,
+          });
+        }
+      } else {
+        // ---- Standard elevation mode ----
+        // 1. Run the YES 45TU quantity calculations
+        const rawOutputs = calculateYes45tuQuantities(
+          baysWide,
+          baysTall,
+          totalCount,
+          openingWidth,
+          openingHeight,
+          doors,
+          baysWide > 1 ? customBayWidths : undefined,
+          glassPerSqft,
+          fabCostPerJoint,
+        );
+
+        for (const output of rawOutputs) {
+          if (output.manual) {
+            // Manual items: Glass, Fabrication, Calculations
+            let totalPrice = 0;
+            if (output.type === 'Glass' && typeof output.quantity === 'number') {
+              totalPrice = output.quantity * (output.price ?? glassPerSqft);
+            } else if (
+              output.type === 'Fabrication' &&
+              typeof output.quantity === 'number'
+            ) {
+              totalPrice = output.quantity * (output.price ?? fabCostPerJoint);
+            }
+
+            pricedOutputs.push({
+              ...output,
+              price:
+                output.type === 'Calculations'
+                  ? undefined
+                  : totalPrice,
+            });
+          } else {
+            // Standard parts: get pricing + material impact
+            // Gaskets need group=true for proper length-based pricing (sold in 500ft rolls)
+            const GASKET_PARTS = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
+            const isGasket =
+              (output.description?.toLowerCase().includes('gasket') ?? false) ||
+              GASKET_PARTS.has(output.part_number);
+            const isProfile = output.type === 'profiles';
+            const useGroup = isProfile || isGasket;
+
+            // 1. Get theoretical price (summary=true) for display – always shows cost
+            //    This matches the Python excel_generator summary sheet behavior.
+            const [summaryPrice, unitType] = getPriceByPart(
+              output.part_number,
+              output.quantity,
+              finish,
+              null,
+              true, // summary=true: ignores inventory, always returns purchase cost
+              useGroup,
+              output.description,
+            );
+
+            // 2. Get inventory-aware price + material impact for stock tracking
+            const [, , impact] = getPriceByPart(
+              output.part_number,
+              output.quantity,
+              finish,
+              materialsClone,
+              false, // summary=false: uses inventory, returns $0 for leftover-fulfilled items
+              useGroup,
+              output.description,
+            );
+
+            // Apply impact to clone for inventory tracking
+            if (impact) {
+              applyMaterialImpactInMemory(materialsClone, impact);
+              impacts.push(impact);
+            }
+
+            pricedOutputs.push({
+              ...output,
+              price: summaryPrice ?? 0,
+              unit: unitType ?? undefined,
+            });
+          }
+        }
+
+        // Door items for standard mode
+        const doorItems = calculate_door_info(doors, finish, totalCount);
+        for (const doorItem of doorItems) {
+          pricedOutputs.push({
+            description: doorItem.description,
+            quantity: doorItem.quantity,
+            part_number: doorItem.part_number,
+            type: doorItem.type,
+            price: doorItem.price * doorItem.quantity,
+            manual: true,
+            hardware: doorItem.hardware,
+            Style: doorItem.Style,
+          });
+        }
+      }
+
+      setResults(pricedOutputs);
+      setMaterialImpacts(impacts);
+
+      // Build updated elevation data and call onSave
+      const updatedData: ElevationData = doorOnly
+        ? {
+            system_type: 'Other',
+            finish,
+            opening_width_inches: doors[0]
+              ? parseInt(doors[0].size.split('X')[0].replace("'", '').trim()) * 12
+              : 0,
+            opening_height_inches: doors[0]
+              ? parseInt(doors[0].size.split('X')[1].replace("'", '').trim()) * 12
+              : 0,
+            bays_wide: 0,
+            bays_tall: 0,
+            total_count: 1,
+            door_only: true,
+            calculated_outputs: pricedOutputs,
+            material_impacts: impacts,
+          }
+        : {
+            system_type: systemType,
+            finish,
+            opening_width_inches: openingWidth,
+            opening_height_inches: openingHeight,
+            bays_wide: baysWide,
+            bays_tall: baysTall,
+            total_count: totalCount,
+            custom_bay_widths: baysWide > 1 ? customBayWidths : undefined,
+            custom_bay_heights: baysTall > 1 ? customBayHeights : undefined,
+            glass_per_sqft: glassPerSqft,
+            fabrication_cost_per_joint: fabCostPerJoint,
+            calculated_outputs: pricedOutputs,
+            material_impacts: impacts,
+            door_only: false,
+          };
+
+      onSave(elevationName, updatedData, doors, materialsClone);
+
+      // Show success indicator
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
+    } finally {
+      setIsCalculating(false);
+    }
+  }, [
+    doorOnly,
+    baysWide,
+    baysTall,
+    totalCount,
+    openingWidth,
+    openingHeight,
+    doors,
+    customBayWidths,
+    customBayHeights,
+    glassPerSqft,
+    fabCostPerJoint,
+    finish,
+    systemType,
+    elevationName,
+    initialMaterials,
+    onSave,
+    elevationData,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Grand total
+  // ---------------------------------------------------------------------------
+
+  const grandTotal = useMemo(() => {
+    if (!results) return 0;
+    return results.reduce((sum, r) => {
+      if (r.type === 'Calculations') return sum; // info-only row
+      return sum + (r.price ?? 0);
+    }, 0);
+  }, [results]);
+
+  // ---------------------------------------------------------------------------
+  // Discount multiplier (same logic as CostSummary.tsx)
+  // ---------------------------------------------------------------------------
+
+  const discountMultiplier = useMemo(() => {
+    if (settings.discount_multiplier != null) return settings.discount_multiplier;
+    const threshold = settings.discount_threshold ?? 50000;
+    const lowMult = settings.discount_multiplier_low ?? 0.614;
+    const highMult = settings.discount_multiplier_high ?? 0.572;
+    // Use grandTotal as a rough proxy — exact match requires project-wide total
+    // but for per-elevation display this is reasonable
+    return grandTotal < threshold ? lowMult : highMult;
+  }, [settings, grandTotal]);
+
+  // ---------------------------------------------------------------------------
+  // Grouped results for table display
+  // ---------------------------------------------------------------------------
+
+  const groupedResults = useMemo(() => {
+    if (!results) return [];
+
+    // Classify each item into a section
+    const groups: Record<string, CalculatedOutput[]> = {};
+    const profileParts = new Set(Object.keys(PART_NUMBER_MAP['profiles'] ?? {}));
+    const accessoryParts = new Set(Object.keys(PART_NUMBER_MAP['accessories'] ?? {}));
+    const GASKET_PARTS = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
+
+    for (const item of results) {
+      if (item.type === 'Calculations') continue; // skip info-only rows
+
+      let section = item.type; // default from calculation engine
+
+      // Refine classification to match Python sections
+      if (section === 'profiles' || profileParts.has(item.part_number)) {
+        // Check if gasket (gaskets are in the profiles section by type but have specific part numbers)
+        const isGasket =
+          GASKET_PARTS.has(item.part_number) ||
+          (item.description?.toLowerCase().includes('gasket') ?? false);
+        section = isGasket ? 'gaskets' : 'profiles';
+      } else if (section === 'accessories' || accessoryParts.has(item.part_number)) {
+        section = 'accessories';
+      }
+      // Glass, Fabrication, Doors stay as-is
+
+      if (!groups[section]) groups[section] = [];
+      groups[section].push(item);
+    }
+
+    // Return in canonical order, filtering empty groups
+    return MATERIAL_SECTION_ORDER
+      .filter((s) => groups[s] && groups[s].length > 0)
+      .map((s) => ({
+        section: s,
+        label: MATERIAL_SECTION_LABELS[s] ?? s,
+        items: groups[s],
+        isDiscountable: DISCOUNTABLE_TYPES.has(s),
+      }));
+  }, [results]);
+
+  // Active columns based on visibility and totalCount
+  const activeColumns = useMemo(() => {
+    return RESULTS_COLUMN_DEFS.filter((col) => {
+      if (!visibleColumns.has(col.key)) return false;
+      if (col.perElev && totalCount <= 1) return false;
+      return true;
+    });
+  }, [visibleColumns, totalCount]);
+
+  // ---------------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------------
+
+  const SectionHeader = ({
+    sectionKey,
+    title,
+    icon,
+  }: {
+    sectionKey: string;
+    title: string;
+    icon?: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      className="flex w-full items-center justify-between transition-all duration-200"
+      onClick={() => toggleSection(sectionKey)}
+    >
+      <div className="flex items-center gap-2">
+        {icon}
+        <h3 className={sectionTitleClass}>{title}</h3>
+      </div>
+      {collapsedSections[sectionKey] ? (
+        <ChevronDown className="h-5 w-5 text-[#8b8d9a]" />
+      ) : (
+        <ChevronUp className="h-5 w-5 text-[#8b8d9a]" />
+      )}
+    </button>
+  );
+
+  // ---------------------------------------------------------------------------
+  // JSX
+  // ---------------------------------------------------------------------------
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-[#55566a]">{projectName}</p>
+          <h2 className="text-2xl font-bold text-white">{elevationName}</h2>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Mode Toggle: Elevation vs Door Only */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center bg-[#0a0a10] border border-[#1e1e2a] rounded-lg p-0.5">
+          <button
+            type="button"
+            onClick={() => setDoorOnly(false)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+              !doorOnly
+                ? 'bg-[#3b82f6] text-white shadow-sm'
+                : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Elevation
+          </button>
+          <button
+            type="button"
+            onClick={() => setDoorOnly(true)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+              doorOnly
+                ? 'bg-[#3b82f6] text-white shadow-sm'
+                : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
+            }`}
+          >
+            <DoorOpen className="w-4 h-4" />
+            Door Only
+          </button>
+        </div>
+        {doorOnly && (
+          <span className="text-xs text-[#55566a] ml-2">
+            Door-only mode: no system, bays, or glass — just doors.
+          </span>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 1. System Configuration (hidden in door-only mode) */}
+      {/* ------------------------------------------------------------------ */}
+      {!doorOnly && (
+        <div className={cardClass}>
+          <SectionHeader sectionKey="system" title="System Configuration" />
+          {!collapsedSections.system && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label className={labelClass}>System Type</label>
+                <select
+                  className={selectClass}
+                  value={systemType}
+                  onChange={(e) => setSystemType(e.target.value)}
+                >
+                  {SYSTEM_TYPES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Finish</label>
+                <select
+                  className={selectClass}
+                  value={finish}
+                  onChange={(e) => setFinish(e.target.value)}
+                >
+                  {FINISHES.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Total Count</label>
+                <input
+                  type="number"
+                  className={inputClass}
+                  min={1}
+                  value={totalCount}
+                  onChange={(e) =>
+                    setTotalCount(Math.max(1, parseInt(e.target.value, 10) || 1))
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Finish selector for door-only mode */}
+      {doorOnly && (
+        <div className={cardClass}>
+          <h3 className="text-lg font-semibold text-white tracking-tight">Door Finish</h3>
+          <div className="max-w-xs">
+            <label className={labelClass}>Finish</label>
+            <select
+              className={selectClass}
+              value={finish}
+              onChange={(e) => setFinish(e.target.value)}
+            >
+              {FINISHES.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 2. Opening Dimensions (hidden in door-only mode) */}
+      {/* ------------------------------------------------------------------ */}
+      {!doorOnly && (
+        <div className={cardClass}>
+          <SectionHeader sectionKey="opening" title="Opening Dimensions" />
+          {!collapsedSections.opening && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Opening Width (inches)</label>
+                <input
+                  type="number"
+                  className={inputClass}
+                  min={0}
+                  step="0.01"
+                  value={openingWidth || ''}
+                  onChange={(e) =>
+                    handleOpeningWidthChange(parseFloat(e.target.value) || 0)
+                  }
+                  placeholder="e.g. 120"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Opening Height (inches)</label>
+                <input
+                  type="number"
+                  className={inputClass}
+                  min={0}
+                  step="0.01"
+                  value={openingHeight || ''}
+                  onChange={(e) =>
+                    handleOpeningHeightChange(parseFloat(e.target.value) || 0)
+                  }
+                  placeholder="e.g. 96"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 3. Bay Configuration (hidden in door-only mode) */}
+      {/* ------------------------------------------------------------------ */}
+      {!doorOnly && (
+        <div className={cardClass}>
+          <SectionHeader sectionKey="bay" title="Bay Configuration" />
+          {!collapsedSections.bay && (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Bays Wide</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={1}
+                    value={baysWide}
+                    onChange={(e) =>
+                      handleBaysWideChange(parseInt(e.target.value, 10) || 1)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Bays Tall</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={1}
+                    value={baysTall}
+                    onChange={(e) =>
+                      handleBaysTallChange(parseInt(e.target.value, 10) || 1)
+                    }
+                  />
+                </div>
+              </div>
+
+              {baysWide > 1 && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm font-medium text-[#8b8d9a]">
+                    Custom Bay Widths (inches)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                    {customBayWidths.map((w, i) => (
+                      <div key={i}>
+                        <label className="mb-1 block text-xs text-[#55566a]">
+                          Bay {i + 1}
+                        </label>
+                        <input
+                          type="number"
+                          className={inputClass}
+                          min={0}
+                          step="0.01"
+                          value={w || ''}
+                          onChange={(e) =>
+                            handleCustomBayWidthChange(
+                              i,
+                              parseFloat(e.target.value) || 0,
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Sum indicator */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-[#55566a]">
+                      Sum: {bayWidthSum.toFixed(2)}&Prime; / {openingWidth.toFixed(2)}&Prime;
+                    </span>
+                    {bayWidthMismatch && (
+                      <span className="rounded bg-amber-900/15 px-2 py-0.5 text-xs font-medium text-yellow-400">
+                        Mismatch &mdash; sum does not equal opening width
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {baysTall > 1 && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm font-medium text-[#8b8d9a]">
+                    Custom Bay Heights (inches)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                    {customBayHeights.map((h, i) => (
+                      <div key={i}>
+                        <label className="mb-1 block text-xs text-[#55566a]">
+                          Bay {i + 1}
+                        </label>
+                        <input
+                          type="number"
+                          className={inputClass}
+                          min={0}
+                          step="0.01"
+                          value={h || ''}
+                          onChange={(e) =>
+                            handleCustomBayHeightChange(
+                              i,
+                              parseFloat(e.target.value) || 0,
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Sum indicator */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-[#55566a]">
+                      Sum: {bayHeightSum.toFixed(2)}&Prime; / {openingHeight.toFixed(2)}&Prime;
+                    </span>
+                    {bayHeightMismatch && (
+                      <span className="rounded bg-amber-900/15 px-2 py-0.5 text-xs font-medium text-yellow-400">
+                        Mismatch &mdash; sum does not equal opening height
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Bay Diagram — directly under configuration inputs */}
+      {/* ------------------------------------------------------------------ */}
+      {!doorOnly && openingWidth > 0 && openingHeight > 0 && (
+        <BayDiagram
+          baysWide={baysWide}
+          baysTall={baysTall}
+          openingWidth={openingWidth}
+          openingHeight={openingHeight}
+          customBayWidths={baysWide > 1 ? customBayWidths : undefined}
+          customBayHeights={baysTall > 1 ? customBayHeights : undefined}
+          doors={doors}
+        />
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 5. Door Configuration */}
+      {/* ------------------------------------------------------------------ */}
+      <div className={cardClass}>
+        <SectionHeader sectionKey="doors" title="Door Configuration" />
+        {!collapsedSections.doors && (
+          <>
+            {doors.length === 0 && (
+              <p className="text-sm text-[#55566a]">
+                No doors configured. Click &ldquo;Add Door&rdquo; to begin.
+              </p>
+            )}
+
+            <div className="space-y-4">
+              {doors.map((door, di) => (
+                <div
+                  key={di}
+                  className="rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#c4c5cf]">
+                      Door {di + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeDoor(di)}
+                      className="rounded px-2 py-1 text-xs text-[#f87171] hover:bg-red-900/20 transition-all duration-200"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {/* Size */}
+                    <div>
+                      <label className={labelClass}>Size</label>
+                      <select
+                        className={selectClass}
+                        value={door.size}
+                        onChange={(e) =>
+                          updateDoor(di, 'size', e.target.value)
+                        }
+                      >
+                        {DOOR_SIZES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Count */}
+                    <div>
+                      <label className={labelClass}>Count</label>
+                      <input
+                        type="number"
+                        className={inputClass}
+                        min={1}
+                        value={door.count}
+                        onChange={(e) =>
+                          updateDoor(
+                            di,
+                            'count',
+                            Math.max(1, parseInt(e.target.value, 10) || 1),
+                          )
+                        }
+                      />
+                    </div>
+
+                    {/* Stile */}
+                    <div>
+                      <label className={labelClass}>Stile</label>
+                      <select
+                        className={selectClass}
+                        value={door.stile}
+                        onChange={(e) =>
+                          updateDoor(di, 'stile', e.target.value)
+                        }
+                      >
+                        {STILE_TYPES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Hardware */}
+                  <div>
+                    <label className={labelClass}>Hardware</label>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {HARDWARE_OPTIONS.map((hw) => (
+                        <label
+                          key={hw}
+                          className="flex items-center gap-2 text-sm text-[#c4c5cf] cursor-pointer select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={door.hardware?.[hw] ?? false}
+                            onChange={(e) =>
+                              updateDoorHardware(di, hw, e.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-[#3e3f4d] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
+                          />
+                          {hw}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addDoor}
+              className="mt-2 rounded-lg border border-dashed border-[#3e3f4d] px-4 py-2 text-sm text-[#8b8d9a] hover:border-[#3b82f6] hover:text-blue-400 transition-all duration-200"
+            >
+              + Add Door
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 6. Calculate & Save */}
+      {/* ------------------------------------------------------------------ */}
+      <div className={cardClass}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className={sectionTitleClass}>{hasBeenSaved || (results && results.length > 0) ? 'Update Elevation' : 'Calculate & Save'}</h3>
+            {justSaved && (
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400 animate-fade-in">
+                <CheckCircle2 className="h-4 w-4" />
+                Saved successfully
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleCalculate}
+            disabled={isCalculating || (!doorOnly && (openingWidth <= 0 || openingHeight <= 0)) || (doorOnly && doors.length === 0)}
+            className="flex items-center gap-2 rounded-lg bg-[#3b82f6] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#2563eb] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md shadow-blue-500/10"
+          >
+            {isCalculating ? (
+              <>
+                <Calculator className="h-4 w-4 animate-spin" />
+                {hasBeenSaved || (results && results.length > 0) ? 'Updating...' : 'Calculating...'}
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                {hasBeenSaved || (results && results.length > 0) ? 'Update' : 'Calculate & Save'}
+              </>
+            )}
+          </button>
+        </div>
+
+        {!results && (
+          <p className="text-sm text-[#55566a]">
+            Configure the elevation above, then click &ldquo;Calculate &amp; Save&rdquo; to price all materials and save the elevation.
+          </p>
+        )}
+
+        {/* Compact cost summary after calculation */}
+        {results && results.length > 0 && (
+          <div className="mt-2 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-xs text-[#55566a] font-medium">List Price Total</p>
+                  <p className="text-lg font-bold font-mono text-white tabular-nums">
+                    {formatCurrency(grandTotal)}
+                  </p>
+                </div>
+                <div className="w-px h-10 bg-[#1e1e2a]" />
+                <div>
+                  <p className="text-xs text-[#55566a] font-medium">Line Items</p>
+                  <p className="text-lg font-bold text-[#c4c5cf] tabular-nums">
+                    {results.filter(r => r.type !== 'Calculations').length}
+                  </p>
+                </div>
+                {doors.length > 0 && (
+                  <>
+                    <div className="w-px h-10 bg-[#1e1e2a]" />
+                    <div>
+                      <p className="text-xs text-[#55566a] font-medium">Doors</p>
+                      <p className="text-lg font-bold text-purple-400 tabular-nums">
+                        {doors.reduce((s, d) => s + d.count, 0)}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setResultsTableExpanded(!resultsTableExpanded)}
+                className="flex items-center gap-2 text-xs text-[#8b8d9a] hover:text-[#c4c5cf] transition-colors duration-200"
+              >
+                <Table className="h-3.5 w-3.5" />
+                {resultsTableExpanded ? 'Hide Details' : 'Show Details'}
+                {resultsTableExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Messages from calculation (e.g. glass area adjustments) */}
+        {results && results.filter(r => r.message).length > 0 && (
+          <div className="mt-2 space-y-1">
+            {results.filter(r => r.message).map((r, i) => (
+              <p
+                key={`msg-${i}`}
+                className="rounded bg-amber-900/10 px-3 py-2 text-xs text-yellow-400"
+              >
+                {r.description}: {r.message}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Detailed results table (collapsible) */}
+        {/* ---------------------------------------------------------------- */}
+        {results && results.length > 0 && resultsTableExpanded && (
+          <div className="mt-3 space-y-3 animate-fade-in">
+            {/* Column visibility picker */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-[#8b8d9a]">
+                Material Stock List
+              </p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowColumnPicker(!showColumnPicker)}
+                  className="flex items-center gap-1.5 rounded-md border border-[#1e1e2a] bg-[#0c0c12] px-3 py-1.5 text-xs text-[#8b8d9a] hover:border-[#3b82f6]/40 hover:text-[#c4c5cf] transition-all duration-200"
+                >
+                  {showColumnPicker ? (
+                    <EyeOff className="h-3 w-3" />
+                  ) : (
+                    <Eye className="h-3 w-3" />
+                  )}
+                  Columns ({visibleColumns.size}/{RESULTS_COLUMN_DEFS.filter(c => !c.perElev || totalCount > 1).length})
+                </button>
+                {showColumnPicker && (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-lg border border-[#1e1e2a] bg-[#111118] p-3 shadow-xl shadow-black/30">
+                    <p className="mb-2 text-xs font-medium text-[#55566a] uppercase tracking-wider">
+                      Toggle Columns
+                    </p>
+                    <div className="space-y-1">
+                      {RESULTS_COLUMN_DEFS
+                        .filter((col) => !col.perElev || totalCount > 1)
+                        .map((col) => (
+                          <label
+                            key={col.key}
+                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer hover:bg-[#16161f] transition-colors duration-150"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns.has(col.key)}
+                              onChange={() => toggleColumnVisibility(col.key)}
+                              className="h-3.5 w-3.5 rounded border-[#3e3f4d] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
+                            />
+                            <span className={visibleColumns.has(col.key) ? 'text-[#c4c5cf]' : 'text-[#55566a]'}>
+                              {col.label}
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                    {totalCount > 1 && (
+                      <p className="mt-2 text-[10px] text-[#55566a] italic">
+                        &quot;Per Elevation&quot; columns visible because count &gt; 1
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Grouped material tables */}
+            {groupedResults.map(({ section, label, items, isDiscountable }) => {
+              // Section totals
+              const sectionListTotal = items.reduce((s, r) => s + (r.price ?? 0), 0);
+              const sectionDiscountedTotal = isDiscountable
+                ? sectionListTotal * discountMultiplier
+                : sectionListTotal;
+
+              return (
+                <div key={section} className="rounded-lg border border-[#1e1e2a] bg-[#0a0a10] overflow-hidden">
+                  {/* Section header */}
+                  <div className="flex items-center justify-between border-b border-[#1e1e2a] bg-[#0c0c14] px-4 py-2.5">
+                    <h4 className="text-sm font-semibold text-[#c4c5cf] uppercase tracking-wider">
+                      {label}
+                    </h4>
+                    <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
+                      {visibleColumns.has('total_list_cost') && (
+                        <span className="text-[#8b8d9a]">
+                          List: <span className="text-white">{formatCurrency(sectionListTotal)}</span>
+                        </span>
+                      )}
+                      {visibleColumns.has('discounted_total_list_cost') && (
+                        <span className="text-[#8b8d9a]">
+                          Disc: <span className="text-emerald-400">{formatCurrency(sectionDiscountedTotal)}</span>
+                          {isDiscountable && (
+                            <span className="ml-1 text-[#55566a]">
+                              ({(discountMultiplier * 100).toFixed(1)}%)
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[#1e1e2a]">
+                          {activeColumns.map((col) => (
+                            <th
+                              key={col.key}
+                              className={`px-3 py-2 text-left font-medium text-[#55566a] uppercase tracking-wider whitespace-nowrap ${
+                                col.key.includes('cost') || col.key.includes('quantity') || col.key === 'quantity_per_elevation'
+                                  ? 'text-right'
+                                  : ''
+                              }`}
+                            >
+                              {col.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, idx) => {
+                          const listCost = item.price ?? 0;
+                          const discountedCost = isDiscountable
+                            ? listCost * discountMultiplier
+                            : listCost;
+                          const qtyRaw = item.quantity;
+                          const qtyTotal = Array.isArray(qtyRaw) ? sumArray(qtyRaw) : Number(qtyRaw);
+                          const qtyPerElev = totalCount > 1 ? qtyTotal / totalCount : qtyTotal;
+                          const listCostPerElev = totalCount > 1 ? listCost / totalCount : listCost;
+                          const discountedCostPerElev = totalCount > 1 ? discountedCost / totalCount : discountedCost;
+
+                          // Format quantity based on type
+                          const qtyDisplay = formatQuantity(qtyRaw, section === 'gaskets' ? 'profiles' : item.type, item.unit);
+                          const qtyPerElevDisplay = totalCount > 1
+                            ? formatQuantity(
+                                Array.isArray(qtyRaw)
+                                  ? qtyRaw.map((v) => v / totalCount)
+                                  : Number(qtyRaw) / totalCount,
+                                section === 'gaskets' ? 'profiles' : item.type,
+                                item.unit,
+                              )
+                            : '';
+
+                          // Cell value lookup
+                          const cellValue: Record<string, React.ReactNode> = {
+                            description: (
+                              <span className="text-[#c4c5cf]" title={item.description}>
+                                {item.description}
+                              </span>
+                            ),
+                            part_number: (
+                              <span className="font-mono text-[#8b8d9a]">{item.part_number}</span>
+                            ),
+                            total_quantity_required: (
+                              <span className="font-mono text-[#c4c5cf] tabular-nums">{qtyDisplay}</span>
+                            ),
+                            quantity_per_elevation: (
+                              <span className="font-mono text-[#8b8d9a] tabular-nums">{qtyPerElevDisplay}</span>
+                            ),
+                            total_list_cost: (
+                              <span className="font-mono text-white tabular-nums">{formatCurrency(listCost)}</span>
+                            ),
+                            total_list_cost_per_elevation: (
+                              <span className="font-mono text-[#8b8d9a] tabular-nums">{formatCurrency(listCostPerElev)}</span>
+                            ),
+                            discounted_total_list_cost: (
+                              <span className={`font-mono tabular-nums ${isDiscountable ? 'text-emerald-400' : 'text-white'}`}>
+                                {formatCurrency(discountedCost)}
+                              </span>
+                            ),
+                            discounted_total_list_cost_per_elevation: (
+                              <span className={`font-mono tabular-nums ${isDiscountable ? 'text-emerald-400/70' : 'text-[#8b8d9a]'}`}>
+                                {formatCurrency(discountedCostPerElev)}
+                              </span>
+                            ),
+                          };
+
+                          return (
+                            <tr
+                              key={`${section}-${idx}`}
+                              className="border-b border-[#1e1e2a]/50 hover:bg-[#111118] transition-colors duration-100"
+                            >
+                              {activeColumns.map((col) => (
+                                <td
+                                  key={col.key}
+                                  className={`px-3 py-2 whitespace-nowrap ${
+                                    col.key.includes('cost') || col.key.includes('quantity') || col.key === 'quantity_per_elevation'
+                                      ? 'text-right'
+                                      : ''
+                                  }`}
+                                >
+                                  {cellValue[col.key] ?? '—'}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Grand total row */}
+            {groupedResults.length > 0 && (
+              <div className="rounded-lg border border-[#1e1e2a] bg-[#0c0c14] px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-white">
+                    Elevation Total
+                  </span>
+                  <div className="flex items-center gap-4 text-sm font-mono tabular-nums">
+                    {visibleColumns.has('total_list_cost') && (
+                      <span className="text-[#8b8d9a]">
+                        List: <span className="font-bold text-white">{formatCurrency(grandTotal)}</span>
+                      </span>
+                    )}
+                    {visibleColumns.has('discounted_total_list_cost') && (
+                      <span className="text-[#8b8d9a]">
+                        Discounted:{' '}
+                        <span className="font-bold text-emerald-400">
+                          {formatCurrency(
+                            groupedResults.reduce((s, g) => {
+                              const sectionTotal = g.items.reduce((a, r) => a + (r.price ?? 0), 0);
+                              return s + (g.isDiscountable ? sectionTotal * discountMultiplier : sectionTotal);
+                            }, 0),
+                          )}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
