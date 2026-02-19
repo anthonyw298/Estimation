@@ -5835,11 +5835,11 @@ def main(page: ft.Page):
         # Per-elevation columns only appear when the elevation's own count > 1.
         _ELEV_QTY_LABEL = {
             "profiles": "Sticks Required",
-            "accessories": "Total Pcs Required",
-            "gaskets": "Total Qty Required",
-            "doors": "Total Qty Required",
-            "glass": "Total Qty Required",
-            "fabrication": "Total Qty Required",
+            "accessories": "Total Pieces Required",
+            "gaskets": "Total Quantity Required",
+            "doors": "Total Quantity Required",
+            "glass": "Total Quantity Required",
+            "fabrication": "Total Quantity Required",
         }
 
         _NO_PART_NUMBER = {"doors", "glass", "fabrication"}
@@ -5847,20 +5847,25 @@ def main(page: ft.Page):
         def _build_elev_cols(section_key, elev_total_count):
             """Return column defs for a material section on an elevation tab."""
             has_per_elev = elev_total_count > 1
-            qty_label = _ELEV_QTY_LABEL.get(section_key, "Total Qty Required")
+            qty_label = _ELEV_QTY_LABEL.get(section_key, "Total Quantity Required")
             cols = [("description", "Description")]
             if section_key not in _NO_PART_NUMBER:
                 cols.append(("part_number", "Part Number"))
             cols.append(("total_quantity_required", qty_label))
             if has_per_elev:
-                cols.append(("quantity_per_elevation", "Qty Per Elevation"))
+                cols.append(("quantity_per_elevation", "Quantity Per Elevation"))
             cols.append(("total_list_cost", "Total List Cost"))
             if has_per_elev:
-                cols.append(("total_list_cost_per_elevation", "List Cost Per Elev"))
+                cols.append(
+                    ("total_list_cost_per_elevation", "Total List Cost Per Elevation")
+                )
             cols.append(("discounted_total_list_cost", "Discounted Total List Cost"))
             if has_per_elev:
                 cols.append(
-                    ("discounted_total_list_cost_per_elevation", "Discounted Per Elev")
+                    (
+                        "discounted_total_list_cost_per_elevation",
+                        "Discounted Total List Cost Per Elevation",
+                    )
                 )
             return cols
 
@@ -5876,7 +5881,7 @@ def main(page: ft.Page):
             ("discounted_total_list_cost", "Discounted Total List Cost"),
         ]
         _SUM_RESIDUAL = [
-            ("residual_material_quantity", "Residual Material Qty"),
+            ("residual_material_quantity", "Residual Material Quantity"),
             ("residual_waste_pct", "Residual Waste %"),
             ("residual_material_cost", "Residual Material Cost"),
         ]
@@ -5894,7 +5899,7 @@ def main(page: ft.Page):
             "accessories": _SUM_COMMON
             + [
                 ("total_pieces_required", "Total Pieces Required"),
-                ("quantity_per_order", "Qty Per Order"),
+                ("quantity_per_order", "Quantity Per Order"),
                 ("orders_required", "Orders Required"),
             ]
             + _SUM_COST

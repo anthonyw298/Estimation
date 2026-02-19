@@ -111,29 +111,30 @@ def _create_pdf_table(
         fontName="Helvetica-Bold",
     )
 
-    # Abbreviation map for wide table headers
+    # Abbreviation map for wide table headers (matches Excel canonical names)
     _HEADER_ABBREV = {
         "Project Total Materials": "Proj Total",
         "Total Quantity Required": "Total Qty",
         "Total Feet Required": "Total FT",
         "Total Pieces Required": "Total PCS",
         "Total List Cost": "List Cost",
+        "Total List Cost Per Elevation": "List/Elev",
         "Discounted Total List Cost": "Disc. Cost",
-        "Discounted Total Cost": "Disc. Cost",
+        "Discounted Total List Cost Per Elevation": "Disc/Elev",
         "Residual Material Quantity": "Resid. Qty",
-        "Residual Qty": "Res. Qty",
         "Residual Material Cost": "Resid. Cost",
-        "Residual Cost": "Res. $",
+        "Residual Waste %": "Waste %",
         "Sticks Required": "Sticks",
         "Quantity Per Order": "Qty/Ord",
+        "Quantity Per Elevation": "Qty/Elev",
         "Orders Required": "Orders",
         "Rolls Required": "Rolls",
-        "Qty Per Elevation": "Qty/Elev",
-        "List Cost Per Elev": "List/Elev",
-        "Discounted Per Elev": "Disc/Elev",
         "Part Number": "Part #",
-        "Waste %": "W%",
         "Unit Price": "Unit $",
+        "Elevation Name": "Elevation",
+        "Quantity (EA)": "Qty",
+        "SQFT Total (SQFT)": "SQFT",
+        "Perimeter FT Total (FT)": "Perim. FT",
     }
 
     # Max chars for description column (col 0) — scales with column count
@@ -462,22 +463,22 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                 headers.append("Total Quantity Required")
                 col_keys.append("display_qty")
             if sec_col.get("quantity_per_elevation", True) and total_count > 1:
-                headers.append("Qty Per Elevation")
+                headers.append("Quantity Per Elevation")
                 col_keys.append("qty_per_elev")
             if sec_col.get("total_list_cost", True):
                 headers.append("Total List Cost")
                 col_keys.append("original_cost")
             if sec_col.get("total_list_cost_per_elevation", True) and total_count > 1:
-                headers.append("List Cost Per Elev")
+                headers.append("Total List Cost Per Elevation")
                 col_keys.append("original_cost_per_elev")
             if sec_col.get("discounted_total_list_cost", True):
-                headers.append("Discounted Total Cost")
+                headers.append("Discounted Total List Cost")
                 col_keys.append("discounted_cost")
             if (
                 sec_col.get("discounted_total_list_cost_per_elevation", True)
                 and total_count > 1
             ):
-                headers.append("Discounted Per Elev")
+                headers.append("Discounted Total List Cost Per Elevation")
                 col_keys.append("discounted_cost_per_elev")
 
             if not headers:
@@ -701,7 +702,7 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                         headers.append("Total Pieces Required")
                         col_keys.append("quantity_req_ft")
                     if sum_cols.get("quantity_per_order", True):
-                        headers.append("Qty Per Order")
+                        headers.append("Quantity Per Order")
                         col_keys.append("qty_stick_req")
                     if sum_cols.get("orders_required", True):
                         headers.append("Orders Required")
@@ -729,16 +730,16 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                     headers.append("Total List Cost")
                     col_keys.append("original_total_cost")
                 if sum_cols.get("discounted_total_list_cost", True):
-                    headers.append("Discounted Total Cost")
+                    headers.append("Discounted Total List Cost")
                     col_keys.append("total_cost")
                 if sum_cols.get("residual_material_quantity", True):
-                    headers.append("Residual Qty")
+                    headers.append("Residual Material Quantity")
                     col_keys.append("reusable_qty_display")
                 if sum_cols.get("residual_waste_pct", True):
-                    headers.append("Waste %")
+                    headers.append("Residual Waste %")
                     col_keys.append("reusable_pct")
                 if sum_cols.get("residual_material_cost", True):
-                    headers.append("Residual Cost")
+                    headers.append("Residual Material Cost")
                     col_keys.append("reusable_cost")
 
                 if not headers:
@@ -791,11 +792,11 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                 elev_summ = summary.get("elevation_summary", [])
                 if elev_summ:
                     es_headers = [
-                        "Elevation",
-                        "Quantity",
+                        "Elevation Name",
+                        "Quantity (EA)",
                         "Dimensions",
-                        "SQFT Total",
-                        "Perimeter FT",
+                        "SQFT Total (SQFT)",
+                        "Perimeter FT Total (FT)",
                     ]
                     es_table = []
                     for es in elev_summ:
