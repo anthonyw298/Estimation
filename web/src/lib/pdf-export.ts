@@ -261,7 +261,7 @@ export async function exportToPdf(
     // Build per-category tables matching canonical headers
     const catOrder: [string, string][] = [
       ['profiles', 'PROFILES'], ['accessories', 'ACCESSORIES'], ['gaskets', 'GASKETS'],
-      ['doors', 'DOORS'], ['glass', 'GLASS'], ['fabrication', 'FABRICATION'],
+      ['doors', 'DOORS'], ['glass', 'GLASS'], ['fabrication', 'LABOR'],
     ];
 
     // Track per-category discounted totals for elevation cost summary
@@ -552,7 +552,7 @@ export async function exportToPdf(
   const additionalTotal = activeAdditional.reduce((s, [, pct]) => s + discountedTotal * (pct / 100), 0);
 
   if (activeAdditional.length > 0) {
-    const addRows = activeAdditional.map(([label, pct]) => [label, fmtCurrency(discountedTotal * (pct / 100))]);
+    const addRows = activeAdditional.map(([label, pct]) => [`${label} (${pct}%)`, fmtCurrency(discountedTotal * (pct / 100))]);
     addRows.push(['SUBTOTAL', fmtCurrency(additionalTotal)]);
 
     autoTable(doc, {
@@ -590,7 +590,7 @@ export async function exportToPdf(
   const markupTotal = activeMarkups.reduce((sum, [, pct, base]) => sum + base * (pct / 100), 0);
 
   if (activeMarkups.length > 0) {
-    const mkRows = activeMarkups.map(([label, pct, base]) => [label, fmtCurrency(base * (pct / 100))]);
+    const mkRows = activeMarkups.map(([label, pct, base]) => [`${label} (${pct}%)`, fmtCurrency(base * (pct / 100))]);
     mkRows.push(['SUBTOTAL', fmtCurrency(markupTotal)]);
 
     autoTable(doc, {

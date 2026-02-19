@@ -222,29 +222,29 @@ export default function ReportOptionsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-overlay"
       onClick={onClose}
     >
       <div
-        className="bg-[#18181b] border border-[#27272a] rounded-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col shadow-2xl animate-fade-in"
+        className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col shadow-2xl shadow-black/50 animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#27272a]">
-          <h2 className="text-lg font-semibold text-white">Report Stock List</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e1e2a]">
+          <h2 className="text-lg font-semibold text-[#eeeef2]">Report Stock List</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[#27272a] text-zinc-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-[#1e1e2a] text-[#8b8d9a] hover:text-[#eeeef2] transition-all duration-200"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Instructions */}
-        <div className="px-6 py-3 text-xs text-zinc-500 border-b border-[#27272a]">
+        <div className="px-6 py-3 text-xs text-[#55566a] border-b border-[#1e1e2a]">
           Select which elevations, sections, and summary options to include in the exported report.
           {!hasCalculatedData && (
-            <div className="mt-2 rounded bg-yellow-900/30 px-3 py-2 text-yellow-400 font-medium">
+            <div className="mt-2 rounded bg-amber-900/10 border border-amber-500/10 px-3 py-2 text-yellow-400 font-medium">
               No elevations have been calculated yet. Run &ldquo;Calculate &amp; Save&rdquo; on your elevations before exporting.
             </div>
           )}
@@ -254,34 +254,34 @@ export default function ReportOptionsDialog({
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {/* Per-elevation panels */}
           {elevationNames.map(name => (
-            <div key={name} className="border border-[#27272a] rounded-lg overflow-hidden">
+            <div key={name} className="border border-[#1e1e2a] rounded-lg overflow-hidden">
               {/* Panel header */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-[#111113]">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a0a10]">
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
                     checked={elevIncluded[name] ?? true}
                     onChange={e => setElevIncluded(prev => ({ ...prev, [name]: e.target.checked }))}
-                    className="h-4 w-4 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                    className="h-4 w-4 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                   />
-                  <span className="text-sm font-medium text-white">{name}</span>
+                  <span className="text-sm font-medium text-[#eeeef2]">{name}</span>
                 </div>
                 <button
                   onClick={() => togglePanel(name)}
-                  className="p-1 rounded hover:bg-[#27272a] text-zinc-400 transition-colors"
+                  className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
                 >
                   {expandedPanels[name] ? (
-                    <ChevronUp className="w-4 h-4" />
+                    <ChevronUp className="w-4 h-4 transition-transform duration-200" />
                   ) : (
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="w-4 h-4 transition-transform duration-200" />
                   )}
                 </button>
               </div>
 
               {/* Expanded content */}
               {expandedPanels[name] && (
-                <div className="px-4 py-3 space-y-3 bg-[#0d0d0f]">
-                  <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Sections & Columns</p>
+                <div className="px-4 py-3 space-y-3 bg-[#08080e]">
+                  <p className="text-[10px] text-[#3e3f4d] uppercase tracking-wider font-semibold">Sections & Columns</p>
 
                   {ALL_SECTIONS.map(section => {
                     const isMaterial = (MATERIAL_SECTIONS as readonly string[]).includes(section);
@@ -291,7 +291,7 @@ export default function ReportOptionsDialog({
                     return (
                       <div key={section}>
                         {/* Section checkbox */}
-                        <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
                           <input
                             type="checkbox"
                             checked={sectionEnabled}
@@ -301,7 +301,7 @@ export default function ReportOptionsDialog({
                                 [name]: { ...prev[name], [section]: e.target.checked },
                               }));
                             }}
-                            className="h-3.5 w-3.5 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                            className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                           />
                           <span className="font-medium">{SECTION_LABELS[section]}</span>
                         </label>
@@ -312,7 +312,7 @@ export default function ReportOptionsDialog({
                             {ELEV_COLUMN_DEFS
                               .filter(col => !col.perElev || totalCount > 1)
                               .map(col => (
-                                <label key={col.key} className="flex items-center gap-1.5 text-[10px] text-zinc-500 cursor-pointer">
+                                <label key={col.key} className="flex items-center gap-1.5 text-[10px] text-[#55566a] cursor-pointer">
                                   <input
                                     type="checkbox"
                                     checked={elevColumns[name]?.[section]?.[col.key] ?? true}
@@ -328,7 +328,7 @@ export default function ReportOptionsDialog({
                                         },
                                       }));
                                     }}
-                                    className="h-3 w-3 rounded border-zinc-700 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                                    className="h-3 w-3 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                                   />
                                   {col.label}
                                 </label>
@@ -340,7 +340,7 @@ export default function ReportOptionsDialog({
                   })}
 
                   {elevations[name]?.total_count > 1 && (
-                    <p className="text-[10px] text-zinc-600 italic mt-1">
+                    <p className="text-[10px] text-[#3e3f4d] italic mt-1">
                       &apos;Per Elevation&apos; columns only apply when elevation count &gt; 1
                     </p>
                   )}
@@ -350,41 +350,41 @@ export default function ReportOptionsDialog({
           ))}
 
           {/* Summary panel */}
-          <div className="border border-[#27272a] rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-[#111113]">
+          <div className="border border-[#1e1e2a] rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a0a10]">
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   checked={summaryIncluded}
                   onChange={e => setSummaryIncluded(e.target.checked)}
-                  className="h-4 w-4 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                  className="h-4 w-4 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                 />
-                <span className="text-sm font-medium text-white">Summary</span>
+                <span className="text-sm font-medium text-[#eeeef2]">Summary</span>
               </div>
               <button
                 onClick={() => togglePanel('summary')}
-                className="p-1 rounded hover:bg-[#27272a] text-zinc-400 transition-colors"
+                className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
               >
                 {expandedPanels.summary ? (
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-4 h-4 transition-transform duration-200" />
                 ) : (
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-4 h-4 transition-transform duration-200" />
                 )}
               </button>
             </div>
 
             {expandedPanels.summary && (
-              <div className="px-4 py-3 space-y-3 bg-[#0d0d0f]">
+              <div className="px-4 py-3 space-y-3 bg-[#08080e]">
                 <div>
-                  <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold mb-1.5">Material Sections</p>
+                  <p className="text-[10px] text-[#3e3f4d] uppercase tracking-wider font-semibold mb-1.5">Material Sections</p>
                   <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                     {MATERIAL_SECTIONS.map(section => (
-                      <label key={section} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                      <label key={section} className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
                         <input
                           type="checkbox"
                           checked={summarySections[section] ?? true}
                           onChange={e => setSummarySections(prev => ({ ...prev, [section]: e.target.checked }))}
-                          className="h-3.5 w-3.5 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                          className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                         />
                         {SECTION_LABELS[section]}
                       </label>
@@ -393,15 +393,15 @@ export default function ReportOptionsDialog({
                 </div>
 
                 <div>
-                  <p className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold mb-1.5">Cost Overview</p>
+                  <p className="text-[10px] text-[#3e3f4d] uppercase tracking-wider font-semibold mb-1.5">Cost Overview</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {COST_OVERVIEW_KEYS.map(key => (
-                      <label key={key} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                      <label key={key} className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
                         <input
                           type="checkbox"
                           checked={costOverview[key] ?? true}
                           onChange={e => setCostOverview(prev => ({ ...prev, [key]: e.target.checked }))}
-                          className="h-3.5 w-3.5 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                          className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                         />
                         {COST_OVERVIEW_LABELS[key]}
                       </label>
@@ -416,7 +416,7 @@ export default function ReportOptionsDialog({
           {elevationNames.length > 1 && (
             <button
               onClick={applyToAll}
-              className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="flex items-center gap-2 text-xs text-[#8b8d9a] hover:text-[#eeeef2] transition-all duration-200"
             >
               <Copy className="w-3.5 h-3.5" />
               Apply first elevation&apos;s settings to all
@@ -424,24 +424,24 @@ export default function ReportOptionsDialog({
           )}
 
           {/* Elevation Summary Display */}
-          <div className="border border-[#27272a] rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-[#111113]">
-              <span className="text-sm font-medium text-white">Elevation Summary</span>
+          <div className="border border-[#1e1e2a] rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a0a10]">
+              <span className="text-sm font-medium text-[#eeeef2]">Elevation Summary</span>
               <button
                 onClick={() => togglePanel('elevSummaryDisplay')}
-                className="p-1 rounded hover:bg-[#27272a] text-zinc-400 transition-colors"
+                className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
               >
                 {expandedPanels.elevSummaryDisplay ? (
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-4 h-4 transition-transform duration-200" />
                 ) : (
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-4 h-4 transition-transform duration-200" />
                 )}
               </button>
             </div>
 
             {expandedPanels.elevSummaryDisplay && (
-              <div className="px-4 py-3 space-y-2 bg-[#0d0d0f]">
-                <p className="text-[10px] text-zinc-600">
+              <div className="px-4 py-3 space-y-2 bg-[#08080e]">
+                <p className="text-[10px] text-[#3e3f4d]">
                   Select which columns to include in the elevation summary table in exported reports.
                 </p>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -452,7 +452,7 @@ export default function ReportOptionsDialog({
                     { label: 'SQFT Total (SQFT)', key: 'show_elevation_sqft' as const, checked: showElevationSqft, setter: setShowElevationSqft },
                     { label: 'Perimeter FT Total (FT)', key: 'show_elevation_perimeter' as const, checked: showElevationPerimeter, setter: setShowElevationPerimeter },
                   ] as const).map(({ label, key, checked, setter }) => (
-                    <label key={key} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <label key={key} className="flex items-center gap-2 text-xs text-[#8b8d9a] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -460,7 +460,7 @@ export default function ReportOptionsDialog({
                           setter(e.target.checked);
                           handleElevDisplayToggle(key, e.target.checked);
                         }}
-                        className="h-3.5 w-3.5 rounded border-zinc-600 bg-[#1c1c21] text-blue-500 accent-blue-500"
+                        className="h-3.5 w-3.5 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                       />
                       {label}
                     </label>
@@ -472,17 +472,17 @@ export default function ReportOptionsDialog({
         </div>
 
         {/* Footer - export buttons */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#27272a]">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#1e1e2a]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:bg-[#27272a] rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#16161f] rounded-lg transition-all duration-200"
           >
             Cancel
           </button>
           <button
             onClick={handleExportPDF}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-40 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 active:scale-[0.97] text-white rounded-lg disabled:opacity-40 transition-all duration-200 shadow-md shadow-red-500/10"
           >
             <FileText className="w-4 h-4" />
             Export PDF
@@ -490,7 +490,7 @@ export default function ReportOptionsDialog({
           <button
             onClick={handleExportExcel}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-40 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 active:scale-[0.97] text-white rounded-lg disabled:opacity-40 transition-all duration-200 shadow-md shadow-emerald-500/10"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Export Excel

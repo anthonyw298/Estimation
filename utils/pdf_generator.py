@@ -113,7 +113,6 @@ def _create_pdf_table(
 
     # Abbreviation map for wide table headers (matches Excel canonical names)
     _HEADER_ABBREV = {
-        "Project Total Materials": "Proj Total",
         "Total Quantity Required": "Total Qty",
         "Total Feet Required": "Total FT",
         "Total Pieces Required": "Total PCS",
@@ -696,9 +695,6 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                 if sum_cols.get("description", True):
                     headers.append("Description")
                     col_keys.append("description")
-                if sum_cols.get("project_total_materials", True):
-                    headers.append("Project Total Materials")
-                    col_keys.append("display")
 
                 # Category-specific quantity columns
                 if cat_name == "PROFILES":

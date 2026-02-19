@@ -1388,27 +1388,26 @@ def create_summary_sheet(
 
     # Summary column filtering from Stock List checkboxes
     scols = so.get("summary_columns") or {}
-    # Map each of the 10 fixed column positions to summary_column_keys
-    # Position 0: description, 1: project_total_materials, 2: total_feet_required/total_pieces_required,
-    # 3: sticks_required/quantity_per_order/rolls_required/unit_price, 4: total_quantity_required,
-    # 5: total_list_cost, 6: discounted_total_list_cost, 7: residual_material_quantity,
-    # 8: residual_waste_pct, 9: residual_material_cost
+    # Map each of the 9 fixed column positions to summary_column_keys
+    # Position 0: description, 1: total_feet_required/total_pieces_required,
+    # 2: sticks_required/quantity_per_order/rolls_required/unit_price, 3: total_quantity_required,
+    # 4: total_list_cost, 5: discounted_total_list_cost, 6: residual_material_quantity,
+    # 7: residual_waste_pct, 8: residual_material_cost
     _summary_col_visible = {
         0: scols.get("description", True),
-        1: scols.get("project_total_materials", True),
-        2: scols.get("total_feet_required", True)
+        1: scols.get("total_feet_required", True)
         or scols.get("total_pieces_required", True),
-        3: scols.get("sticks_required", True)
+        2: scols.get("sticks_required", True)
         or scols.get("quantity_per_order", True)
         or scols.get("rolls_required", True)
         or scols.get("unit_price", True),
-        4: scols.get("total_quantity_required", True)
+        3: scols.get("total_quantity_required", True)
         or scols.get("orders_required", True),
-        5: scols.get("total_list_cost", True),
-        6: scols.get("discounted_total_list_cost", True),
-        7: scols.get("residual_material_quantity", True),
-        8: scols.get("residual_waste_pct", True),
-        9: scols.get("residual_material_cost", True),
+        4: scols.get("total_list_cost", True),
+        5: scols.get("discounted_total_list_cost", True),
+        6: scols.get("residual_material_quantity", True),
+        7: scols.get("residual_waste_pct", True),
+        8: scols.get("residual_material_cost", True),
     }
 
     # --- Elevation summary defaults ---
@@ -2004,7 +2003,6 @@ def create_summary_sheet(
         if category == "PROFILES":
             return [
                 "Description",
-                "Project Total Materials",
                 "Total Feet Required",
                 "Sticks Required",
                 "Total Quantity Required",
@@ -2017,7 +2015,6 @@ def create_summary_sheet(
         elif category == "ACCESSORIES":
             return [
                 "Description",
-                "Project Total Materials",
                 "Total Pieces Required",
                 "Quantity Per Order",
                 "Orders Required",
@@ -2030,7 +2027,6 @@ def create_summary_sheet(
         elif category == "GASKETS":
             return [
                 "Description",
-                "Project Total Materials",
                 "Total Feet Required",
                 "Rolls Required",
                 "Total Quantity Required",
@@ -2043,7 +2039,6 @@ def create_summary_sheet(
         elif category == "GLASS":
             return [
                 "Description",
-                "Project Total Materials",
                 "N/A",
                 "Unit Price",
                 "Total Quantity Required",
@@ -2056,7 +2051,6 @@ def create_summary_sheet(
         elif category == "LABOR":
             return [
                 "Description",
-                "Project Total Materials",
                 "N/A",
                 "Unit Price",
                 "Total Quantity Required",
@@ -2069,7 +2063,6 @@ def create_summary_sheet(
         elif category == "DOORS":
             return [
                 "Description",
-                "Project Total Materials",
                 "N/A",
                 "Unit Price",
                 "Total Quantity Required",
@@ -2083,7 +2076,6 @@ def create_summary_sheet(
             # Default headers
             return [
                 "Description",
-                "Project Total Materials",
                 "Quantity Req (FT)",
                 "Qty Stick (Req)",
                 "Total Quantity Required",
@@ -2155,7 +2147,7 @@ def create_summary_sheet(
         section_total_cost = 0.0
         section_residual_total = 0.0
 
-        # Map original column index to data values
+        # Map column index to data values (9 columns)
         def _get_item_values(item):
             description_value = item.get("description", "")
             if not description_value or description_value == "":
@@ -2167,18 +2159,17 @@ def create_summary_sheet(
             )
             return {
                 0: description_value,
-                1: item["display"],
-                2: item["quantity_req_ft"],
-                3: item["qty_stick_req"],
-                4: item["quantity_display"],
-                5: item["original_total_cost"],
-                6: item["total_cost"],
-                7: item["reusable_qty_display"],
-                8: reusable_pct_val,
-                9: item["reusable_cost"],
+                1: item["quantity_req_ft"],
+                2: item["qty_stick_req"],
+                3: item["quantity_display"],
+                4: item["original_total_cost"],
+                5: item["total_cost"],
+                6: item["reusable_qty_display"],
+                7: reusable_pct_val,
+                8: item["reusable_cost"],
             }
 
-        currency_positions = {5, 6, 9}
+        currency_positions = {4, 5, 8}
 
         for item in final_summary_data:
             if item["category"] == category:
