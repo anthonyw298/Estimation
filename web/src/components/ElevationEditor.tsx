@@ -177,15 +177,15 @@ export default function ElevationEditor({
     elevationData.system_type || SYSTEM_TYPES[0],
   );
   const [finish, setFinish] = useState(elevationData.finish || 'Clear');
-  const [totalCount, setTotalCount] = useState(elevationData.total_count || 1);
+  const [totalCount, setTotalCount] = useState(elevationData.total_count || 0);
   const [openingWidth, setOpeningWidth] = useState(
     elevationData.opening_width_inches || 0,
   );
   const [openingHeight, setOpeningHeight] = useState(
     elevationData.opening_height_inches || 0,
   );
-  const [baysWide, setBaysWide] = useState(elevationData.bays_wide || 1);
-  const [baysTall, setBaysTall] = useState(elevationData.bays_tall || 1);
+  const [baysWide, setBaysWide] = useState(elevationData.bays_wide || 0);
+  const [baysTall, setBaysTall] = useState(elevationData.bays_tall || 0);
   const [customBayWidths, setCustomBayWidths] = useState<number[]>(
     () => {
       if (
@@ -272,16 +272,16 @@ export default function ElevationEditor({
 
   const handleBaysWideChange = useCallback(
     (newBaysWide: number) => {
-      const clamped = Math.max(1, newBaysWide);
-      setBaysWide(clamped);
+      setBaysWide(newBaysWide);
+      const count = Math.max(1, newBaysWide);
       if (openingWidth > 0) {
         setCustomBayWidths(
-          Array(clamped).fill(
-            Math.round((openingWidth / clamped) * 100) / 100,
+          Array(count).fill(
+            Math.round((openingWidth / count) * 100) / 100,
           ),
         );
       } else {
-        setCustomBayWidths(Array(clamped).fill(0));
+        setCustomBayWidths(Array(count).fill(0));
       }
     },
     [openingWidth],
@@ -324,16 +324,16 @@ export default function ElevationEditor({
 
   const handleBaysTallChange = useCallback(
     (newBaysTall: number) => {
-      const clamped = Math.max(1, newBaysTall);
-      setBaysTall(clamped);
+      setBaysTall(newBaysTall);
+      const count = Math.max(1, newBaysTall);
       if (openingHeight > 0) {
         setCustomBayHeights(
-          Array(clamped).fill(
-            Math.round((openingHeight / clamped) * 100) / 100,
+          Array(count).fill(
+            Math.round((openingHeight / count) * 100) / 100,
           ),
         );
       } else {
-        setCustomBayHeights(Array(clamped).fill(0));
+        setCustomBayHeights(Array(count).fill(0));
       }
     },
     [openingHeight],
@@ -560,6 +560,79 @@ export default function ElevationEditor({
       setResults(pricedOutputs);
       setMaterialImpacts(impacts);
 
+      // ------------------------------------------------------------------
+      // Single-elevation outputs (count=1, no residual) for true per-elev cost
+      // ------------------------------------------------------------------
+      let singleElevOutputs: CalculatedOutput[] | undefined;
+      if (!doorOnly && totalCount > 1) {
+        singleElevOutputs = [];
+        const GASKET_PARTS_SET = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
+
+        // 1. Run formulas with count=1
+        const singleRawOutputs = calculateYes45tuQuantities(
+          baysWide,
+          baysTall,
+          1,
+          openingWidth,
+          openingHeight,
+          doors,
+          baysWide > 1 ? customBayWidths : undefined,
+          glassPerSqft,
+          fabCostPerJoint,
+        );
+
+        // 2. Price each output (summary mode, no inventory)
+        for (const output of singleRawOutputs) {
+          if (output.manual) {
+            let totalPrice = 0;
+            if (output.type === 'Glass' && typeof output.quantity === 'number') {
+              totalPrice = output.quantity * (output.price ?? glassPerSqft);
+            } else if (output.type === 'Fabrication' && typeof output.quantity === 'number') {
+              totalPrice = output.quantity * (output.price ?? fabCostPerJoint);
+            }
+            singleElevOutputs.push({
+              ...output,
+              price: output.type === 'Calculations' ? undefined : totalPrice,
+            });
+          } else {
+            const isGasket =
+              (output.description?.toLowerCase().includes('gasket') ?? false) ||
+              GASKET_PARTS_SET.has(output.part_number);
+            const isProfile = output.type === 'profiles';
+            const useGroup = isProfile || isGasket;
+            const [price, unitType] = getPriceByPart(
+              output.part_number,
+              output.quantity,
+              finish,
+              null,
+              true,
+              useGroup,
+              output.description,
+            );
+            singleElevOutputs.push({
+              ...output,
+              price: price ?? 0,
+              unit: unitType ?? undefined,
+            });
+          }
+        }
+
+        // 3. Door items for count=1
+        const singleDoorItems = calculate_door_info(doors, finish, 1);
+        for (const doorItem of singleDoorItems) {
+          singleElevOutputs.push({
+            description: doorItem.description,
+            quantity: doorItem.quantity,
+            part_number: doorItem.part_number,
+            type: doorItem.type,
+            price: doorItem.price * doorItem.quantity,
+            manual: true,
+            hardware: doorItem.hardware,
+            Style: doorItem.Style,
+          });
+        }
+      }
+
       // Build updated elevation data and call onSave
       const updatedData: ElevationData = doorOnly
         ? {
@@ -591,6 +664,7 @@ export default function ElevationEditor({
             glass_per_sqft: glassPerSqft,
             fabrication_cost_per_joint: fabCostPerJoint,
             calculated_outputs: pricedOutputs,
+            single_elevation_outputs: singleElevOutputs,
             material_impacts: impacts,
             door_only: false,
           };
@@ -693,6 +767,31 @@ export default function ElevationEditor({
         isDiscountable: DISCOUNTABLE_TYPES.has(s),
       }));
   }, [results]);
+
+  // Single-elevation lookup for true per-elev values (count=1, no residual)
+  const singleElevMap = useMemo(() => {
+    const map = new Map<string, { price: number; quantity: number | number[] }>();
+    const singleOutputs = elevationData.single_elevation_outputs;
+    if (!singleOutputs || totalCount <= 1) return map;
+
+    const profileParts = new Set(Object.keys(PART_NUMBER_MAP['profiles'] ?? {}));
+    const accessoryParts = new Set(Object.keys(PART_NUMBER_MAP['accessories'] ?? {}));
+    const GASKET_PARTS_S = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
+
+    for (const item of singleOutputs) {
+      if (item.type === 'Calculations') continue;
+      let section = item.type;
+      if (section === 'profiles' || profileParts.has(item.part_number)) {
+        const isGasket = GASKET_PARTS_S.has(item.part_number) || (item.description?.toLowerCase().includes('gasket') ?? false);
+        section = isGasket ? 'gaskets' : 'profiles';
+      } else if (section === 'accessories' || accessoryParts.has(item.part_number)) {
+        section = 'accessories';
+      }
+      const key = `${section}|${item.description}|${item.part_number}`;
+      map.set(key, { price: item.price ?? 0, quantity: item.quantity });
+    }
+    return map;
+  }, [elevationData.single_elevation_outputs, totalCount]);
 
   // Active columns based on visibility and totalCount
   const activeColumns = useMemo(() => {
@@ -826,10 +925,12 @@ export default function ElevationEditor({
                   type="number"
                   className={inputClass}
                   min={1}
-                  value={totalCount}
+                  value={totalCount || ''}
                   onChange={(e) =>
-                    setTotalCount(Math.max(1, parseInt(e.target.value, 10) || 1))
+                    setTotalCount(parseInt(e.target.value, 10) || 0)
                   }
+                  onBlur={() => { if (totalCount < 1) setTotalCount(1); }}
+                  placeholder="1"
                 />
               </div>
             </div>
@@ -914,10 +1015,12 @@ export default function ElevationEditor({
                     type="number"
                     className={inputClass}
                     min={1}
-                    value={baysWide}
+                    value={baysWide || ''}
                     onChange={(e) =>
-                      handleBaysWideChange(parseInt(e.target.value, 10) || 1)
+                      handleBaysWideChange(parseInt(e.target.value, 10) || 0)
                     }
+                    onBlur={() => { if (baysWide < 1) handleBaysWideChange(1); }}
+                    placeholder="1"
                   />
                 </div>
                 <div>
@@ -926,10 +1029,12 @@ export default function ElevationEditor({
                     type="number"
                     className={inputClass}
                     min={1}
-                    value={baysTall}
+                    value={baysTall || ''}
                     onChange={(e) =>
-                      handleBaysTallChange(parseInt(e.target.value, 10) || 1)
+                      handleBaysTallChange(parseInt(e.target.value, 10) || 0)
                     }
+                    onBlur={() => { if (baysTall < 1) handleBaysTallChange(1); }}
+                    placeholder="1"
                   />
                 </div>
               </div>
@@ -1095,14 +1200,16 @@ export default function ElevationEditor({
                         type="number"
                         className={inputClass}
                         min={1}
-                        value={door.count}
+                        value={door.count || ''}
                         onChange={(e) =>
                           updateDoor(
                             di,
                             'count',
-                            Math.max(1, parseInt(e.target.value, 10) || 1),
+                            parseInt(e.target.value, 10) || 0,
                           )
                         }
+                        onBlur={() => { if (door.count < 1) updateDoor(di, 'count', 1); }}
+                        placeholder="1"
                       />
                     </div>
 
@@ -1382,21 +1489,40 @@ export default function ElevationEditor({
                             : listCost;
                           const qtyRaw = item.quantity;
                           const qtyTotal = Array.isArray(qtyRaw) ? sumArray(qtyRaw) : Number(qtyRaw);
-                          const qtyPerElev = totalCount > 1 ? qtyTotal / totalCount : qtyTotal;
-                          const listCostPerElev = totalCount > 1 ? listCost / totalCount : listCost;
-                          const discountedCostPerElev = totalCount > 1 ? discountedCost / totalCount : discountedCost;
+
+                          // Per-elevation: use single-elev data when available
+                          const sKey = `${section}|${item.description}|${item.part_number}`;
+                          const sData = singleElevMap.get(sKey);
+                          let qtyPerElev: number;
+                          let listCostPerElev: number;
+                          let discountedCostPerElev: number;
+                          let qtyPerElevDisplay: string;
+
+                          if (sData && totalCount > 1) {
+                            qtyPerElev = Array.isArray(sData.quantity) ? sumArray(sData.quantity) : Number(sData.quantity);
+                            listCostPerElev = sData.price;
+                            discountedCostPerElev = isDiscountable ? sData.price * discountMultiplier : sData.price;
+                            qtyPerElevDisplay = formatQuantity(sData.quantity, section === 'gaskets' ? 'profiles' : item.type, item.unit);
+                          } else if (totalCount > 1) {
+                            qtyPerElev = qtyTotal / totalCount;
+                            listCostPerElev = listCost / totalCount;
+                            discountedCostPerElev = discountedCost / totalCount;
+                            qtyPerElevDisplay = formatQuantity(
+                              Array.isArray(qtyRaw)
+                                ? qtyRaw.map((v) => v / totalCount)
+                                : Number(qtyRaw) / totalCount,
+                              section === 'gaskets' ? 'profiles' : item.type,
+                              item.unit,
+                            );
+                          } else {
+                            qtyPerElev = qtyTotal;
+                            listCostPerElev = listCost;
+                            discountedCostPerElev = discountedCost;
+                            qtyPerElevDisplay = '';
+                          }
 
                           // Format quantity based on type
                           const qtyDisplay = formatQuantity(qtyRaw, section === 'gaskets' ? 'profiles' : item.type, item.unit);
-                          const qtyPerElevDisplay = totalCount > 1
-                            ? formatQuantity(
-                                Array.isArray(qtyRaw)
-                                  ? qtyRaw.map((v) => v / totalCount)
-                                  : Number(qtyRaw) / totalCount,
-                                section === 'gaskets' ? 'profiles' : item.type,
-                                item.unit,
-                              )
-                            : '';
 
                           // Cell value lookup
                           const cellValue: Record<string, React.ReactNode> = {

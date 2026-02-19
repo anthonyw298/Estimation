@@ -235,6 +235,7 @@ function buildElevationCategories(
   finish: string,
   totalCount: number,
   multiplier: number,
+  singleElevOutputs?: CalculatedOutput[],
 ): Record<string, CategoryData> {
   const categories: Record<string, CategoryData> = {
     profiles: { items: [], total_original: 0, total_discounted: 0, total_original_per_elev: 0, total_discounted_per_elev: 0 },
@@ -244,6 +245,22 @@ function buildElevationCategories(
     glass: { items: [], total_original: 0, total_discounted: 0, total_original_per_elev: 0, total_discounted_per_elev: 0 },
     fabrication: { items: [], total_original: 0, total_discounted: 0, total_original_per_elev: 0, total_discounted_per_elev: 0 },
   };
+
+  // ---------------------------------------------------------------------------
+  // Build single-elevation price lookup (count=1, no residual).
+  // When available, per-elev values come from an independent count=1 calculation
+  // rather than dividing total by count.
+  // ---------------------------------------------------------------------------
+  const singleElevPriceMap = new Map<string, { price: number; quantity: number | number[] }>();
+  if (singleElevOutputs && totalCount > 1) {
+    for (const sOut of singleElevOutputs) {
+      const cat = classifyOutput(sOut);
+      if (cat === 'calculations') continue;
+      // Key by category + description + part_number to handle duplicates
+      const key = `${cat}|${sOut.description}|${sOut.part_number}`;
+      singleElevPriceMap.set(key, { price: sOut.price ?? 0, quantity: sOut.quantity });
+    }
+  }
 
   // Per-elevation fresh state for inventory tracking (matches Python _write_output_section)
   const elevMaterialsState: Record<string, ExtraMaterial> = {};
@@ -295,15 +312,27 @@ function buildElevationCategories(
 
     // Apply multiplier for discountable categories (profiles, gaskets, accessories)
     const discountedCost = isDiscountable ? totalCost * multiplier : totalCost;
-    const perElev = totalCount > 1 ? totalCost / totalCount : totalCost;
-    const discountedPerElev = totalCount > 1 ? discountedCost / totalCount : discountedCost;
 
-    // Build display strings with units (matching Python display_qty_string)
-    const qtyDisplay = formatQtyDisplay(output.quantity, cat, output.unit);
-    const qtyPerElevVal = totalCount > 1 ? qty / totalCount : qty;
-    // Per-elevation display: divide each element or scalar by totalCount
+    // Per-elevation values: use single-elev outputs when available, otherwise divide
+    const singleKey = `${cat}|${output.description}|${output.part_number}`;
+    const singleData = singleElevPriceMap.get(singleKey);
+    let perElev: number;
+    let discountedPerElev: number;
+    let qtyPerElevVal: number;
     let qtyPerElevDisplay: string;
-    if (totalCount > 1) {
+
+    if (singleData && totalCount > 1) {
+      // True per-elevation cost from independent count=1 calculation
+      const singleCost = singleData.price;
+      const singleDiscounted = isDiscountable ? singleCost * multiplier : singleCost;
+      perElev = singleCost;
+      discountedPerElev = singleDiscounted;
+      qtyPerElevVal = sumQty(singleData.quantity);
+      qtyPerElevDisplay = formatQtyDisplay(singleData.quantity, cat, output.unit);
+    } else if (totalCount > 1) {
+      perElev = totalCost / totalCount;
+      discountedPerElev = discountedCost / totalCount;
+      qtyPerElevVal = qty / totalCount;
       if (Array.isArray(output.quantity)) {
         const perElvArr = output.quantity.map(v => v / totalCount);
         qtyPerElevDisplay = formatQtyDisplay(perElvArr, cat, output.unit);
@@ -311,8 +340,14 @@ function buildElevationCategories(
         qtyPerElevDisplay = formatQtyDisplay(output.quantity / totalCount, cat, output.unit);
       }
     } else {
-      qtyPerElevDisplay = qtyDisplay;
+      perElev = totalCost;
+      discountedPerElev = discountedCost;
+      qtyPerElevVal = qty;
+      qtyPerElevDisplay = formatQtyDisplay(output.quantity, cat, output.unit);
     }
+
+    // Build display strings with units (matching Python display_qty_string)
+    const qtyDisplay = formatQtyDisplay(output.quantity, cat, output.unit);
 
     categories[cat].items.push({
       description: output.description,
@@ -518,7 +553,8 @@ function writeElevationCostSummary(
 
     const r = sheet.getRow(row);
     r.getCell(startCol).value = label;
-    const perElev = totalCount > 1 ? cat.total_discounted / totalCount : cat.total_discounted;
+    // Use pre-computed per-elev totals (from single-elev calculation when available)
+    const perElev = cat.total_discounted_per_elev;
     r.getCell(startCol + 1).value = perElev;
     setCurrency(r.getCell(startCol + 1));
     r.getCell(startCol + 2).value = cat.total_discounted;
@@ -1698,7 +1734,7 @@ export async function exportToExcel(
     }
 
     // --- Material sections (starting col E) ---
-    const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier);
+    const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier, elev.single_elevation_outputs);
     const startCol = 5;
     let sectionRow = 1;
 

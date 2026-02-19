@@ -12,6 +12,8 @@ export interface ElevationData {
   glass_per_sqft?: number;
   fabrication_cost_per_joint?: number;
   calculated_outputs?: CalculatedOutput[];
+  /** Pre-computed outputs for count=1 (no residual). Used for true per-elevation cost. */
+  single_elevation_outputs?: CalculatedOutput[];
   material_impacts?: MaterialImpactDetails[];
   door_only?: boolean;
   sqft_per_type?: Record<string, number>;

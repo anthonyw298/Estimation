@@ -269,8 +269,21 @@ export async function exportToPdf(
     // Per-elevation section config from report options
     const elevSections = reportConfig?.per_elevation_sections?.[elevName];
 
+    // Build single-elevation price lookup (count=1, no residual)
+    const singleElevMap = new Map<string, { price: number; quantity: number | number[] }>();
+    if (showPerElev && elev.single_elevation_outputs) {
+      for (const sOut of elev.single_elevation_outputs) {
+        const sCat = classifyOutput(sOut);
+        if (sCat === 'calculations') continue;
+        const sKey = `${sCat}|${sOut.description}|${sOut.part_number}`;
+        singleElevMap.set(sKey, { price: sOut.price ?? 0, quantity: sOut.quantity });
+      }
+    }
+
     // Track per-category discounted totals for elevation cost summary
     const elevCatTotals: Record<string, number> = {};
+    // Track per-category single-elev discounted totals for cost summary per-elev column
+    const elevCatPerElevTotals: Record<string, number> = {};
     let currentY = 33;
 
     for (const [catKey, catTitle] of catOrder) {
@@ -293,6 +306,8 @@ export async function exportToPdf(
       const rows: string[][] = [];
       let catOrigTotal = 0;
       let catDiscTotal = 0;
+      let catOrigPerElev = 0;
+      let catDiscPerElev = 0;
 
       for (const item of items) {
         const qty = sumQty(item.quantity);
@@ -301,20 +316,39 @@ export async function exportToPdf(
         catOrigTotal += cost;
         catDiscTotal += discounted;
 
+        // Per-elevation: use single-elev data when available
+        const sKey = `${catKey}|${item.description}|${item.part_number}`;
+        const sData = singleElevMap.get(sKey);
+        let perElevQty: number;
+        let perElevCost: number;
+        let perElevDisc: number;
+        if (sData) {
+          perElevQty = sumQty(sData.quantity);
+          perElevCost = sData.price;
+          perElevDisc = isDisc ? sData.price * multiplier : sData.price;
+        } else {
+          perElevQty = qty / totalCount;
+          perElevCost = cost / totalCount;
+          perElevDisc = discounted / totalCount;
+        }
+        catOrigPerElev += perElevCost;
+        catDiscPerElev += perElevDisc;
+
         const row: string[] = [
           item.description,
           item.part_number || '',
           qty.toFixed(2),
         ];
-        if (showPerElev) row.push((qty / totalCount).toFixed(2));
+        if (showPerElev) row.push(perElevQty.toFixed(2));
         row.push(fmtCurrency(cost));
-        if (showPerElev) row.push(fmtCurrency(cost / totalCount));
+        if (showPerElev) row.push(fmtCurrency(perElevCost));
         row.push(fmtCurrency(discounted));
-        if (showPerElev) row.push(fmtCurrency(discounted / totalCount));
+        if (showPerElev) row.push(fmtCurrency(perElevDisc));
         rows.push(row);
       }
 
       elevCatTotals[catKey] = catDiscTotal;
+      elevCatPerElevTotals[catKey] = catDiscPerElev;
 
       // Total row
       const singularLabel = SINGULAR_MAP[catKey] ?? catTitle;
@@ -323,9 +357,9 @@ export async function exportToPdf(
       // Fill cost columns in total row
       const costStartIdx = showPerElev ? 4 : 3;
       totalRow[costStartIdx] = fmtCurrency(catOrigTotal);
-      if (showPerElev) totalRow[costStartIdx + 1] = fmtCurrency(catOrigTotal / totalCount);
+      if (showPerElev) totalRow[costStartIdx + 1] = fmtCurrency(catOrigPerElev);
       totalRow[showPerElev ? costStartIdx + 2 : costStartIdx + 1] = fmtCurrency(catDiscTotal);
-      if (showPerElev) totalRow[costStartIdx + 3] = fmtCurrency(catDiscTotal / totalCount);
+      if (showPerElev) totalRow[costStartIdx + 3] = fmtCurrency(catDiscPerElev);
       rows.push(totalRow);
 
       // Section title
@@ -380,21 +414,24 @@ export async function exportToPdf(
     ];
 
     let elevTotalCost = 0;
+    let elevTotalPerElev = 0;
     for (const [label, key] of costRowDefs) {
       // Skip categories whose material section was unchecked
       if (elevSections?.[key] === false) continue;
       const total = elevCatTotals[key] ?? 0;
       if (total === 0) continue;
       elevTotalCost += total;
+      const perElev = elevCatPerElevTotals[key] ?? total / totalCount;
+      elevTotalPerElev += perElev;
       const row: string[] = [label];
-      if (showPerElev) row.push(fmtCurrency(total / totalCount));
+      if (showPerElev) row.push(fmtCurrency(perElev));
       row.push(fmtCurrency(total));
       costSumRows.push(row);
     }
 
     // Total row
     const costTotalRow: string[] = [`${elevName} TOTAL COSTS`];
-    if (showPerElev) costTotalRow.push(fmtCurrency(elevTotalCost / totalCount));
+    if (showPerElev) costTotalRow.push(fmtCurrency(elevTotalPerElev));
     costTotalRow.push(fmtCurrency(elevTotalCost));
     costSumRows.push(costTotalRow);
 
