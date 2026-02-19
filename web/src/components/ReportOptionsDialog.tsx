@@ -426,7 +426,7 @@ export default function ReportOptionsDialog({
           {/* Elevation Summary Display */}
           <div className="border border-[#27272a] rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-[#111113]">
-              <span className="text-sm font-medium text-white">Elevation Summary Display</span>
+              <span className="text-sm font-medium text-white">Elevation Summary</span>
               <button
                 onClick={() => togglePanel('elevSummaryDisplay')}
                 className="p-1 rounded hover:bg-[#27272a] text-zinc-400 transition-colors"
@@ -446,11 +446,11 @@ export default function ReportOptionsDialog({
                 </p>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                   {([
-                    { label: 'Elevation Names', key: 'show_elevation_names' as const, checked: showElevationNames, setter: setShowElevationNames },
-                    { label: 'Quantity', key: 'show_elevation_quantity' as const, checked: showElevationQuantity, setter: setShowElevationQuantity },
+                    { label: 'Elevation Name', key: 'show_elevation_names' as const, checked: showElevationNames, setter: setShowElevationNames },
+                    { label: 'Quantity (EA)', key: 'show_elevation_quantity' as const, checked: showElevationQuantity, setter: setShowElevationQuantity },
                     { label: 'Dimensions', key: 'show_elevation_dimensions' as const, checked: showElevationDimensions, setter: setShowElevationDimensions },
-                    { label: 'SQFT Total', key: 'show_elevation_sqft' as const, checked: showElevationSqft, setter: setShowElevationSqft },
-                    { label: 'Perimeter FT Total', key: 'show_elevation_perimeter' as const, checked: showElevationPerimeter, setter: setShowElevationPerimeter },
+                    { label: 'SQFT Total (SQFT)', key: 'show_elevation_sqft' as const, checked: showElevationSqft, setter: setShowElevationSqft },
+                    { label: 'Perimeter FT Total (FT)', key: 'show_elevation_perimeter' as const, checked: showElevationPerimeter, setter: setShowElevationPerimeter },
                   ] as const).map(({ label, key, checked, setter }) => (
                     <label key={key} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
                       <input

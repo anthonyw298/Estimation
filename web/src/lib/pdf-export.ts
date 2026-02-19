@@ -217,6 +217,17 @@ export async function exportToPdf(
   doc.text('United Glass Ventures', pageW / 2, 85, { align: 'center' });
   doc.setTextColor(0);
 
+  // ---- Helpers for autoTable Y tracking ----
+  function getLastY(): number {
+    return (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 30;
+  }
+
+  // Singular category label mapping (matches Excel's title_mapping)
+  const SINGULAR_MAP: Record<string, string> = {
+    profiles: 'Profile', accessories: 'Accessory', gaskets: 'Gasket',
+    doors: 'Door', glass: 'Glass', fabrication: 'Labor',
+  };
+
   // ---- Per-Elevation Pages ----
   const sortedNames = Object.keys(elevations).sort();
 
@@ -226,6 +237,8 @@ export async function exportToPdf(
 
     doc.addPage();
     const elevDoors = doors[elevName] || [];
+    const totalCount = elev.total_count || 1;
+    const showPerElev = totalCount > 1;
 
     // Elevation header
     doc.setFontSize(14);
@@ -240,78 +253,177 @@ export async function exportToPdf(
       `Finish: ${elev.finish}`,
       `Dimensions: ${elev.opening_width_inches}" x ${elev.opening_height_inches}"`,
       `Bays: ${elev.bays_wide}W x ${elev.bays_tall}T`,
-      `Count: ${elev.total_count || 1}`,
+      `Count: ${totalCount}`,
       `Doors: ${elevDoors.length > 0 ? elevDoors.map(d => `${d.count}x ${d.size}`).join(', ') : 'None'}`,
     ];
     doc.text(info.join('  |  '), margin, 28);
 
-    // Material table by category
+    // Build per-category tables matching canonical headers
     const catOrder: [string, string][] = [
-      ['profiles', 'Profiles'], ['accessories', 'Accessories'], ['gaskets', 'Gaskets'],
-      ['doors', 'Doors'], ['glass', 'Glass'], ['fabrication', 'Fabrication'],
+      ['profiles', 'PROFILES'], ['accessories', 'ACCESSORIES'], ['gaskets', 'GASKETS'],
+      ['doors', 'DOORS'], ['glass', 'GLASS'], ['fabrication', 'FABRICATION'],
     ];
 
-    const tableData: Array<[string, string, string, string, string, string]> = [];
-    let elevTotal = 0;
+    // Track per-category discounted totals for elevation cost summary
+    const elevCatTotals: Record<string, number> = {};
+    let currentY = 33;
 
-    for (const [catKey, catLabel] of catOrder) {
+    for (const [catKey, catTitle] of catOrder) {
       const items = elev.calculated_outputs.filter(o => classifyOutput(o) === catKey);
       if (items.length === 0) continue;
 
-      // Category header row
-      tableData.push([catLabel.toUpperCase(), '', '', '', '', '']);
+      const isDisc = DISCOUNTABLE_TYPES.has(catKey);
+
+      // Build headers
+      const headers: string[] = ['Description', 'Part Number', 'Total Quantity Required'];
+      if (showPerElev) headers.push('Quantity Per Elevation');
+      headers.push('Total List Cost');
+      if (showPerElev) headers.push('Total List Cost Per Elevation');
+      headers.push('Discounted Total List Cost');
+      if (showPerElev) headers.push('Discounted Total List Cost Per Elevation');
+
+      // Build data rows
+      const rows: string[][] = [];
+      let catOrigTotal = 0;
+      let catDiscTotal = 0;
 
       for (const item of items) {
         const qty = sumQty(item.quantity);
         const cost = item.price ?? 0;
-        const isDisc = DISCOUNTABLE_TYPES.has(catKey);
         const discounted = isDisc ? cost * multiplier : cost;
-        elevTotal += discounted;
+        catOrigTotal += cost;
+        catDiscTotal += discounted;
 
-        tableData.push([
+        const row: string[] = [
           item.description,
-          item.part_number,
+          item.part_number || '',
           qty.toFixed(2),
-          fmtCurrency(cost),
-          isDisc ? `x${multiplier.toFixed(3)}` : '—',
-          fmtCurrency(discounted),
-        ]);
+        ];
+        if (showPerElev) row.push((qty / totalCount).toFixed(2));
+        row.push(fmtCurrency(cost));
+        if (showPerElev) row.push(fmtCurrency(cost / totalCount));
+        row.push(fmtCurrency(discounted));
+        if (showPerElev) row.push(fmtCurrency(discounted / totalCount));
+        rows.push(row);
       }
-    }
 
-    // Total row
-    tableData.push(['TOTAL', '', '', '', '', fmtCurrency(elevTotal)]);
+      elevCatTotals[catKey] = catDiscTotal;
 
-    autoTable(doc, {
-      startY: 33,
-      margin: { left: margin, right: margin },
-      head: [['Description', 'Part Number', 'Total Quantity Required', 'Total List Cost', 'Multiplier', 'Discounted Total List Cost']],
-      body: tableData,
-      styles: { fontSize: 7, cellPadding: 1.5 },
-      headStyles: { fillColor: [47, 84, 150], textColor: [255, 255, 255], fontStyle: 'bold' },
-      columnStyles: {
-        0: { cellWidth: 80 },
-        2: { halign: 'right' },
-        3: { halign: 'right' },
-        4: { halign: 'center' },
-        5: { halign: 'right' },
-      },
-      didParseCell: (data: unknown) => {
-        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
-        if (d.section === 'body') {
-          const rowData = tableData[d.row.index];
-          if (rowData && rowData[1] === '' && rowData[2] === '' && rowData[3] === '' && d.row.index < tableData.length - 1) {
+      // Total row
+      const singularLabel = SINGULAR_MAP[catKey] ?? catTitle;
+      const totalRow: string[] = [`Total ${singularLabel} Cost`];
+      for (let i = 1; i < headers.length; i++) totalRow.push('');
+      // Fill cost columns in total row
+      const costStartIdx = showPerElev ? 4 : 3;
+      totalRow[costStartIdx] = fmtCurrency(catOrigTotal);
+      if (showPerElev) totalRow[costStartIdx + 1] = fmtCurrency(catOrigTotal / totalCount);
+      totalRow[showPerElev ? costStartIdx + 2 : costStartIdx + 1] = fmtCurrency(catDiscTotal);
+      if (showPerElev) totalRow[costStartIdx + 3] = fmtCurrency(catDiscTotal / totalCount);
+      rows.push(totalRow);
+
+      // Section title
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(catTitle, margin, currentY);
+      currentY += 2;
+
+      // Column styles — right-align numeric columns
+      const colStyles: Record<number, { halign?: 'left' | 'center' | 'right'; cellWidth?: number }> = {
+        0: { cellWidth: showPerElev ? 50 : 70 },
+      };
+      for (let c = 2; c < headers.length; c++) {
+        colStyles[c] = { halign: 'right' as const };
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        margin: { left: margin, right: margin },
+        head: [headers],
+        body: rows,
+        styles: { fontSize: 6, cellPadding: 1.2 },
+        headStyles: { fillColor: [47, 84, 150], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 5.5 },
+        columnStyles: colStyles,
+        didParseCell: (data: unknown) => {
+          const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+          if (d.section === 'body' && d.row.index === rows.length - 1) {
             d.cell.styles.fontStyle = 'bold';
             d.cell.styles.fillColor = [230, 235, 245];
           }
-          if (d.row.index === tableData.length - 1) {
-            d.cell.styles.fontStyle = 'bold';
-            d.cell.styles.fillColor = [32, 55, 100];
-            d.cell.styles.textColor = [255, 255, 255];
-          }
+        },
+      });
+      currentY = getLastY() + 4;
+
+      // Add new page if running low on space
+      if (currentY > pageH - 40) {
+        doc.addPage();
+        currentY = 20;
+      }
+    }
+
+    // ---- Elevation Cost Summary ----
+    const costSumHeaders: string[] = ['COST/ELEVATION'];
+    if (showPerElev) costSumHeaders.push('COST/ELEVATION');
+    costSumHeaders.push('TOTAL ELEVATION COST');
+
+    const costSumRows: string[][] = [];
+    const costRowDefs: [string, string][] = [
+      ['PROFILE COSTS', 'profiles'], ['ACCESSORY COSTS', 'accessories'],
+      ['GASKET COSTS', 'gaskets'], ['DOOR COSTS', 'doors'],
+      ['GLASS COSTS', 'glass'], ['FABRICATION COSTS', 'fabrication'],
+    ];
+
+    let elevTotalCost = 0;
+    for (const [label, key] of costRowDefs) {
+      const total = elevCatTotals[key] ?? 0;
+      if (total === 0) continue;
+      elevTotalCost += total;
+      const row: string[] = [label];
+      if (showPerElev) row.push(fmtCurrency(total / totalCount));
+      row.push(fmtCurrency(total));
+      costSumRows.push(row);
+    }
+
+    // Total row
+    const costTotalRow: string[] = [`${elevName} TOTAL COSTS`];
+    if (showPerElev) costTotalRow.push(fmtCurrency(elevTotalCost / totalCount));
+    costTotalRow.push(fmtCurrency(elevTotalCost));
+    costSumRows.push(costTotalRow);
+
+    if (currentY > pageH - 50) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Elevation Cost Summary', margin, currentY);
+    currentY += 2;
+
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: margin, right: margin },
+      head: [costSumHeaders],
+      body: costSumRows,
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [47, 84, 150], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: showPerElev
+        ? { 1: { halign: 'right' }, 2: { halign: 'right' } }
+        : { 1: { halign: 'right' } },
+      didParseCell: (data: unknown) => {
+        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+        if (d.section === 'body' && d.row.index === costSumRows.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+          d.cell.styles.fillColor = [32, 55, 100];
+          d.cell.styles.textColor = [255, 255, 255];
         }
       },
     });
+
+    // Note
+    const noteY = getLastY() + 3;
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'italic');
+    doc.text('*Note - Elevation costs based on discounted material costs', margin, noteY);
   }
 
   // ---- Summary Page ----
@@ -320,19 +432,25 @@ export async function exportToPdf(
   doc.setFont('helvetica', 'bold');
   doc.text('Project Summary', margin, 20);
 
-  // Cost overview
+  // Cost overview — track per-category discounted totals for markup bases
   let totalDiscountable = 0;
   let totalNonDiscountable = 0;
+  const catDiscounted: Record<string, number> = {
+    profiles: 0, accessories: 0, gaskets: 0, doors: 0, glass: 0, fabrication: 0,
+  };
 
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
     for (const output of elev.calculated_outputs) {
       if (output.type === 'Calculations' || output.price == null) continue;
       const cat = classifyOutput(output);
+      const cost = output.price;
       if (DISCOUNTABLE_TYPES.has(cat)) {
-        totalDiscountable += output.price;
+        totalDiscountable += cost;
+        catDiscounted[cat] = (catDiscounted[cat] ?? 0) + cost * multiplier;
       } else {
-        totalNonDiscountable += output.price;
+        totalNonDiscountable += cost;
+        catDiscounted[cat] = (catDiscounted[cat] ?? 0) + cost;
       }
     }
   }
@@ -353,51 +471,165 @@ export async function exportToPdf(
   const residualCost = wasteCost * multiplier;
   const wastePct = discountedTotal > 0 ? (residualCost / discountedTotal) * 100 : 0;
 
-  // Additional costs
-  const additionalPcts = [
-    settings.overhead_materials_pct ?? 0, settings.overhead_labor_pct ?? 0,
-    settings.admin_management_pct ?? 0, settings.engineering_pct ?? 0,
-    settings.packaging_materials_pct ?? 0, settings.shipping_transport_pct ?? 0,
-    settings.commissions_pct ?? 0,
-  ];
-  const additionalTotal = discountedTotal * (additionalPcts.reduce((s, v) => s + v, 0) / 100);
+  // ---- Elevation Summary Table ----
+  const elevSummaryRows = Object.entries(elevations)
+    .filter(([, e]) => e.calculated_outputs && e.calculated_outputs.length > 0)
+    .map(([name, e]) => {
+      const tc = e.total_count || 1;
+      const w = e.opening_width_inches ?? 0;
+      const h = e.opening_height_inches ?? 0;
+      const sqft = (w * h * tc) / 144;
+      const perim = (2 * (w + h) * tc) / 12;
+      return [name, String(tc), `${w}" x ${h}"`, sqft.toFixed(2), perim.toFixed(2)];
+    });
 
-  // Markups
-  const markupPcts = [
-    settings.profit_on_material_pct ?? 0, settings.profit_on_waste_pct ?? 0,
-    settings.profit_on_glass_pct ?? 0, settings.profit_on_wages_pct ?? 0,
-    settings.planning_technical_pct ?? 0, settings.commission_pct ?? 0,
-  ];
-  const markupTotal = discountedTotal * (markupPcts.reduce((s, v) => s + v, 0) / 100);
+  if (elevSummaryRows.length > 0) {
+    // Totals
+    let totalQty = 0, totalSqft = 0, totalPerim = 0;
+    for (const r of elevSummaryRows) {
+      totalQty += Number(r[1]);
+      totalSqft += Number(r[3]);
+      totalPerim += Number(r[4]);
+    }
+    elevSummaryRows.push(['TOTAL', String(totalQty), '', totalSqft.toFixed(2), totalPerim.toFixed(2)]);
 
-  const grandTotal = discountedTotal + residualCost + additionalTotal + markupTotal;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ELEVATION SUMMARY', margin, 28);
 
-  // Summary table
-  const summaryData = [
-    ['List Price Total', fmtCurrency(totalListPrice)],
-    ['Discount Multiplier', `x ${multiplier.toFixed(3)}`],
-    ['Discounted Total', fmtCurrency(discountedTotal)],
-    ['Residual/Waste Cost', fmtCurrency(residualCost)],
-    ['Waste Percentage', `${wastePct.toFixed(2)}%`],
-    ...(additionalTotal > 0 ? [['Additional Costs', fmtCurrency(additionalTotal)]] : []),
-    ...(markupTotal > 0 ? [['Markups', fmtCurrency(markupTotal)]] : []),
-    ['GRAND TOTAL', fmtCurrency(grandTotal)],
+    autoTable(doc, {
+      startY: 31,
+      margin: { left: margin, right: margin },
+      head: [['Elevation Name', 'Quantity (EA)', 'Dimensions', 'SQFT Total (SQFT)', 'Perimeter FT Total (FT)']],
+      body: elevSummaryRows,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [84, 130, 53], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      didParseCell: (data: unknown) => {
+        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+        if (d.section === 'body' && d.row.index === elevSummaryRows.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
+  // ---- Cost Overview ----
+  const costOverviewData = [
+    ['List Price Total:', fmtCurrency(totalListPrice)],
+    ['Discounted Total:', fmtCurrency(discountedTotal)],
+    ['Residual/Waste Cost:', fmtCurrency(residualCost)],
+    ['Waste Percentage:', `${wastePct.toFixed(2)}%`],
   ];
 
   autoTable(doc, {
-    startY: 28,
+    startY: getLastY() + 8,
     margin: { left: margin, right: margin },
-    head: [['Item', 'Value']],
-    body: summaryData,
-    styles: { fontSize: 10, cellPadding: 3 },
+    head: [['COST OVERVIEW', '']],
+    body: costOverviewData,
+    styles: { fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: [47, 84, 150], textColor: [255, 255, 255], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 80 },
-      1: { halign: 'right' },
-    },
+    columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'right' } },
     didParseCell: (data: unknown) => {
       const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
-      if (d.section === 'body' && d.row.index === summaryData.length - 1) {
+      if (d.section === 'body' && d.row.index === 1) {
+        d.cell.styles.fontStyle = 'bold';
+      }
+    },
+  });
+
+  // ---- Additional Costs ----
+  const additionalDefs: [string, number][] = [
+    ['Overhead Materials', settings.overhead_materials_pct ?? 0],
+    ['Overhead Labor', settings.overhead_labor_pct ?? 0],
+    ['Admin and Management', settings.admin_management_pct ?? 0],
+    ['Engineering', settings.engineering_pct ?? 0],
+    ['Packaging Materials', settings.packaging_materials_pct ?? 0],
+    ['Shipping and Transport', settings.shipping_transport_pct ?? 0],
+    ['Commissions', settings.commissions_pct ?? 0],
+  ];
+  const activeAdditional = additionalDefs.filter(([, pct]) => pct > 0);
+  const additionalTotal = activeAdditional.reduce((s, [, pct]) => s + discountedTotal * (pct / 100), 0);
+
+  if (activeAdditional.length > 0) {
+    const addRows = activeAdditional.map(([label, pct]) => [label, fmtCurrency(discountedTotal * (pct / 100))]);
+    addRows.push(['SUBTOTAL', fmtCurrency(additionalTotal)]);
+
+    autoTable(doc, {
+      startY: getLastY() + 6,
+      margin: { left: margin, right: margin },
+      head: [['ADDITIONAL COSTS', '']],
+      body: addRows,
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [84, 130, 53], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'right' } },
+      didParseCell: (data: unknown) => {
+        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+        if (d.section === 'body' && d.row.index === addRows.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
+  // ---- Markups ----
+  const materialBase = (catDiscounted.profiles ?? 0) + (catDiscounted.accessories ?? 0) +
+    (catDiscounted.gaskets ?? 0) + (catDiscounted.doors ?? 0);
+  const glassBase = catDiscounted.glass ?? 0;
+  const laborBase = catDiscounted.fabrication ?? 0;
+
+  const markupDefs: [string, number, number][] = [
+    ['Profit on Material', settings.profit_on_material_pct ?? 0, materialBase],
+    ['Profit on Waste', settings.profit_on_waste_pct ?? 0, residualCost],
+    ['Profit on Glass Purchase', settings.profit_on_glass_pct ?? 0, glassBase],
+    ['Profit on Wages', settings.profit_on_wages_pct ?? 0, laborBase],
+    ['Planning / Technical Office', settings.planning_technical_pct ?? 0, discountedTotal],
+    ['Commission', settings.commission_pct ?? 0, discountedTotal],
+  ];
+  const activeMarkups = markupDefs.filter(([, pct]) => pct > 0);
+  const markupTotal = activeMarkups.reduce((sum, [, pct, base]) => sum + base * (pct / 100), 0);
+
+  if (activeMarkups.length > 0) {
+    const mkRows = activeMarkups.map(([label, pct, base]) => [label, fmtCurrency(base * (pct / 100))]);
+    mkRows.push(['SUBTOTAL', fmtCurrency(markupTotal)]);
+
+    autoTable(doc, {
+      startY: getLastY() + 6,
+      margin: { left: margin, right: margin },
+      head: [['MARKUPS / PROFIT', '']],
+      body: mkRows,
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [112, 48, 160], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'right' } },
+      didParseCell: (data: unknown) => {
+        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+        if (d.section === 'body' && d.row.index === mkRows.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
+  // ---- Project Total ----
+  const grandTotal = discountedTotal + additionalTotal + markupTotal;
+  const ptRows: string[][] = [
+    ['Discounted Total:', fmtCurrency(discountedTotal)],
+  ];
+  if (additionalTotal > 0) ptRows.push(['+ Additional:', fmtCurrency(additionalTotal)]);
+  if (markupTotal > 0) ptRows.push(['+ Markups:', fmtCurrency(markupTotal)]);
+  ptRows.push(['GRAND TOTAL:', fmtCurrency(grandTotal)]);
+
+  autoTable(doc, {
+    startY: getLastY() + 6,
+    margin: { left: margin, right: margin },
+    head: [['PROJECT TOTAL', '']],
+    body: ptRows,
+    styles: { fontSize: 10, cellPadding: 3 },
+    headStyles: { fillColor: [47, 84, 150], textColor: [255, 255, 255], fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'right' } },
+    didParseCell: (data: unknown) => {
+      const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+      if (d.section === 'body' && d.row.index === ptRows.length - 1) {
         d.cell.styles.fontStyle = 'bold';
         d.cell.styles.fillColor = [32, 55, 100];
         d.cell.styles.textColor = [255, 255, 255];
@@ -410,8 +642,7 @@ export async function exportToPdf(
     const activeMaterialCost = Math.max(0, discountedTotal - residualCost);
     const pieBase64 = createPdfPieChart(activeMaterialCost, additionalTotal, markupTotal, residualCost);
     if (pieBase64) {
-      const lastYPie = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 100;
-      // Check if enough space on page, otherwise add new page
+      const lastYPie = getLastY();
       const chartH = 70;
       const chartW = 80;
       if (lastYPie + chartH + 10 > pageH - margin) {
@@ -423,32 +654,6 @@ export async function exportToPdf(
     }
   } catch (e) {
     console.warn('Could not add pie chart to PDF:', e);
-  }
-
-  // Per-elevation cost breakdown
-  const elevCostData = Object.entries(elevations)
-    .filter(([, e]) => e.calculated_outputs && e.calculated_outputs.length > 0)
-    .map(([name, elev]) => {
-      let cost = 0;
-      for (const output of elev.calculated_outputs!) {
-        if (output.type === 'Calculations' || output.price == null) continue;
-        const cat = classifyOutput(output);
-        cost += DISCOUNTABLE_TYPES.has(cat) ? output.price * multiplier : output.price;
-      }
-      return [name, fmtCurrency(cost)];
-    });
-
-  if (elevCostData.length > 0) {
-    const lastY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 100;
-    autoTable(doc, {
-      startY: lastY + 10,
-      margin: { left: margin, right: margin },
-      head: [['Elevation Name', 'Discounted Total List Cost']],
-      body: elevCostData,
-      styles: { fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: [84, 130, 53], textColor: [255, 255, 255], fontStyle: 'bold' },
-      columnStyles: { 1: { halign: 'right' } },
-    });
   }
 
   // ---- Download ----

@@ -515,7 +515,18 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                 total_row = []
                 for ck in col_keys:
                     if ck == "description":
-                        total_row.append((f"Total {sec_title.title()} Cost", True))
+                        # Singular mapping matching Excel's title_mapping
+                        _title_map = {
+                            "PROFILES": "Profile",
+                            "ACCESSORIES": "Accessory",
+                            "GASKETS": "Gasket",
+                            "DOORS": "Door",
+                            "GLASS": "Glass",
+                            "LABOR": "Labor",
+                            "FABRICATION": "Labor",
+                        }
+                        _mapped = _title_map.get(sec_title.upper(), sec_title.title())
+                        total_row.append((f"Total {_mapped} Cost", True))
                     elif ck == "original_cost":
                         total_row.append((_fmt_currency(totals.get("original")), True))
                     elif ck == "original_cost_per_elev":
@@ -546,38 +557,38 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
         ):
             cs = elev_data.get("cost_summary", {})
             if cs:
-                cs_headers = ["Category"]
+                cs_headers = ["COST/ELEVATION"]
                 cs_col_keys = ["label"]
                 if total_count > 1:
-                    cs_headers.append("Cost / Elevation")
+                    cs_headers.append("COST/ELEVATION")
                     cs_col_keys.append("per_elev")
-                cs_headers.append("Total Elevation Cost")
+                cs_headers.append("TOTAL ELEVATION COST")
                 cs_col_keys.append("total")
 
                 # (label, sec_key, per_elev_key, total_key)
                 COST_ROWS = [
                     (
-                        "Profile Costs",
+                        "PROFILE COSTS",
                         "profiles",
                         "profile_cost_per_elev",
                         "profile_total_cost",
                     ),
                     (
-                        "Accessory Costs",
+                        "ACCESSORY COSTS",
                         "accessories",
                         "accessory_cost_per_elev",
                         "accessory_total_cost",
                     ),
                     (
-                        "Gasket Costs",
+                        "GASKET COSTS",
                         "gaskets",
                         "gasket_cost_per_elev",
                         "gasket_total_cost",
                     ),
-                    ("Door Costs", "doors", "door_cost_per_elev", "door_total_cost"),
-                    ("Glass Costs", "glass", "glass_cost_per_elev", "glass_total_cost"),
+                    ("DOOR COSTS", "doors", "door_cost_per_elev", "door_total_cost"),
+                    ("GLASS COSTS", "glass", "glass_cost_per_elev", "glass_total_cost"),
                     (
-                        "Fabrication Costs",
+                        "FABRICATION COSTS",
                         "fabrication",
                         "fabrication_cost_per_elev",
                         "fabrication_total_cost",
@@ -600,7 +611,7 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                     cs_table.append(row)
 
                 # Total row
-                total_row = [(f"{elev_name} Total", True)]
+                total_row = [(f"{elev_name} TOTAL COSTS", True)]
                 if total_count > 1:
                     total_row.append(
                         (_fmt_currency(cs.get("total_cost_per_elev", 0)), True)
@@ -759,12 +770,22 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                     table_rows.append(row)
 
                 # Category total row
+                _cat_name_map = {
+                    "profiles": "Profile",
+                    "accessories": "Accessory",
+                    "gaskets": "Gasket",
+                    "doors": "Door",
+                    "glass": "Glass",
+                    "labor": "Labor",
+                    "fabrication": "Labor",
+                }
                 ct = cat_totals.get(cat_name, {})
                 if ct:
                     total_row = []
+                    _cat_label = _cat_name_map.get(cat_name.lower(), cat_name.title())
                     for ck in col_keys:
                         if ck == "description":
-                            total_row.append((f"Total {cat_name.title()} Cost", True))
+                            total_row.append((f"Total {_cat_label} Cost", True))
                         elif ck == "original_total_cost":
                             total_row.append(
                                 (_fmt_currency(ct.get("original", 0)), True)
@@ -835,16 +856,19 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
             cov = summary.get("cost_overview", {})
             if cov:
                 co_table = [
-                    ["List Price Total", _fmt_currency(cov.get("list_price_total", 0))],
                     [
-                        ("Discounted Total", True),
+                        "List Price Total:",
+                        _fmt_currency(cov.get("list_price_total", 0)),
+                    ],
+                    [
+                        ("Discounted Total:", True),
                         (_fmt_currency(cov.get("discounted_total", 0)), True),
                     ],
                     [
-                        "Residual / Waste Cost",
+                        "Residual/Waste Cost:",
                         _fmt_currency(cov.get("residual_waste_cost", 0)),
                     ],
-                    ["Waste Percentage", _fmt_pct(cov.get("waste_pct", 0))],
+                    ["Waste Percentage:", _fmt_pct(cov.get("waste_pct", 0))],
                 ]
                 story.extend(
                     _create_pdf_table(
@@ -904,19 +928,19 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
             pt = summary.get("project_total_breakdown", {})
             if pt:
                 pt_table = [
-                    ["Discounted Total", _fmt_currency(pt.get("discounted_total", 0))],
+                    ["Discounted Total:", _fmt_currency(pt.get("discounted_total", 0))],
                 ]
                 if pt.get("additional_total", 0) > 0:
                     pt_table.append(
-                        ["+ Additional", _fmt_currency(pt.get("additional_total", 0))]
+                        ["+ Additional:", _fmt_currency(pt.get("additional_total", 0))]
                     )
                 if pt.get("markup_total", 0) > 0:
                     pt_table.append(
-                        ["+ Markups", _fmt_currency(pt.get("markup_total", 0))]
+                        ["+ Markups:", _fmt_currency(pt.get("markup_total", 0))]
                     )
                 pt_table.append(
                     [
-                        ("GRAND TOTAL", True),
+                        ("GRAND TOTAL:", True),
                         (_fmt_currency(pt.get("grand_total", 0)), True),
                     ]
                 )

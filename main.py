@@ -4443,19 +4443,19 @@ def main(page: ft.Page):
 
         # Elevation Summary Display Options Section
         elevation_name_cb = ft.Checkbox(
-            label="Elevation Names", value=False, fill_color=COLOR_ACCENT
+            label="Elevation Name", value=False, fill_color=COLOR_ACCENT
         )
         elevation_quantity_cb = ft.Checkbox(
-            label="Quantity", value=False, fill_color=COLOR_ACCENT
+            label="Quantity (EA)", value=False, fill_color=COLOR_ACCENT
         )
         elevation_dimensions_cb = ft.Checkbox(
             label="Dimensions", value=False, fill_color=COLOR_ACCENT
         )
         elevation_sqft_cb = ft.Checkbox(
-            label="SQFT Total", value=False, fill_color=COLOR_ACCENT
+            label="SQFT Total (SQFT)", value=False, fill_color=COLOR_ACCENT
         )
         elevation_perimeter_cb = ft.Checkbox(
-            label="Perimeter FT Total", value=False, fill_color=COLOR_ACCENT
+            label="Perimeter FT Total (FT)", value=False, fill_color=COLOR_ACCENT
         )
 
         inputs["show_elevation_names"] = elevation_name_cb
@@ -4469,7 +4469,7 @@ def main(page: ft.Page):
                 ft.Row(
                     [
                         ft.Text(
-                            "ELEVATION SUMMARY DISPLAY",
+                            "ELEVATION SUMMARY",
                             size=16,
                             weight="bold",
                             color=COLOR_ACCENT,
@@ -5834,23 +5834,20 @@ def main(page: ft.Page):
         # Per-section quantity label differs by material type.
         # Per-elevation columns only appear when the elevation's own count > 1.
         _ELEV_QTY_LABEL = {
-            "profiles": "Sticks Required",
-            "accessories": "Total Pieces Required",
+            "profiles": "Total Quantity Required",
+            "accessories": "Total Quantity Required",
             "gaskets": "Total Quantity Required",
             "doors": "Total Quantity Required",
             "glass": "Total Quantity Required",
             "fabrication": "Total Quantity Required",
         }
 
-        _NO_PART_NUMBER = {"doors", "glass", "fabrication"}
-
         def _build_elev_cols(section_key, elev_total_count):
             """Return column defs for a material section on an elevation tab."""
             has_per_elev = elev_total_count > 1
             qty_label = _ELEV_QTY_LABEL.get(section_key, "Total Quantity Required")
             cols = [("description", "Description")]
-            if section_key not in _NO_PART_NUMBER:
-                cols.append(("part_number", "Part Number"))
+            cols.append(("part_number", "Part Number"))
             cols.append(("total_quantity_required", qty_label))
             if has_per_elev:
                 cols.append(("quantity_per_elevation", "Quantity Per Elevation"))
@@ -5914,22 +5911,28 @@ def main(page: ft.Page):
             + _SUM_RESIDUAL,
             "doors": _SUM_COMMON
             + [
+                ("na_placeholder", "N/A"),
                 ("unit_price", "Unit Price"),
                 ("total_quantity_required", "Total Quantity Required"),
             ]
-            + _SUM_COST,
+            + _SUM_COST
+            + _SUM_RESIDUAL,
             "glass": _SUM_COMMON
             + [
+                ("na_placeholder", "N/A"),
                 ("unit_price", "Unit Price"),
                 ("total_quantity_required", "Total Quantity Required"),
             ]
-            + _SUM_COST,
+            + _SUM_COST
+            + _SUM_RESIDUAL,
             "fabrication": _SUM_COMMON
             + [
+                ("na_placeholder", "N/A"),
                 ("unit_price", "Unit Price"),
                 ("total_quantity_required", "Total Quantity Required"),
             ]
-            + _SUM_COST,
+            + _SUM_COST
+            + _SUM_RESIDUAL,
         }
 
         COST_OVERVIEW_KEYS = ["additional_costs", "markups", "project_total", "diagram"]
