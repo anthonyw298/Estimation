@@ -74,6 +74,10 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#06060a]">
+      <div className="text-center py-12">
+        <h1 className="text-7xl font-extrabold text-white">Hello</h1>
+      </div>
+
       {/* Header */}
       <header className="glass gradient-border-top border-b border-[#1e1e2a] bg-[#06060a]/80 backdrop-blur-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
