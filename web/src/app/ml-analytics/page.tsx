@@ -25,6 +25,7 @@ import {
   Activity,
   Layers,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -301,6 +302,36 @@ export default function MLAnalyticsPage() {
     setStatus(predictor.getStatus());
     setStats(predictor.getStatistics());
   }, [entries]);
+
+  // Remove a single training sample by ID (from the training list, not the project list)
+  const handleRemoveSampleById = useCallback(async (sampleId: string) => {
+    const predictor = getPredictor();
+    await predictor.removeSample(sampleId);
+
+    // Update isInTraining flags on entries
+    setEntries(prev =>
+      prev.map(e => {
+        const w = e.data.opening_width_inches || 0;
+        const h = e.data.opening_height_inches || 0;
+        const bw = e.data.bays_wide || 1;
+        const bt = e.data.bays_tall || 1;
+        const fin = e.data.finish || 'Clear';
+        return { ...e, isInTraining: predictor.isInTraining(e.project, e.elevation, w, h, bw, bt, fin) };
+      }),
+    );
+    setStatus(predictor.getStatus());
+    setStats(predictor.getStatistics());
+  }, []);
+
+  // Clear all training data
+  const handleClearAll = useCallback(async () => {
+    if (!confirm(`Remove all ${status.sample_count} training samples? This cannot be undone.`)) return;
+    const predictor = getPredictor();
+    await predictor.clearAllSamples();
+    setEntries(prev => prev.map(e => ({ ...e, isInTraining: false })));
+    setStatus(predictor.getStatus());
+    setStats(predictor.getStatistics());
+  }, [status.sample_count]);
 
   const addAllToTraining = useCallback(async () => {
     const predictor = getPredictor();
@@ -676,6 +707,56 @@ export default function MLAnalyticsPage() {
               )}
             </>
           )}
+
+          {/* Training Samples List */}
+          <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-4 space-y-3 shadow-lg shadow-black/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-500" />
+                <h3 className="text-sm font-semibold text-[#eeeef2]">Training Samples ({status.sample_count})</h3>
+              </div>
+              {status.sample_count > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 transition-colors duration-200"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {status.sample_count === 0 ? (
+              <p className="text-xs text-[#3e3f4d] text-center py-4">
+                No training samples. Add elevations from the left panel.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {getPredictor().getTrainingData().map(sample => (
+                  <div
+                    key={sample.id}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1e1e2a] bg-[#08080e] group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-[#c4c5cf] truncate">
+                        {sample.project} / {sample.elevation}
+                      </p>
+                      <p className="text-[10px] text-[#55566a]">
+                        {sample.width}&Prime; x {sample.height}&Prime; | {sample.bays_wide}x{sample.bays_tall} | {sample.finish} | {fmtCurrency(sample.cost)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveSampleById(sample.id)}
+                      className="p-1 rounded text-[#3e3f4d] hover:text-red-400 hover:bg-red-500/10 transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                      title="Remove sample"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -205,6 +205,11 @@ export default function ReportOptionsDialog({
     name => (elevIncluded[name] ?? true) && elevations[name]?.calculated_outputs && elevations[name].calculated_outputs!.length > 0
   );
 
+  // Identify included elevations that are stale (need recalculation)
+  const uncalculatedIncluded = elevationNames.filter(
+    name => (elevIncluded[name] ?? true) && (!elevations[name]?.calculated_outputs || elevations[name].calculated_outputs!.length === 0)
+  );
+
   const handleExportExcel = useCallback(async () => {
     if (!hasCalculatedData) {
       alert('No calculated data to export. Please run "Calculate & Save" on at least one elevation first.');
@@ -213,10 +218,11 @@ export default function ReportOptionsDialog({
     setExporting(true);
     try {
       const { exportToExcel } = await import('@/lib/export');
+      // Only include elevations that have calculated data — skip stale/uncalculated ones
       const filteredElevations: Record<string, ElevationData> = {};
       const filteredDoors: Record<string, DoorConfig[]> = {};
       for (const name of elevationNames) {
-        if (elevIncluded[name]) {
+        if (elevIncluded[name] && elevations[name]?.calculated_outputs && elevations[name].calculated_outputs!.length > 0) {
           filteredElevations[name] = elevations[name];
           filteredDoors[name] = doors[name] || [];
         }
@@ -251,10 +257,11 @@ export default function ReportOptionsDialog({
     setExporting(true);
     try {
       const { exportToPdf } = await import('@/lib/pdf-export');
+      // Only include elevations that have calculated data — skip stale/uncalculated ones
       const filteredElevations: Record<string, ElevationData> = {};
       const filteredDoors: Record<string, DoorConfig[]> = {};
       for (const name of elevationNames) {
-        if (elevIncluded[name]) {
+        if (elevIncluded[name] && elevations[name]?.calculated_outputs && elevations[name].calculated_outputs!.length > 0) {
           filteredElevations[name] = elevations[name];
           filteredDoors[name] = doors[name] || [];
         }
@@ -310,6 +317,13 @@ export default function ReportOptionsDialog({
               No elevations have been calculated yet. Run &ldquo;Calculate &amp; Save&rdquo; on your elevations before exporting.
             </div>
           )}
+          {hasCalculatedData && uncalculatedIncluded.length > 0 && (
+            <div className="mt-2 rounded bg-amber-900/10 border border-amber-500/10 px-3 py-2 text-yellow-400 text-[11px]">
+              {uncalculatedIncluded.length === 1
+                ? `"${uncalculatedIncluded[0]}" needs recalculation and will be skipped in the export.`
+                : `${uncalculatedIncluded.length} elevations need recalculation and will be skipped: ${uncalculatedIncluded.join(', ')}`}
+            </div>
+          )}
         </div>
 
         {/* Content - scrollable */}
@@ -327,6 +341,11 @@ export default function ReportOptionsDialog({
                     className="h-4 w-4 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
                   />
                   <span className="text-sm font-medium text-[#eeeef2]">{name}</span>
+                  {(!elevations[name]?.calculated_outputs || elevations[name].calculated_outputs!.length === 0) && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">
+                      Needs calc
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={() => togglePanel(name)}

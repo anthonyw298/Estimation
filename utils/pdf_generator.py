@@ -696,6 +696,10 @@ def generate_pdf_from_data(report_data, pdf_path, include_logo=True):
                     headers.append("Description")
                     col_keys.append("description")
 
+                if sum_cols.get("project_total_materials", True):
+                    headers.append("Project Total Materials")
+                    col_keys.append("display")
+
                 # Category-specific quantity columns
                 if cat_name == "PROFILES":
                     if sum_cols.get("total_feet_required", True):

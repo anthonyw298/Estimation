@@ -5871,6 +5871,7 @@ def main(page: ft.Page):
         # Common columns shared by all:
         _SUM_COMMON = [
             ("description", "Description"),
+            ("project_total_materials", "Project Total Materials"),
         ]
         _SUM_COST = [
             ("total_list_cost", "Total List Cost"),

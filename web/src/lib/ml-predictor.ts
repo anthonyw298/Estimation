@@ -261,6 +261,12 @@ class MLPredictor {
     await this.saveData();
   }
 
+  async clearAllSamples(): Promise<void> {
+    this.data = [];
+    this.model = new SimpleLinearRegression();
+    await this.saveData();
+  }
+
   /**
    * Check if an elevation is in training by building the full sample ID
    * (matches Python's is_in_training which checks exact ID match).

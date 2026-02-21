@@ -6,7 +6,7 @@ import type {
   DoorConfig,
   ReportConfig,
 } from '@/types';
-import { getUnitPriceByPart } from '@/lib/pricing';
+import { getUnitPriceByPart, getPriceByPart, applyMaterialImpactInMemory } from '@/lib/pricing';
 
 // ---------------------------------------------------------------------------
 // Helpers (shared with Excel export logic)
@@ -191,13 +191,22 @@ export async function exportToPdf(
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;
 
-  // Pre-compute multiplier
+  // Pre-compute multiplier — re-price standard parts from scratch for accuracy
   let runningGrandTotal = 0;
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
+    const elevFinish = elev.finish || '';
     for (const output of elev.calculated_outputs) {
-      if (output.type !== 'Calculations' && output.price != null) {
-        runningGrandTotal += output.price;
+      const cat = classifyOutput(output);
+      if (cat === 'calculations') continue;
+      if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
+        runningGrandTotal += output.price ?? 0;
+      } else {
+        const [price] = getPriceByPart(
+          output.part_number, output.quantity, elevFinish,
+          null, true, false, output.description,
+        );
+        runningGrandTotal += price ?? 0;
       }
     }
   }
@@ -286,6 +295,10 @@ export async function exportToPdf(
     const elevCatPerElevTotals: Record<string, number> = {};
     let currentY = 33;
 
+    // Per-elevation fresh state for inventory tracking (matches Excel buildElevationCategories)
+    const elevMaterialsState: Record<string, ExtraMaterial> = {};
+    const elevFinish = elev.finish || '';
+
     for (const [catKey, catTitle] of catOrder) {
       // Skip section if unchecked in stock list
       if (elevSections?.[catKey] === false) continue;
@@ -311,7 +324,39 @@ export async function exportToPdf(
 
       for (const item of items) {
         const qty = sumQty(item.quantity);
-        const cost = item.price ?? 0;
+
+        // Re-price standard parts from scratch (matches Excel buildElevationCategories)
+        let cost: number;
+        if (item.manual || catKey === 'glass' || catKey === 'fabrication' || catKey === 'doors') {
+          cost = item.price ?? 0;
+        } else {
+          const isGasket = catKey === 'gaskets';
+          const isProfile = catKey === 'profiles';
+          const useGroup = isProfile || isGasket;
+          const shouldGroup = useGroup && Array.isArray(item.quantity) && item.quantity.length > 1;
+
+          if (shouldGroup) {
+            const [price, , impact] = getPriceByPart(
+              item.part_number, item.quantity, elevFinish,
+              elevMaterialsState, false, useGroup, item.description,
+            );
+            if (impact) applyMaterialImpactInMemory(elevMaterialsState, impact);
+            cost = price ?? 0;
+          } else {
+            let itemTotal = 0;
+            const quantities = Array.isArray(item.quantity) ? item.quantity : [item.quantity];
+            for (const singleQty of quantities) {
+              const [price, , impact] = getPriceByPart(
+                item.part_number, singleQty, elevFinish,
+                elevMaterialsState, false, useGroup, item.description,
+              );
+              if (impact) applyMaterialImpactInMemory(elevMaterialsState, impact);
+              itemTotal += price ?? 0;
+            }
+            cost = itemTotal;
+          }
+        }
+
         const discounted = isDisc ? cost * multiplier : cost;
         catOrigTotal += cost;
         catDiscTotal += discounted;
@@ -479,18 +524,54 @@ export async function exportToPdf(
   doc.text('Project Summary', margin, 20);
 
   // Cost overview — track per-category discounted totals for markup bases
+  // Re-price standard parts from scratch for accuracy (matches Excel approach)
   let totalDiscountable = 0;
   let totalNonDiscountable = 0;
   const catDiscounted: Record<string, number> = {
     profiles: 0, accessories: 0, gaskets: 0, doors: 0, glass: 0, fabrication: 0,
   };
 
+  // Fresh materials state for summary re-pricing
+  const summaryMaterialsState: Record<string, ExtraMaterial> = {};
+
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
+    const sumFinish = elev.finish || '';
     for (const output of elev.calculated_outputs) {
-      if (output.type === 'Calculations' || output.price == null) continue;
       const cat = classifyOutput(output);
-      const cost = output.price;
+      if (cat === 'calculations') continue;
+
+      let cost: number;
+      if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
+        cost = output.price ?? 0;
+      } else {
+        const isGasket = cat === 'gaskets';
+        const isProfile = cat === 'profiles';
+        const useGroup = isProfile || isGasket;
+        const shouldGroup = useGroup && Array.isArray(output.quantity) && output.quantity.length > 1;
+
+        if (shouldGroup) {
+          const [price, , impact] = getPriceByPart(
+            output.part_number, output.quantity, sumFinish,
+            summaryMaterialsState, false, useGroup, output.description,
+          );
+          if (impact) applyMaterialImpactInMemory(summaryMaterialsState, impact);
+          cost = price ?? 0;
+        } else {
+          let itemTotal = 0;
+          const quantities = Array.isArray(output.quantity) ? output.quantity : [output.quantity];
+          for (const singleQty of quantities) {
+            const [price, , impact] = getPriceByPart(
+              output.part_number, singleQty, sumFinish,
+              summaryMaterialsState, false, useGroup, output.description,
+            );
+            if (impact) applyMaterialImpactInMemory(summaryMaterialsState, impact);
+            itemTotal += price ?? 0;
+          }
+          cost = itemTotal;
+        }
+      }
+
       if (DISCOUNTABLE_TYPES.has(cat)) {
         totalDiscountable += cost;
         catDiscounted[cat] = (catDiscounted[cat] ?? 0) + cost * multiplier;

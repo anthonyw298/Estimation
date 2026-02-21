@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ElevationData,
   DoorConfig,
@@ -37,6 +37,9 @@ interface ElevationEditorProps {
     doors: DoorConfig[],
     materials: Record<string, ExtraMaterial>,
   ) => void;
+  /** Called when inputs change and old results become stale so the parent can
+   *  clear `calculated_outputs` — prevents exports from using outdated data. */
+  onInvalidate?: (name: string) => void;
   settings: ProjectSettings;
 }
 
@@ -167,6 +170,7 @@ export default function ElevationEditor({
   doors: initialDoors,
   materials: initialMaterials,
   onSave,
+  onInvalidate,
   settings,
 }: ElevationEditorProps) {
   // --- Door-only mode ---
@@ -408,6 +412,27 @@ export default function ElevationEditor({
     },
     [],
   );
+
+  // ---------------------------------------------------------------------------
+  // Invalidate stale results when inputs change
+  // ---------------------------------------------------------------------------
+
+  // Track whether this is the initial mount so we don't clear saved results
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // Any meaningful input changed — clear old results so the UI
+    // switches back to "Calculate & Save" and stops showing stale prices.
+    setResults(null);
+    setMaterialImpacts([]);
+    // Also notify the parent so that `elevations[name].calculated_outputs` is
+    // cleared – this prevents exports from using outdated data.
+    onInvalidate?.(elevationName);
+  }, [doors, finish, systemType, openingWidth, openingHeight, baysWide, baysTall, totalCount, doorOnly, customBayWidths, customBayHeights, glassPerSqft, fabCostPerJoint, elevationName, onInvalidate]);
 
   // ---------------------------------------------------------------------------
   // Calculate

@@ -126,6 +126,38 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     [projectName]
   );
 
+  // Called by ElevationEditor when inputs change so stale calculated_outputs
+  // are removed from the parent state — this prevents exports from using
+  // outdated data for modified-but-not-yet-recalculated elevations.
+  const handleInvalidateElevation = useCallback(
+    (elevationName: string) => {
+      setElevations((prev) => {
+        const elev = prev[elevationName];
+        if (!elev) return prev;
+        // Only update if there are actually calculated_outputs to clear
+        if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) return prev;
+        const { calculated_outputs, single_elevation_outputs, material_impacts, ...rest } = elev;
+        // Also reverse material impacts from the shared inventory before
+        // clearing them, so the materials state stays accurate.
+        if (material_impacts && material_impacts.length > 0) {
+          const materialsClone: Record<string, ExtraMaterial> = {};
+          for (const [k, v] of Object.entries(materials)) {
+            materialsClone[k] = {
+              quantity: v.quantity,
+              length_pieces: [...v.length_pieces],
+            };
+          }
+          reverseMaterialImpact(material_impacts, materialsClone);
+          // Persist reversed materials (fire-and-forget)
+          setMaterials(materialsClone);
+          db.saveMaterials(projectName, materialsClone).catch(() => {});
+        }
+        return { ...prev, [elevationName]: rest as ElevationData };
+      });
+    },
+    [projectName, materials]
+  );
+
   async function handleAddElevation() {
     const trimmed = newElevationName.trim();
     if (!trimmed) return;
@@ -138,11 +170,11 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     const newElevation: ElevationData = {
       system_type: 'YES 45TU Front Set (OG)',
       finish: 'Clear',
-      opening_width_inches: 120,
-      opening_height_inches: 96,
-      bays_wide: 2,
-      bays_tall: 1,
-      total_count: 1,
+      opening_width_inches: 0,
+      opening_height_inches: 0,
+      bays_wide: 0,
+      bays_tall: 0,
+      total_count: 0,
     };
 
     setElevations((prev) => ({ ...prev, [trimmed]: newElevation }));
@@ -332,6 +364,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               {elevationNames.map((elevName) => {
                 const isSelected = selectedElevation === elevName;
                 const cost = getElevationCost(elevName);
+                const needsCalc = !elevations[elevName]?.calculated_outputs || elevations[elevName].calculated_outputs!.length === 0;
                 return (
                   <div
                     key={elevName}
@@ -346,18 +379,27 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                     }}
                   >
                     <div className="flex-1 min-w-0">
-                      <p
-                        className={`text-sm font-medium truncate ${
-                          isSelected ? 'text-[#eeeef2]' : 'text-[#8b8d9a]'
-                        }`}
-                      >
-                        {elevName}
-                      </p>
-                      {cost !== null && (
+                      <div className="flex items-center gap-1.5">
+                        {needsCalc && (
+                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" title="Needs calculation" />
+                        )}
+                        <p
+                          className={`text-sm font-medium truncate ${
+                            isSelected ? 'text-[#eeeef2]' : 'text-[#8b8d9a]'
+                          }`}
+                        >
+                          {elevName}
+                        </p>
+                      </div>
+                      {needsCalc ? (
+                        <p className="text-xs text-amber-400/70 mt-0.5">
+                          Needs calculation
+                        </p>
+                      ) : cost !== null ? (
                         <p className="text-xs text-[#55566a] mt-0.5 font-mono tabular-nums">
                           ${cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -465,6 +507,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                           handleDoorsUpdate(name, doorConfigs);
                           handleMaterialsUpdate(mats);
                         }}
+                        onInvalidate={handleInvalidateElevation}
                       />
                     </div>
                   ) : (
