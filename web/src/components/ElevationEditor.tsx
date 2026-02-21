@@ -420,6 +420,13 @@ export default function ElevationEditor({
   // Track whether this is the initial mount so we don't clear saved results
   const isFirstRender = useRef(true);
 
+  // Keep a stable ref for the invalidation callback so it never triggers the
+  // useEffect below.  Without this, `onInvalidate` changes reference whenever
+  // the parent's `materials` state updates (e.g. right after Calculate & Save),
+  // which would immediately clear the results we just saved.
+  const onInvalidateRef = useRef(onInvalidate);
+  useEffect(() => { onInvalidateRef.current = onInvalidate; });
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -431,8 +438,8 @@ export default function ElevationEditor({
     setMaterialImpacts([]);
     // Also notify the parent so that `elevations[name].calculated_outputs` is
     // cleared – this prevents exports from using outdated data.
-    onInvalidate?.(elevationName);
-  }, [doors, finish, systemType, openingWidth, openingHeight, baysWide, baysTall, totalCount, doorOnly, customBayWidths, customBayHeights, glassPerSqft, fabCostPerJoint, elevationName, onInvalidate]);
+    onInvalidateRef.current?.(elevationName);
+  }, [doors, finish, systemType, openingWidth, openingHeight, baysWide, baysTall, totalCount, doorOnly, customBayWidths, customBayHeights, glassPerSqft, fabCostPerJoint, elevationName]);
 
   // ---------------------------------------------------------------------------
   // Calculate
