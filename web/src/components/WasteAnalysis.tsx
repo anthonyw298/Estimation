@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { AlertTriangle, TrendingDown, Recycle, BarChart3, Package } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, TrendingDown, Recycle, BarChart3, Package, RotateCcw } from 'lucide-react';
 import type {
   ElevationData,
   ExtraMaterial,
@@ -17,6 +17,7 @@ interface WasteAnalysisProps {
   elevations: Record<string, ElevationData>;
   materials: Record<string, ExtraMaterial>;
   settings: ProjectSettings;
+  onResetInventory?: () => void;
 }
 
 // ---------- Shared helpers (matching export.ts / pdf-export.ts) ----------
@@ -64,7 +65,8 @@ function parseKey(key: string): { partNumber: string; finish?: string } {
   return { partNumber: key };
 }
 
-export default function WasteAnalysis({ elevations, materials, settings }: WasteAnalysisProps) {
+export default function WasteAnalysis({ elevations, materials, settings, onResetInventory }: WasteAnalysisProps) {
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const analysis = useMemo(() => {
     // Compute multiplier (matching export.ts / pdf-export.ts logic)
     let runningGrandTotal = 0;
@@ -305,12 +307,16 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
       overallWastePercentage,
       suggestions,
       multiplier,
+      freshMaterials,
     };
   }, [elevations, settings]);
 
-  const { breakdown, totalWasteCost, totalMaterialCost, overallWastePercentage, suggestions, multiplier } = analysis;
+  const { breakdown, totalWasteCost, totalMaterialCost, overallWastePercentage, suggestions, multiplier, freshMaterials } = analysis;
 
   // ---- Stock / Leftover Inventory ----
+  // Uses freshMaterials (computed from scratch, same as Material Breakdown)
+  // instead of the stored materials prop, so it always matches the Excel export
+  // and isn't affected by stale/corrupted inventory data.
   const stockInventory = useMemo(() => {
     const items: Array<{
       partNumber: string;
@@ -328,25 +334,20 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
     let totalPieces = 0;
     let totalValue = 0;
 
-    for (const [key, mat] of Object.entries(materials)) {
+    // Build a description lookup from the breakdown (which has correct descriptions)
+    const descriptionMap = new Map<string, string>();
+    for (const b of breakdown) {
+      descriptionMap.set(b.part_number, b.description);
+    }
+
+    for (const [key, mat] of Object.entries(freshMaterials)) {
       const hasLengthPieces = mat.length_pieces && mat.length_pieces.length > 0;
       const hasQuantity = mat.quantity > 0;
       if (!hasLengthPieces && !hasQuantity) continue;
 
       const { partNumber, finish } = parseKey(key);
       const [unitPrice] = getUnitPriceByPart(partNumber, finish ?? 'clear');
-
-      let description = partNumber;
-      for (const elev of Object.values(elevations)) {
-        if (!elev.material_impacts) continue;
-        const found = elev.material_impacts.find(
-          (m) => m.part_number === partNumber,
-        );
-        if (found?.description) {
-          description = found.description;
-          break;
-        }
-      }
+      const description = descriptionMap.get(partNumber) ?? partNumber;
 
       if (hasLengthPieces) {
         const pieces = mat.length_pieces.filter((l) => l > 0).sort((a, b) => b - a);
@@ -400,7 +401,7 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
 
     items.sort((a, b) => b.estimatedValue - a.estimatedValue);
     return { items, totalPieces, totalValue };
-  }, [materials, elevations, multiplier]);
+  }, [freshMaterials, breakdown, multiplier]);
 
   function getWasteColor(pct: number): string {
     if (pct < 10) return 'text-emerald-400';
@@ -617,11 +618,23 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
 
       {/* Stock / Leftover Inventory */}
       <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl overflow-hidden shadow-lg shadow-black/10">
-        <div className="px-5 py-4 border-b border-[#1e1e2a] flex items-center gap-2">
-          <Package className="w-4 h-4 text-purple-500" />
-          <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
-            Stock / Leftover Inventory
-          </h3>
+        <div className="px-5 py-4 border-b border-[#1e1e2a] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="w-4 h-4 text-purple-500" />
+            <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
+              Stock / Leftover Inventory
+            </h3>
+          </div>
+          {onResetInventory && stockInventory.items.length > 0 && (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-all duration-200"
+              title="Clear all materials and mark elevations for recalculation"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset Inventory
+            </button>
+          )}
         </div>
 
         {stockInventory.items.length === 0 ? (
@@ -676,7 +689,7 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
                     <tr key={i} className="hover:bg-[#0c0c12] transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="text-[#eeeef2] text-xs">{item.description}</div>
-                        <div className="text-[#3e3f4d] text-[10px] font-mono">{item.partNumber} ({item.finish})</div>
+                        <div className="text-[#3e3f4d] text-[10px] font-mono">{item.partNumber}{item.type === 'profile' ? ` (${item.finish})` : ''}</div>
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
@@ -731,6 +744,59 @@ export default function WasteAnalysis({ elevations, materials, settings }: Waste
           </div>
         )}
       </div>
+      {/* Reset Inventory Confirmation Modal */}
+      {showResetConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div
+            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-sm mx-4 p-6 shadow-2xl shadow-black/50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <RotateCcw className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[#eeeef2]">
+                  Reset Inventory
+                </h3>
+                <p className="text-xs text-[#8b8d9a]">
+                  This will require recalculating all elevations
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-[#8b8d9a] mb-4">
+              This will clear all leftover inventory and material tracking data.
+              Elevation prices and exports will continue to work normally.
+            </p>
+            <p className="text-xs text-yellow-400/80 mb-6">
+              Recalculate each elevation when convenient to rebuild accurate material tracking and waste data.
+            </p>
+
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-lg hover:bg-[#1e1e2a] transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowResetConfirm(false);
+                  onResetInventory?.();
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-all duration-200"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset & Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

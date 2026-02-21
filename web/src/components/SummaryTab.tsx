@@ -249,7 +249,9 @@ export default function SummaryTab({
         const pn = impact.part_number;
         if (!pn || pn === 'N/A - Manual') continue;
         const finish = impact.finish || elev.finish || 'clear';
-        const key = `${pn}-${finish.toLowerCase()}`;
+        // Profiles/gaskets use partNumber-finish keys; accessories use bare partNumber
+        const isProfile = impact.type_processed_as === 'profile';
+        const key = isProfile ? `${pn}-${finish.toLowerCase()}` : pn;
         const existing = usageMap.get(key);
         const requestedQty = Array.isArray(impact.requested_qty)
           ? impact.requested_qty.reduce((s, v) => s + Number(v), 0)

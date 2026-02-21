@@ -1067,8 +1067,32 @@ export function reverseMaterialImpact(
       impact.used_from_leftover_qty_or_length ?? 0.0;
 
     if (typeProcessedAs === 'profile') {
-      // When reversing, if a leftover was GENERATED, we remove it from inventory.
-      if (leftoverGenerated > EPSILON) {
+      const allNewLeftovers = impact.all_new_leftovers ?? [];
+      const leftoverPiecesConsumed = impact.leftover_pieces_consumed ?? [];
+
+      // When reversing, REMOVE all generated leftover pieces from inventory.
+      if (allNewLeftovers.length > 0) {
+        // Multi-piece leftovers from bin-packing — remove each one
+        const tempLeftovers = [...(partExtra.length_pieces ?? [])];
+        for (const piece of allNewLeftovers) {
+          if (piece <= EPSILON) continue;
+          let removed = false;
+          for (let i = 0; i < tempLeftovers.length; i++) {
+            if (Math.abs(tempLeftovers[i] - piece) < EPSILON) {
+              tempLeftovers.splice(i, 1);
+              removed = true;
+              break;
+            }
+          }
+          if (!removed) {
+            console.warn(
+              `[WARNING] Generated leftover '${piece.toFixed(4)} ft' for ${partNumber} (${finish}) not found in current inventory for reversal.`,
+            );
+          }
+        }
+        partExtra.length_pieces = tempLeftovers;
+      } else if (leftoverGenerated > EPSILON) {
+        // Single leftover fallback
         let removed = false;
         const tempLeftovers = [...(partExtra.length_pieces ?? [])];
         for (let i = 0; i < tempLeftovers.length; i++) {
@@ -1086,8 +1110,23 @@ export function reverseMaterialImpact(
         partExtra.length_pieces = tempLeftovers;
       }
 
-      // When reversing, if material was USED FROM leftover, we put it back into inventory.
-      if (usedFromLeftover > EPSILON) {
+      // When reversing, RESTORE all consumed leftover pieces back into inventory.
+      if (leftoverPiecesConsumed.length > 0) {
+        if (!Array.isArray(partExtra.length_pieces)) {
+          partExtra.length_pieces = [];
+        }
+        for (const consumed of leftoverPiecesConsumed) {
+          // Bay-width format: { original_length, used_length }
+          if (typeof consumed === 'object' && !Array.isArray(consumed) && 'original_length' in consumed) {
+            partExtra.length_pieces.push((consumed as { original_length: number }).original_length);
+          }
+          // Tuple format: [index, length_used] — restore the used length
+          else if (Array.isArray(consumed) && consumed.length === 2) {
+            partExtra.length_pieces.push((consumed as [number, number])[1]);
+          }
+        }
+      } else if (usedFromLeftover > EPSILON) {
+        // Single consumed fallback
         if (!Array.isArray(partExtra.length_pieces)) {
           partExtra.length_pieces = [];
         }
@@ -1107,5 +1146,16 @@ export function reverseMaterialImpact(
     }
 
     extraMaterials[extraMaterialsKey] = partExtra;
+  }
+
+  // Clean up empty/ghost entries so stale finish keys don't persist
+  // (e.g. when finish changes from Black→Clear, the old "-black" key is emptied)
+  for (const key of Object.keys(extraMaterials)) {
+    const entry = extraMaterials[key];
+    const hasLength = entry.length_pieces && entry.length_pieces.length > 0;
+    const hasQty = entry.quantity > 0;
+    if (!hasLength && !hasQty) {
+      delete extraMaterials[key];
+    }
   }
 }

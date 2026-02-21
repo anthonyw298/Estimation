@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   ElevationData,
   DoorConfig,
@@ -37,9 +37,6 @@ interface ElevationEditorProps {
     doors: DoorConfig[],
     materials: Record<string, ExtraMaterial>,
   ) => void;
-  /** Called when inputs change and old results become stale so the parent can
-   *  clear `calculated_outputs` — prevents exports from using outdated data. */
-  onInvalidate?: (name: string) => void;
   settings: ProjectSettings;
 }
 
@@ -170,7 +167,6 @@ export default function ElevationEditor({
   doors: initialDoors,
   materials: initialMaterials,
   onSave,
-  onInvalidate,
   settings,
 }: ElevationEditorProps) {
   // --- Door-only mode ---
@@ -417,36 +413,10 @@ export default function ElevationEditor({
   // Invalidate stale results when inputs change
   // ---------------------------------------------------------------------------
 
-  // Track whether this is the initial mount so we don't clear saved results
-  const isFirstRender = useRef(true);
-
-  // Keep a stable ref for the invalidation callback so it never triggers the
-  // useEffect below.  Without this, `onInvalidate` changes reference whenever
-  // the parent's `materials` state updates (e.g. right after Calculate & Save),
-  // which would immediately clear the results we just saved.
-  const onInvalidateRef = useRef(onInvalidate);
-  useEffect(() => { onInvalidateRef.current = onInvalidate; });
-
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    // Any meaningful input changed — clear old results so the UI
-    // switches back to "Calculate & Save" and stops showing stale prices.
-    setResults(null);
-    setMaterialImpacts([]);
-    // Also notify the parent so that `elevations[name].calculated_outputs` is
-    // cleared – this prevents exports from using outdated data.
-    onInvalidateRef.current?.(elevationName);
-  }, [doors, finish, systemType, openingWidth, openingHeight, baysWide, baysTall, totalCount, doorOnly, customBayWidths, customBayHeights, glassPerSqft, fabCostPerJoint, elevationName]);
-
   // ---------------------------------------------------------------------------
-  // Calculate
-  // ---------------------------------------------------------------------------
-
-  // Whether this elevation has already been saved (has calculated_outputs)
-  const hasBeenSaved = !!(elevationData.calculated_outputs && elevationData.calculated_outputs.length > 0);
+  // Update (calculate + save)
+  // Whether this elevation has been saved before (has calculated_outputs)
+  const isExisting = !!(elevationData.calculated_outputs && elevationData.calculated_outputs.length > 0);
 
   const handleCalculate = useCallback(() => {
     setIsCalculating(true);
@@ -1302,12 +1272,12 @@ export default function ElevationEditor({
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* 6. Calculate & Save */}
+      {/* 6. Save / Update */}
       {/* ------------------------------------------------------------------ */}
       <div className={cardClass}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h3 className={sectionTitleClass}>{hasBeenSaved || (results && results.length > 0) ? 'Update Elevation' : 'Calculate & Save'}</h3>
+            <h3 className={sectionTitleClass}>{isExisting ? 'Update Elevation' : 'Save Elevation'}</h3>
             {justSaved && (
               <span className="flex items-center gap-1.5 text-xs text-emerald-400 animate-fade-in">
                 <CheckCircle2 className="h-4 w-4" />
@@ -1324,12 +1294,12 @@ export default function ElevationEditor({
             {isCalculating ? (
               <>
                 <Calculator className="h-4 w-4 animate-spin" />
-                {hasBeenSaved || (results && results.length > 0) ? 'Updating...' : 'Calculating...'}
+                {isExisting ? 'Updating...' : 'Saving...'}
               </>
             ) : (
               <>
                 <Save className="h-4 w-4" />
-                {hasBeenSaved || (results && results.length > 0) ? 'Update' : 'Calculate & Save'}
+                {isExisting ? 'Update' : 'Save'}
               </>
             )}
           </button>
@@ -1337,7 +1307,7 @@ export default function ElevationEditor({
 
         {!results && (
           <p className="text-sm text-[#55566a]">
-            Configure the elevation above, then click &ldquo;Calculate &amp; Save&rdquo; to price all materials and save the elevation.
+            Configure the elevation above, then click &ldquo;{isExisting ? 'Update' : 'Save'}&rdquo; to price all materials and save.
           </p>
         )}
 

@@ -26,6 +26,7 @@ import {
   Layers,
   AlertTriangle,
   Trash2,
+  ChevronDown,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -79,13 +80,15 @@ function getMethodLabel(method: string): string {
 export default function MLAnalyticsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<string[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('');
   const [entries, setEntries] = useState<ElevationEntry[]>([]);
   const [status, setStatus] = useState<MLStatus>({ is_trained: false, sample_count: 0, ml_available: true });
   const [stats, setStats] = useState<MLStatistics | null>(null);
-  const [training, setTraining] = useState(false);
   const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingElevations, setLoadingElevations] = useState(false);
 
-  // Initialize predictor and auto-load all projects
+  // Initialize predictor and load project names
   useEffect(() => {
     async function init() {
       const predictor = getPredictor();
@@ -93,66 +96,19 @@ export default function MLAnalyticsPage() {
       setStatus(predictor.getStatus());
       setStats(predictor.getStatistics());
       setLoading(false);
-      // Auto-load all projects so data is visible immediately
-      loadAllProjects();
+      // Load project names only (not elevations)
+      loadProjectNames();
     }
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load all projects and their elevations
-  const loadAllProjects = useCallback(async () => {
+  // Load just the project names
+  const loadProjectNames = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const predictor = getPredictor();
-      await predictor.loadData();
-
-      const projects = await db.getProjects();
-      const allEntries: ElevationEntry[] = [];
-
-      for (const project of projects) {
-        const elevations = await db.getElevations(project);
-        for (const [elevName, elev] of Object.entries(elevations)) {
-          const width = elev.opening_width_inches || 0;
-          const height = elev.opening_height_inches || 0;
-          const baysWide = elev.bays_wide || 1;
-          const baysTall = elev.bays_tall || 1;
-          const sqft = elev.total_sqft || (width * height) / 144;
-
-          // Get actual cost from material_impacts (matches Python's cost source)
-          let actualCost: number | null = null;
-          if (elev.material_impacts && elev.material_impacts.length > 0) {
-            actualCost = elev.material_impacts.reduce(
-              (sum, m) => sum + (m.cost_incurred ?? 0),
-              0,
-            );
-          }
-
-          // Get prediction
-          let prediction: PredictionResult | null = null;
-          if (width > 0 && height > 0) {
-            prediction = predictor.predict(width, height, baysWide, baysTall, sqft);
-          }
-
-          const isInTraining = predictor.isInTraining(
-            project, elevName, width, height, baysWide, baysTall, elev.finish || 'Clear',
-          );
-
-          allEntries.push({
-            project,
-            elevation: elevName,
-            data: elev,
-            prediction,
-            isInTraining,
-            cost: actualCost,
-            selected: false,
-          });
-        }
-      }
-
-      setEntries(allEntries);
-      setStatus(predictor.getStatus());
-      setStats(predictor.getStatistics());
+      const projectList = await db.getProjects();
+      setProjects(projectList);
     } catch (error) {
       console.error('Failed to load projects:', error);
     } finally {
@@ -160,40 +116,74 @@ export default function MLAnalyticsPage() {
     }
   }, []);
 
-  // Train model
-  const handleTrain = useCallback(async () => {
-    setTraining(true);
+  // Load elevations for a specific project
+  const loadProjectElevations = useCallback(async (projectName: string) => {
+    if (!projectName) {
+      setEntries([]);
+      return;
+    }
+    setLoadingElevations(true);
     try {
       const predictor = getPredictor();
-      const trained = await predictor.train();
+      await predictor.loadData();
+
+      const elevations = await db.getElevations(projectName);
+      const projectEntries: ElevationEntry[] = [];
+
+      for (const [elevName, elev] of Object.entries(elevations)) {
+        const width = elev.opening_width_inches || 0;
+        const height = elev.opening_height_inches || 0;
+        const baysWide = elev.bays_wide || 1;
+        const baysTall = elev.bays_tall || 1;
+        const sqft = elev.total_sqft || (width * height) / 144;
+
+        // Get actual cost from material_impacts (matches Python's cost source)
+        let actualCost: number | null = null;
+        if (elev.material_impacts && elev.material_impacts.length > 0) {
+          actualCost = elev.material_impacts.reduce(
+            (sum, m) => sum + (m.cost_incurred ?? 0),
+            0,
+          );
+        }
+
+        // Get prediction
+        let prediction: PredictionResult | null = null;
+        if (width > 0 && height > 0) {
+          prediction = predictor.predict(width, height, baysWide, baysTall, sqft);
+        }
+
+        const isInTraining = predictor.isInTraining(
+          projectName, elevName, width, height, baysWide, baysTall, elev.finish || 'Clear',
+        );
+
+        projectEntries.push({
+          project: projectName,
+          elevation: elevName,
+          data: elev,
+          prediction,
+          isInTraining,
+          cost: actualCost,
+          selected: false,
+        });
+      }
+
+      setEntries(projectEntries);
       setStatus(predictor.getStatus());
       setStats(predictor.getStatistics());
-
-      if (!trained) {
-        alert(`Need at least 3 training samples. Currently have ${predictor.getStatus().sample_count}.`);
-      }
-
-      // Re-run predictions with trained model
-      if (entries.length > 0) {
-        setEntries(prev =>
-          prev.map(entry => {
-            const width = entry.data.opening_width_inches || 0;
-            const height = entry.data.opening_height_inches || 0;
-            if (width > 0 && height > 0) {
-              const sqft = entry.data.total_sqft || (width * height) / 144;
-              return {
-                ...entry,
-                prediction: predictor.predict(width, height, entry.data.bays_wide || 1, entry.data.bays_tall || 1, sqft),
-              };
-            }
-            return entry;
-          }),
-        );
-      }
+    } catch (error) {
+      console.error('Failed to load elevations:', error);
     } finally {
-      setTraining(false);
+      setLoadingElevations(false);
     }
-  }, [entries]);
+  }, []);
+
+  // Handle project selection change
+  const handleProjectChange = useCallback((projectName: string) => {
+    setSelectedProject(projectName);
+    loadProjectElevations(projectName);
+  }, [loadProjectElevations]);
+
+  // Training is now automatic — no manual button needed
 
   // Add/remove from training
   const toggleTraining = useCallback(async (entry: ElevationEntry) => {
@@ -228,6 +218,7 @@ export default function MLAnalyticsPage() {
       });
     }
 
+    await predictor.train();
     setEntries(prev =>
       prev.map(e =>
         e.project === entry.project && e.elevation === entry.elevation
@@ -265,12 +256,13 @@ export default function MLAnalyticsPage() {
       });
     }
 
+    await predictor.train();
     setEntries(prev =>
       prev.map(e => {
         if (e.selected && !e.isInTraining && e.cost != null && e.cost > 0) {
-          return { ...e, isInTraining: true, selected: false };
+          return { ...e, isInTraining: true };
         }
-        return { ...e, selected: false };
+        return e;
       }),
     );
     setStatus(predictor.getStatus());
@@ -291,12 +283,13 @@ export default function MLAnalyticsPage() {
       if (sampleId) await predictor.removeSample(sampleId);
     }
 
+    await predictor.train();
     setEntries(prev =>
       prev.map(e => {
         if (e.selected && e.isInTraining) {
-          return { ...e, isInTraining: false, selected: false };
+          return { ...e, isInTraining: false };
         }
-        return { ...e, selected: false };
+        return e;
       }),
     );
     setStatus(predictor.getStatus());
@@ -355,12 +348,13 @@ export default function MLAnalyticsPage() {
       });
     }
 
+    await predictor.train();
     setEntries(prev =>
       prev.map(e => {
         if (!e.isInTraining && e.cost != null && e.cost > 0) {
-          return { ...e, isInTraining: true, selected: false };
+          return { ...e, isInTraining: true };
         }
-        return { ...e, selected: false };
+        return e;
       }),
     );
     setStatus(predictor.getStatus());
@@ -412,35 +406,33 @@ export default function MLAnalyticsPage() {
               <span>Samples: {status.sample_count}</span>
             </div>
 
-            <button
-              onClick={loadAllProjects}
-              disabled={loadingProjects}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#111118] rounded-lg transition-all duration-200 disabled:opacity-40"
-            >
-              {loadingProjects ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Load Projects
-            </button>
+            {/* Project selector dropdown */}
+            <div className="relative">
+              <select
+                value={selectedProject}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                disabled={loadingProjects}
+                className="appearance-none bg-[#111118] border border-[#1e1e2a] text-sm text-[#eeeef2] rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all duration-200 cursor-pointer disabled:opacity-40 min-w-[180px]"
+              >
+                <option value="">Select Project</option>
+                {projects.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55566a] pointer-events-none" />
+            </div>
 
             <button
-              onClick={handleTrain}
-              disabled={training || status.sample_count < 3}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-purple-600 hover:bg-purple-500 active:scale-[0.97] text-white rounded-lg transition-all duration-200 shadow-md shadow-purple-500/10 disabled:opacity-40"
+              onClick={() => { loadProjectNames(); if (selectedProject) loadProjectElevations(selectedProject); }}
+              disabled={loadingProjects || loadingElevations}
+              className="p-2 text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#111118] rounded-lg transition-all duration-200 disabled:opacity-40"
+              title="Refresh"
             >
-              {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-              Train Model
+              {(loadingProjects || loadingElevations) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        {/* Warning banner */}
-        {status.sample_count > 0 && status.sample_count < 3 && (
-          <div className="px-6 py-2 bg-amber-900/15 border-t border-amber-500/15">
-            <div className="flex items-center gap-2 text-xs text-yellow-400">
-              <AlertTriangle className="w-4 h-4" />
-              Need at least 3 training samples to train the model. Currently have {status.sample_count}.
-            </div>
-          </div>
-        )}
       </header>
 
       {/* Body - Two Column Layout */}
@@ -450,7 +442,7 @@ export default function MLAnalyticsPage() {
           <div className="px-4 py-3 border-b border-[#1e1e2a] bg-[#0a0a10]">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold text-[#55566a] uppercase tracking-wider">
-                Project Predictions ({entries.length})
+                {selectedProject ? `${selectedProject} — Elevations (${entries.length})` : 'Elevations'}
               </h2>
               {entries.length > 0 && (
                 <div className="flex items-center gap-2">
@@ -484,12 +476,21 @@ export default function MLAnalyticsPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto py-1">
-            {entries.length === 0 ? (
+            {loadingElevations ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 text-purple-500 animate-spin mb-3" />
+                <p className="text-xs text-[#55566a]">Loading elevations...</p>
+              </div>
+            ) : entries.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-up opacity-0" style={{ animationFillMode: 'forwards', animationDelay: '0.1s' }}>
                 <Layers className="w-10 h-10 text-[#3e3f4d] mb-4" />
-                <p className="text-sm text-[#8b8d9a] mb-2">No projects loaded</p>
+                <p className="text-sm text-[#8b8d9a] mb-2">
+                  {selectedProject ? 'No elevations found' : 'Select a project'}
+                </p>
                 <p className="text-xs text-[#3e3f4d] max-w-xs">
-                  Click &ldquo;Load Projects&rdquo; to fetch all projects and their elevations for prediction analysis.
+                  {selectedProject
+                    ? 'This project has no elevations yet.'
+                    : 'Choose a project from the dropdown above to view its elevations.'}
                 </p>
               </div>
             ) : (

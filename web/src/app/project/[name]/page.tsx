@@ -126,37 +126,36 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     [projectName]
   );
 
-  // Called by ElevationEditor when inputs change so stale calculated_outputs
-  // are removed from the parent state — this prevents exports from using
-  // outdated data for modified-but-not-yet-recalculated elevations.
-  const handleInvalidateElevation = useCallback(
-    (elevationName: string) => {
-      setElevations((prev) => {
-        const elev = prev[elevationName];
-        if (!elev) return prev;
-        // Only update if there are actually calculated_outputs to clear
-        if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) return prev;
-        const { calculated_outputs, single_elevation_outputs, material_impacts, ...rest } = elev;
-        // Also reverse material impacts from the shared inventory before
-        // clearing them, so the materials state stays accurate.
-        if (material_impacts && material_impacts.length > 0) {
-          const materialsClone: Record<string, ExtraMaterial> = {};
-          for (const [k, v] of Object.entries(materials)) {
-            materialsClone[k] = {
-              quantity: v.quantity,
-              length_pieces: [...v.length_pieces],
-            };
-          }
-          reverseMaterialImpact(material_impacts, materialsClone);
-          // Persist reversed materials (fire-and-forget)
-          setMaterials(materialsClone);
-          db.saveMaterials(projectName, materialsClone).catch(() => {});
-        }
-        return { ...prev, [elevationName]: rest as ElevationData };
-      });
-    },
-    [projectName, materials]
-  );
+  const handleResetInventory = useCallback(async () => {
+    // 1. Clear all materials
+    const emptyMaterials: Record<string, ExtraMaterial> = {};
+    setMaterials(emptyMaterials);
+
+    // 2. Clear only material_impacts from elevations (keep calculated_outputs
+    //    and single_elevation_outputs so prices/exports still work and the
+    //    sidebar doesn't show "needs calculation").
+    const cleanedElevations: Record<string, ElevationData> = {};
+    for (const [elevName, elev] of Object.entries(elevations)) {
+      const { material_impacts, ...rest } = elev;
+      cleanedElevations[elevName] = rest as ElevationData;
+    }
+    setElevations(cleanedElevations);
+
+    // 3. Persist to database
+    try {
+      setSaving(true);
+      await db.saveMaterials(projectName, emptyMaterials);
+      await Promise.all(
+        Object.entries(cleanedElevations).map(([eName, eData]) =>
+          db.saveElevation(projectName, eName, eData)
+        )
+      );
+    } catch (error) {
+      console.error('Failed to reset inventory:', error);
+    } finally {
+      setSaving(false);
+    }
+  }, [projectName, elevations]);
 
   async function handleAddElevation() {
     const trimmed = newElevationName.trim();
@@ -242,13 +241,57 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     }
   }
 
-  function getElevationCost(elevationName: string): number | null {
+  // Compute per-elevation discounted cost (matching Excel per-elevation sheet).
+  // Each elevation is treated individually — no residual/waste deducted.
+  // The discount multiplier is determined from the project-wide list total.
+  function getElevationCost(elevationName: string): { list: number; discounted: number } | null {
     const elev = elevations[elevationName];
     if (!elev?.calculated_outputs) return null;
-    return elev.calculated_outputs.reduce((sum, item) => {
-      if (item.type === 'Calculations') return sum; // info-only rows
-      return sum + (item.price ?? 0);
-    }, 0);
+
+    const DISCOUNTABLE = new Set(['profiles', 'accessories', 'gaskets']);
+    const GASKETS = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
+
+    function classify(item: { part_number: string; description: string; type: string }): string {
+      const pn = item.part_number || '';
+      const desc = (item.description || '').toLowerCase();
+      const tp = (item.type || '').toLowerCase();
+      if (pn === 'GLASS_AREA' || tp === 'glass') return 'glass';
+      if (pn === 'JOINTS_FAB_LABOR' || tp === 'joints_fab_labor' || tp === 'fabrication' ||
+          desc.includes('joints fabrication') || desc.includes('fabrication labor')) return 'fabrication';
+      if (tp === 'door' || tp === 'doors') return 'doors';
+      if (tp === 'calculations') return 'calculations';
+      if (desc.includes('gasket') || GASKETS.has(pn)) return 'gaskets';
+      if (tp === 'accessory' || tp === 'accessories') return 'accessories';
+      return 'profiles';
+    }
+
+    // Project-wide list total to determine discount tier
+    let projectTotal = 0;
+    for (const e of Object.values(elevations)) {
+      if (!e.calculated_outputs) continue;
+      for (const item of e.calculated_outputs) {
+        if (classify(item) === 'calculations') continue;
+        projectTotal += item.price ?? 0;
+      }
+    }
+
+    const threshold = settings.discount_threshold ?? 50000;
+    const multiplier = settings.discount_multiplier
+      ?? (projectTotal < threshold
+        ? (settings.discount_multiplier_low ?? 0.614)
+        : (settings.discount_multiplier_high ?? 0.572));
+
+    let listTotal = 0;
+    let discountedTotal = 0;
+    for (const item of elev.calculated_outputs) {
+      const cat = classify(item);
+      if (cat === 'calculations') continue;
+      const price = item.price ?? 0;
+      listTotal += price;
+      discountedTotal += DISCOUNTABLE.has(cat) ? price * multiplier : price;
+    }
+
+    return { list: listTotal, discounted: discountedTotal };
   }
 
   const elevationNames = Object.keys(elevations);
@@ -364,7 +407,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               {elevationNames.map((elevName) => {
                 const isSelected = selectedElevation === elevName;
                 const cost = getElevationCost(elevName);
-                const needsCalc = !elevations[elevName]?.calculated_outputs || elevations[elevName].calculated_outputs!.length === 0;
+                const isNew = !elevations[elevName]?.calculated_outputs || elevations[elevName].calculated_outputs!.length === 0;
                 return (
                   <div
                     key={elevName}
@@ -380,8 +423,8 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        {needsCalc && (
-                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" title="Needs calculation" />
+                        {isNew && (
+                          <span className="flex-shrink-0 text-[9px] font-semibold uppercase px-1 py-0.5 rounded bg-blue-500/15 text-blue-400">New</span>
                         )}
                         <p
                           className={`text-sm font-medium truncate ${
@@ -391,13 +434,13 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                           {elevName}
                         </p>
                       </div>
-                      {needsCalc ? (
-                        <p className="text-xs text-amber-400/70 mt-0.5">
-                          Needs calculation
+                      {isNew ? (
+                        <p className="text-xs text-[#55566a] mt-0.5">
+                          Click Update to calculate
                         </p>
                       ) : cost !== null ? (
                         <p className="text-xs text-[#55566a] mt-0.5 font-mono tabular-nums">
-                          ${cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ${cost.discounted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                       ) : null}
                     </div>
@@ -485,6 +528,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                 elevations={elevations}
                 materials={materials}
                 settings={settings}
+                onResetInventory={handleResetInventory}
               />
             </div>
           ) : (
@@ -507,7 +551,6 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                           handleDoorsUpdate(name, doorConfigs);
                           handleMaterialsUpdate(mats);
                         }}
-                        onInvalidate={handleInvalidateElevation}
                       />
                     </div>
                   ) : (
