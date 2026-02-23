@@ -364,7 +364,7 @@ export default function MLAnalyticsPage() {
   // Loading
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#06060a] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center">
           <Loader2 className="w-8 h-8 text-[#3b82f6] animate-spin mb-4" />
           <p className="text-[#8b8d9a] text-sm">Loading ML Analytics...</p>
@@ -374,7 +374,7 @@ export default function MLAnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#06060a] flex flex-col">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="glass border-b border-[#1e1e2a]/60 bg-[#06060a]/80 backdrop-blur-sm sticky top-0 z-30 flex-shrink-0">
         <div className="px-6 py-3 flex items-center justify-between">

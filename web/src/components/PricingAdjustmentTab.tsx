@@ -39,9 +39,9 @@ const PRICING_DEFAULTS = {
 // ---------------------------------------------------------------------------
 
 const inputClass =
-  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-lg px-3 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-all duration-200 text-sm';
+  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 text-sm';
 const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1.5';
-const cardClass = 'bg-[#111118] border border-[#1e1e2a] rounded-xl p-6 space-y-4 shadow-lg shadow-black/10';
+const cardClass = 'bg-[#111118] border border-[#1e1e2a] rounded-2xl p-6 space-y-5 shadow-lg shadow-black/15';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -209,7 +209,7 @@ export default function PricingAdjustmentTab({
     action?: React.ReactNode;
   }) => (
     <div className="flex items-center justify-between">
-      <button type="button" className="flex items-center gap-2 flex-1 transition-all duration-200" onClick={() => toggleSection(sectionKey)}>
+      <button type="button" className="flex items-center gap-2 flex-1" onClick={() => toggleSection(sectionKey)}>
         {icon}
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         {collapsedSections[sectionKey] ? (
@@ -258,14 +258,14 @@ export default function PricingAdjustmentTab({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetPricing}
-                className="px-3 py-2 text-xs font-medium text-[#8b8d9a] hover:text-white hover:bg-[#16161f] rounded-lg transition-all duration-200"
+                className="px-3 py-2 text-xs font-medium text-[#8b8d9a] hover:text-white hover:bg-[#16161f] rounded-lg transition-colors duration-200"
               >
                 Reset Defaults
               </button>
               <button
                 onClick={handleSavePricing}
                 disabled={savingPricing}
-                className="flex items-center gap-2 rounded-lg bg-[#3b82f6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2563eb] disabled:opacity-40 active:scale-[0.97] transition-all duration-200 shadow-md shadow-blue-500/10"
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:brightness-110 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-colors duration-200"
               >
                 {savingPricing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {savedPricing ? 'Saved!' : 'Save'}
@@ -276,7 +276,7 @@ export default function PricingAdjustmentTab({
         {!collapsedSections.pricing && (
           <>
             {/* Info box */}
-            <div className="flex items-start gap-2 p-3 bg-[#3b82f6]/5 border border-[#3b82f6]/10 rounded-lg">
+            <div className="flex items-start gap-2.5 p-4 bg-[#3b82f6]/5 border border-[#3b82f6]/10 rounded-xl">
               <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
               <p className="text-xs text-blue-300/80 leading-relaxed">
                 The discount multiplier is applied only to <strong>profiles, gaskets, and accessories</strong>.
@@ -380,7 +380,7 @@ export default function PricingAdjustmentTab({
             <button
               onClick={handleSaveAdditionalCosts}
               disabled={savingAdditional}
-              className="flex items-center gap-2 rounded-lg bg-[#3b82f6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2563eb] disabled:opacity-40 active:scale-[0.97] transition-all duration-200 shadow-md shadow-blue-500/10"
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:brightness-110 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-colors duration-200"
             >
               {savingAdditional ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save
@@ -412,7 +412,7 @@ export default function PricingAdjustmentTab({
             <button
               onClick={handleSaveMarkups}
               disabled={savingMarkups}
-              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40 active:scale-[0.97] transition-all duration-200 shadow-md shadow-emerald-500/10"
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:brightness-110 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-colors duration-200"
             >
               {savingMarkups ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save

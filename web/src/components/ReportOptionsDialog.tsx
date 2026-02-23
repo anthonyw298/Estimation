@@ -295,7 +295,7 @@ export default function ReportOptionsDialog({
       onClick={onClose}
     >
       <div
-        className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col shadow-2xl shadow-black/50 animate-scale-in"
+        className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col shadow-2xl shadow-black/60 animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -303,14 +303,14 @@ export default function ReportOptionsDialog({
           <h2 className="text-lg font-semibold text-[#eeeef2]">Report Stock List</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[#1e1e2a] text-[#8b8d9a] hover:text-[#eeeef2] transition-all duration-200"
+            className="p-1.5 rounded-lg hover:bg-[#1e1e2a] text-[#8b8d9a] hover:text-[#eeeef2] transition-colors duration-200"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Instructions */}
-        <div className="px-6 py-3 text-xs text-[#55566a] border-b border-[#1e1e2a]">
+        <div className="px-6 py-3.5 text-xs text-[#55566a] border-b border-[#1e1e2a]">
           Select which elevations, sections, and summary options to include in the exported report.
           {!hasCalculatedData && (
             <div className="mt-2 rounded bg-amber-900/10 border border-amber-500/10 px-3 py-2 text-yellow-400 font-medium">
@@ -349,7 +349,7 @@ export default function ReportOptionsDialog({
                 </div>
                 <button
                   onClick={() => togglePanel(name)}
-                  className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
+                  className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-colors duration-200"
                 >
                   {expandedPanels[name] ? (
                     <ChevronUp className="w-4 h-4 transition-transform duration-200" />
@@ -444,7 +444,7 @@ export default function ReportOptionsDialog({
               </div>
               <button
                 onClick={() => togglePanel('summary')}
-                className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-all duration-200"
+                className="p-1 rounded hover:bg-[#1e1e2a] text-[#8b8d9a] transition-colors duration-200"
               >
                 {expandedPanels.summary ? (
                   <ChevronUp className="w-4 h-4 transition-transform duration-200" />
@@ -523,7 +523,7 @@ export default function ReportOptionsDialog({
           {elevationNames.length > 1 && (
             <button
               onClick={applyToAll}
-              className="flex items-center gap-2 text-xs text-[#8b8d9a] hover:text-[#eeeef2] transition-all duration-200"
+              className="flex items-center gap-2 text-xs text-[#8b8d9a] hover:text-[#eeeef2] transition-colors duration-200"
             >
               <Copy className="w-3.5 h-3.5" />
               Apply first elevation&apos;s settings to all
@@ -537,14 +537,14 @@ export default function ReportOptionsDialog({
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#1e1e2a]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#16161f] rounded-lg transition-all duration-200"
+            className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#16161f] rounded-lg transition-colors duration-200"
           >
             Cancel
           </button>
           <button
             onClick={handleExportPDF}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 active:scale-[0.97] text-white rounded-lg disabled:opacity-40 transition-all duration-200 shadow-md shadow-red-500/10"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-gradient-to-r from-red-600 to-red-500 hover:brightness-110 text-white rounded-xl disabled:opacity-40 transition-colors duration-200"
           >
             <FileText className="w-4 h-4" />
             Export PDF
@@ -552,7 +552,7 @@ export default function ReportOptionsDialog({
           <button
             onClick={handleExportExcel}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 active:scale-[0.97] text-white rounded-lg disabled:opacity-40 transition-all duration-200 shadow-md shadow-emerald-500/10"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:brightness-110 text-white rounded-xl disabled:opacity-40 transition-colors duration-200"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Export Excel

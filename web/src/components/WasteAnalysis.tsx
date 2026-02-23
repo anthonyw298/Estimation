@@ -439,8 +439,8 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
 
   if (breakdown.length === 0) {
     return (
-      <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-6 text-center animate-fade-up">
-        <Recycle className="w-8 h-8 text-[#2a2a3a] mx-auto mb-2" />
+      <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl p-8 text-center animate-fade-up opacity-0">
+        <Recycle className="w-10 h-10 text-[#2a2a3a] mx-auto mb-3" />
         <p className="text-sm text-[#55566a]">
           No material data available. Calculate elevations to see waste analysis.
         </p>
@@ -451,34 +451,36 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
   return (
     <div className="space-y-4">
       {/* Overview card */}
-      <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-6 shadow-lg shadow-black/10">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-[#3b82f6]" />
+      <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl p-6 shadow-lg shadow-black/15">
+        <div className="flex items-center gap-2.5 mb-5">
+          <div className="w-8 h-8 rounded-lg bg-[#3b82f6]/10 border border-[#3b82f6]/15 flex items-center justify-center">
+            <BarChart3 className="w-4 h-4 text-[#3b82f6]" />
+          </div>
           <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
             Waste Overview
           </h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-3.5">
           {/* Overall waste percentage */}
-          <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-            <p className="text-xs text-[#55566a] mb-1 font-medium">Overall Waste</p>
+          <div className="stat-card stat-card-rose bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+            <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Overall Waste</p>
             <p className={`text-2xl font-bold font-mono tabular-nums ${getWasteColor(overallWastePercentage)}`}>
               {overallWastePercentage.toFixed(1)}%
             </p>
           </div>
 
           {/* Total waste cost */}
-          <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-            <p className="text-xs text-[#55566a] mb-1 font-medium">Waste Cost</p>
+          <div className="stat-card stat-card-amber bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+            <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Waste Cost</p>
             <p className="text-2xl font-bold font-mono text-yellow-400 tabular-nums">
               {formatCurrency(totalWasteCost)}
             </p>
           </div>
 
           {/* Material cost */}
-          <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-            <p className="text-xs text-[#55566a] mb-1 font-medium">Material Cost</p>
+          <div className="stat-card stat-card-blue bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+            <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Material Cost</p>
             <p className="text-2xl font-bold font-mono text-[#eeeef2] tabular-nums">
               {formatCurrency(totalMaterialCost)}
             </p>
@@ -487,9 +489,11 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
       </div>
 
       {/* Material breakdown table */}
-      <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl overflow-hidden shadow-lg shadow-black/10">
-        <div className="px-5 py-4 border-b border-[#1e1e2a] flex items-center gap-2">
-          <TrendingDown className="w-4 h-4 text-[#3b82f6]" />
+      <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl overflow-hidden shadow-lg shadow-black/15">
+        <div className="px-5 py-4 border-b border-[#1e1e2a] flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-[#3b82f6]/10 border border-[#3b82f6]/15 flex items-center justify-center">
+            <TrendingDown className="w-3.5 h-3.5 text-[#3b82f6]" />
+          </div>
           <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
             Material Breakdown
           </h3>
@@ -526,7 +530,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
               {breakdown.map((mat, i) => (
                 <tr
                   key={`${mat.part_number}-${mat.finish}-${i}`}
-                  className="hover:bg-[#0c0c12] transition-colors"
+                  className="table-row-hover"
                 >
                   <td className="px-4 py-3 text-[#eeeef2] font-mono text-xs">
                     {mat.part_number}
@@ -548,10 +552,13 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
                   </td>
                   <td className="px-4 py-3 text-xs text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-16 h-1.5 bg-[#1e1e2a] rounded-full overflow-hidden">
+                      <div className="w-20 h-2 bg-[#1e1e2a] rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${getWasteBarColor(mat.waste_percentage)}`}
-                          style={{ width: `${Math.min(mat.waste_percentage, 100)}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${getWasteBarColor(mat.waste_percentage)}`}
+                          style={{
+                            width: `${Math.min(mat.waste_percentage, 100)}%`,
+                            boxShadow: mat.waste_percentage > 20 ? '0 0 8px rgba(248, 113, 113, 0.3)' : mat.waste_percentage > 10 ? '0 0 6px rgba(234, 179, 8, 0.2)' : 'none'
+                          }}
                         />
                       </div>
                       <span className={`font-mono tabular-nums ${getWasteColor(mat.waste_percentage)}`}>
@@ -582,7 +589,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
           {suggestions.map((suggestion, i) => (
             <div
               key={i}
-              className={`border rounded-lg p-4 transition-all duration-200 hover:brightness-110 ${getPriorityStyles(suggestion.priority)}`}
+              className={`border rounded-xl p-4 ${getPriorityStyles(suggestion.priority)}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
@@ -617,10 +624,12 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
       )}
 
       {/* Stock / Leftover Inventory */}
-      <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl overflow-hidden shadow-lg shadow-black/10">
+      <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl overflow-hidden shadow-lg shadow-black/15">
         <div className="px-5 py-4 border-b border-[#1e1e2a] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-purple-500" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/15 flex items-center justify-center">
+              <Package className="w-3.5 h-3.5 text-purple-400" />
+            </div>
             <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
               Stock / Leftover Inventory
             </h3>
@@ -628,7 +637,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
           {onResetInventory && stockInventory.items.length > 0 && (
             <button
               onClick={() => setShowResetConfirm(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-all duration-200"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl border border-red-500/20 transition-colors duration-200"
               title="Clear all materials and mark elevations for recalculation"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -647,27 +656,27 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
         ) : (
           <div className="p-5 space-y-4">
             {/* Summary stats */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-                <p className="text-xs text-[#55566a] mb-1 font-medium">Total Materials</p>
+            <div className="grid grid-cols-3 gap-3.5">
+              <div className="stat-card stat-card-purple bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+                <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Total Materials</p>
                 <p className="text-2xl font-bold font-mono text-purple-400 tabular-nums">
                   {stockInventory.items.length}
                 </p>
-                <p className="text-xs text-[#3e3f4d] mt-0.5">unique part numbers</p>
+                <p className="text-[10px] text-[#3e3f4d] mt-1 font-medium">unique part numbers</p>
               </div>
-              <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-                <p className="text-xs text-[#55566a] mb-1 font-medium">Total Pieces</p>
+              <div className="stat-card stat-card-blue bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+                <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Total Pieces</p>
                 <p className="text-2xl font-bold font-mono text-blue-400 tabular-nums">
                   {stockInventory.totalPieces}
                 </p>
-                <p className="text-xs text-[#3e3f4d] mt-0.5">leftover pieces/units</p>
+                <p className="text-[10px] text-[#3e3f4d] mt-1 font-medium">leftover pieces/units</p>
               </div>
-              <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-4 text-center">
-                <p className="text-xs text-[#55566a] mb-1 font-medium">Estimated Value</p>
+              <div className="stat-card stat-card-emerald bg-[#08080e] border border-[#1e1e2a] rounded-xl p-5 text-center">
+                <p className="text-[10px] text-[#55566a] mb-1.5 font-semibold uppercase tracking-wider">Estimated Value</p>
                 <p className="text-2xl font-bold font-mono text-emerald-400 tabular-nums">
                   {formatCurrency(stockInventory.totalValue)}
                 </p>
-                <p className="text-xs text-[#3e3f4d] mt-0.5">reusable material value</p>
+                <p className="text-[10px] text-[#3e3f4d] mt-1 font-medium">reusable material value</p>
               </div>
             </div>
 
@@ -686,7 +695,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
                 </thead>
                 <tbody className="divide-y divide-[#1e1e2a]">
                   {stockInventory.items.map((item, i) => (
-                    <tr key={i} className="hover:bg-[#0c0c12] transition-colors">
+                    <tr key={i} className="table-row-hover">
                       <td className="px-4 py-2.5">
                         <div className="text-[#eeeef2] text-xs">{item.description}</div>
                         <div className="text-[#3e3f4d] text-[10px] font-mono">{item.partNumber}{item.type === 'profile' ? ` (${item.finish})` : ''}</div>
@@ -747,11 +756,11 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
       {/* Reset Inventory Confirmation Modal */}
       {showResetConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-overlay"
           onClick={() => setShowResetConfirm(false)}
         >
           <div
-            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-sm mx-4 p-6 shadow-2xl shadow-black/50"
+            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-sm mx-4 p-7 shadow-2xl shadow-black/60 animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -779,7 +788,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
             <div className="flex items-center gap-3 justify-end">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-lg hover:bg-[#1e1e2a] transition-all duration-200"
+                className="px-4 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-lg hover:bg-[#1e1e2a] transition-colors duration-200"
               >
                 Cancel
               </button>
@@ -788,7 +797,7 @@ export default function WasteAnalysis({ elevations, materials, settings, onReset
                   setShowResetConfirm(false);
                   onResetInventory?.();
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-all duration-200"
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors duration-200"
               >
                 <RotateCcw className="w-4 h-4" />
                 Reset & Clear

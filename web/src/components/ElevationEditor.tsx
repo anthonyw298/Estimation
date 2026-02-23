@@ -102,12 +102,12 @@ const RESULTS_COLUMN_DEFS: ColumnDef[] = [
 // ---------------------------------------------------------------------------
 
 const inputClass =
-  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-all duration-200';
+  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 text-sm';
 const selectClass =
-  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-all duration-200 appearance-none';
-const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1';
+  'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 appearance-none text-sm';
+const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1.5';
 const cardClass =
-  'bg-[#111118] border border-[#1e1e2a] rounded-xl p-5 space-y-4 shadow-lg shadow-black/10';
+  'bg-[#111118] border border-[#1e1e2a] rounded-2xl p-6 space-y-4 shadow-lg shadow-black/15';
 const sectionTitleClass = 'text-lg font-semibold text-white tracking-tight';
 
 // ---------------------------------------------------------------------------
@@ -819,7 +819,7 @@ export default function ElevationEditor({
   }) => (
     <button
       type="button"
-      className="flex w-full items-center justify-between transition-all duration-200"
+      className="flex w-full items-center justify-between"
       onClick={() => toggleSection(sectionKey)}
     >
       <div className="flex items-center gap-2">
@@ -843,22 +843,22 @@ export default function ElevationEditor({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-[#55566a]">{projectName}</p>
-          <h2 className="text-2xl font-bold text-white">{elevationName}</h2>
+          <p className="text-xs text-[#55566a] font-medium tracking-wide uppercase">{projectName}</p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">{elevationName}</h2>
         </div>
       </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Mode Toggle: Elevation vs Door Only */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center bg-[#0a0a10] border border-[#1e1e2a] rounded-lg p-0.5">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center bg-[#0a0a10] border border-[#1e1e2a] rounded-xl p-0.5">
           <button
             type="button"
             onClick={() => setDoorOnly(false)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 ${
               !doorOnly
-                ? 'bg-[#3b82f6] text-white shadow-sm'
+                ? 'bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white'
                 : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
             }`}
           >
@@ -868,9 +868,9 @@ export default function ElevationEditor({
           <button
             type="button"
             onClick={() => setDoorOnly(true)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 ${
               doorOnly
-                ? 'bg-[#3b82f6] text-white shadow-sm'
+                ? 'bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white'
                 : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
             }`}
           >
@@ -879,7 +879,7 @@ export default function ElevationEditor({
           </button>
         </div>
         {doorOnly && (
-          <span className="text-xs text-[#55566a] ml-2">
+          <span className="text-xs text-[#55566a] ml-1">
             Door-only mode: no system, bays, or glass — just doors.
           </span>
         )}
@@ -1161,7 +1161,7 @@ export default function ElevationEditor({
               {doors.map((door, di) => (
                 <div
                   key={di}
-                  className="rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
+                  className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-[#c4c5cf]">
@@ -1170,7 +1170,7 @@ export default function ElevationEditor({
                     <button
                       type="button"
                       onClick={() => removeDoor(di)}
-                      className="rounded px-2 py-1 text-xs text-[#f87171] hover:bg-red-900/20 transition-all duration-200"
+                      className="rounded px-2 py-1 text-xs text-[#f87171] hover:bg-red-900/20 transition-colors duration-200"
                     >
                       Remove
                     </button>
@@ -1263,7 +1263,7 @@ export default function ElevationEditor({
             <button
               type="button"
               onClick={addDoor}
-              className="mt-2 rounded-lg border border-dashed border-[#3e3f4d] px-4 py-2 text-sm text-[#8b8d9a] hover:border-[#3b82f6] hover:text-blue-400 transition-all duration-200"
+              className="mt-2 rounded-xl border border-dashed border-[#2a2a3a] px-4 py-2.5 text-sm text-[#8b8d9a] hover:border-[#3b82f6]/50 hover:text-blue-400 hover:bg-[#3b82f6]/5 transition-colors duration-200"
             >
               + Add Door
             </button>
@@ -1289,7 +1289,7 @@ export default function ElevationEditor({
             type="button"
             onClick={handleCalculate}
             disabled={isCalculating || (!doorOnly && (openingWidth <= 0 || openingHeight <= 0)) || (doorOnly && doors.length === 0)}
-            className="flex items-center gap-2 rounded-lg bg-[#3b82f6] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#2563eb] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md shadow-blue-500/10"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:brightness-110 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200"
           >
             {isCalculating ? (
               <>
@@ -1313,28 +1313,28 @@ export default function ElevationEditor({
 
         {/* Compact cost summary after calculation */}
         {results && results.length > 0 && (
-          <div className="mt-2 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-4">
+          <div className="mt-3 rounded-xl border border-[#1e1e2a] bg-[#0a0a10] p-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-5">
                 <div>
-                  <p className="text-xs text-[#55566a] font-medium">List Price Total</p>
-                  <p className="text-lg font-bold font-mono text-white tabular-nums">
+                  <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">List Price Total</p>
+                  <p className="text-xl font-bold font-mono text-white tabular-nums">
                     {formatCurrency(grandTotal)}
                   </p>
                 </div>
-                <div className="w-px h-10 bg-[#1e1e2a]" />
+                <div className="w-px h-12 bg-[#1e1e2a]" />
                 <div>
-                  <p className="text-xs text-[#55566a] font-medium">Line Items</p>
-                  <p className="text-lg font-bold text-[#c4c5cf] tabular-nums">
+                  <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">Line Items</p>
+                  <p className="text-xl font-bold text-[#c4c5cf] tabular-nums">
                     {results.filter(r => r.type !== 'Calculations').length}
                   </p>
                 </div>
                 {doors.length > 0 && (
                   <>
-                    <div className="w-px h-10 bg-[#1e1e2a]" />
+                    <div className="w-px h-12 bg-[#1e1e2a]" />
                     <div>
-                      <p className="text-xs text-[#55566a] font-medium">Doors</p>
-                      <p className="text-lg font-bold text-purple-400 tabular-nums">
+                      <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">Doors</p>
+                      <p className="text-xl font-bold text-purple-400 tabular-nums">
                         {doors.reduce((s, d) => s + d.count, 0)}
                       </p>
                     </div>
@@ -1386,7 +1386,7 @@ export default function ElevationEditor({
                 <button
                   type="button"
                   onClick={() => setShowColumnPicker(!showColumnPicker)}
-                  className="flex items-center gap-1.5 rounded-md border border-[#1e1e2a] bg-[#0c0c12] px-3 py-1.5 text-xs text-[#8b8d9a] hover:border-[#3b82f6]/40 hover:text-[#c4c5cf] transition-all duration-200"
+                  className="flex items-center gap-1.5 rounded-md border border-[#1e1e2a] bg-[#0c0c12] px-3 py-1.5 text-xs text-[#8b8d9a] hover:border-[#3b82f6]/40 hover:text-[#c4c5cf] transition-colors duration-200"
                 >
                   {showColumnPicker ? (
                     <EyeOff className="h-3 w-3" />
@@ -1439,10 +1439,10 @@ export default function ElevationEditor({
                 : sectionListTotal;
 
               return (
-                <div key={section} className="rounded-lg border border-[#1e1e2a] bg-[#0a0a10] overflow-hidden">
+                <div key={section} className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] overflow-hidden">
                   {/* Section header */}
-                  <div className="flex items-center justify-between border-b border-[#1e1e2a] bg-[#0c0c14] px-4 py-2.5">
-                    <h4 className="text-sm font-semibold text-[#c4c5cf] uppercase tracking-wider">
+                  <div className="flex items-center justify-between border-b border-[#1e1e2a] bg-[#0c0c14] px-4 py-3">
+                    <h4 className="text-xs font-semibold text-[#c4c5cf] uppercase tracking-[0.1em]">
                       {label}
                     </h4>
                     <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
@@ -1589,7 +1589,7 @@ export default function ElevationEditor({
 
             {/* Grand total row */}
             {groupedResults.length > 0 && (
-              <div className="rounded-lg border border-[#1e1e2a] bg-[#0c0c14] px-4 py-3">
+              <div className="rounded-xl border border-[#1e1e2a] bg-[#0c0c14] px-5 py-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-white">
                     Elevation Total

@@ -146,7 +146,7 @@ export default function BayDiagram({
 
   if (!diagram) {
     return (
-      <div className="bg-[#111118] border border-[#1e1e2a] rounded-lg p-6 text-center">
+      <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl p-8 text-center">
         <p className="text-sm text-[#55566a]">
           Enter valid opening dimensions and bay counts to see the diagram.
         </p>
@@ -172,7 +172,7 @@ export default function BayDiagram({
   } = diagram;
 
   return (
-    <div className="bg-[#111118] border border-[#1e1e2a] rounded-lg p-4">
+    <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl p-5">
       <svg
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         className="w-full"
