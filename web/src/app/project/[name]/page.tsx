@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
+  Copy,
   ChevronRight,
   Layers,
   FileSpreadsheet,
@@ -45,6 +46,8 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const [showAddElevation, setShowAddElevation] = useState(false);
   const [newElevationName, setNewElevationName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [duplicateElevation, setDuplicateElevation] = useState<string | null>(null);
+  const [duplicateName, setDuplicateName] = useState('');
   const [showWasteAnalysis, setShowWasteAnalysis] = useState(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'waste'>('editor');
   const [workspaceTab, setWorkspaceTab] = useState<'elevations' | 'pricing'>('elevations');
@@ -231,6 +234,49 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     }
   }
 
+  async function handleDuplicateElevation() {
+    if (!duplicateElevation) return;
+    const newName = duplicateName.trim();
+    if (!newName) return;
+
+    if (elevations[newName]) {
+      alert('An elevation with this name already exists.');
+      return;
+    }
+
+    // Deep clone the elevation data, strip material impacts and calculated outputs for a fresh copy
+    const original = elevations[duplicateElevation];
+    const cloned: ElevationData = JSON.parse(JSON.stringify(original));
+    delete cloned.material_impacts;
+    delete cloned.calculated_outputs;
+    delete cloned.single_elevation_outputs;
+
+    // Clone door data if it exists
+    const originalDoors = doors[duplicateElevation];
+    const clonedDoors: DoorConfig[] = originalDoors
+      ? JSON.parse(JSON.stringify(originalDoors))
+      : [];
+
+    // Update local state
+    setElevations((prev) => ({ ...prev, [newName]: cloned }));
+    if (clonedDoors.length > 0) {
+      setDoors((prev) => ({ ...prev, [newName]: clonedDoors }));
+    }
+    setSelectedElevation(newName);
+    setDuplicateElevation(null);
+    setDuplicateName('');
+
+    // Persist to database
+    try {
+      await db.saveElevation(projectName, newName, cloned);
+      if (clonedDoors.length > 0) {
+        await db.saveDoors(projectName, newName, clonedDoors);
+      }
+    } catch (error) {
+      console.error('Failed to duplicate elevation:', error);
+    }
+  }
+
   async function handleExportExcel() {
     try {
       const { exportToExcel } = await import('@/lib/export');
@@ -302,7 +348,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center animate-fade-up opacity-0">
           <Loader2 className="w-8 h-8 text-[#3b82f6] animate-spin mb-4" />
-          <p className="text-[#8b8d9a] text-sm">Loading project...</p>
+          <p className="text-[#b0b3c0] text-sm">Loading project...</p>
         </div>
       </div>
     );
@@ -316,7 +362,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push('/')}
-              className="p-2 rounded-xl hover:bg-[#111118] text-[#8b8d9a] hover:text-[#eeeef2] transition-colors duration-200"
+              className="p-2 rounded-xl hover:bg-[#111118] text-[#b0b3c0] hover:text-[#ffffff] transition-colors duration-200"
               title="Back to projects"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -334,7 +380,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               </h1>
             </div>
             {saving && (
-              <span className="text-xs text-[#55566a] flex items-center gap-1.5 ml-2 animate-fade-in">
+              <span className="text-xs text-[#7a7c90] flex items-center gap-1.5 ml-2 animate-fade-in">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Saving...
               </span>
@@ -354,7 +400,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                   className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors duration-200 ${
                     workspaceTab === key
                       ? 'bg-gradient-to-r from-[#3b82f6] to-[#6366f1] text-white'
-                      : 'text-[#55566a] hover:text-[#8b8d9a] hover:bg-[#111118]/50'
+                      : 'text-[#7a7c90] hover:text-[#b0b3c0] hover:bg-[#111118]/50'
                   }`}
                 >
                   {icon}
@@ -370,7 +416,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               className={`flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors duration-200 ${
                 activeTab === 'waste'
                   ? 'bg-gradient-to-r from-[#3b82f6] to-[#6366f1] text-white'
-                  : 'text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#111118]'
+                  : 'text-[#b0b3c0] hover:text-[#ffffff] hover:bg-[#111118]'
               }`}
             >
               <BarChart3 className="w-4 h-4" />
@@ -378,7 +424,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             </button>
             <button
               onClick={() => setShowReportOptions(true)}
-              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#111118] rounded-xl transition-colors duration-200"
+              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-[#b0b3c0] hover:text-[#ffffff] hover:bg-[#111118] rounded-xl transition-colors duration-200"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Export
@@ -393,7 +439,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
         {workspaceTab === 'elevations' && (
           <aside className="w-[280px] flex-shrink-0 bg-[#08080e] border-r border-[#1e1e2a] flex flex-col overflow-hidden gradient-border-left">
             <div className="px-4 py-3 border-b border-[#1e1e2a] bg-[#0a0a12]">
-              <h2 className="text-[10px] font-semibold text-[#55566a] uppercase tracking-[0.15em]">
+              <h2 className="text-[10px] font-semibold text-[#7a7c90] uppercase tracking-[0.15em]">
                 Elevations ({elevationNames.length})
               </h2>
             </div>
@@ -405,7 +451,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                   <div className="w-12 h-12 rounded-xl bg-[#111118] border border-[#1e1e2a] flex items-center justify-center mx-auto mb-3">
                     <Layers className="w-6 h-6 text-[#2a2a3a]" />
                   </div>
-                  <p className="text-xs text-[#55566a] leading-relaxed">
+                  <p className="text-xs text-[#7a7c90] leading-relaxed">
                     No elevations yet. Add one to get started.
                   </p>
                 </div>
@@ -435,31 +481,43 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                         )}
                         <p
                           className={`text-sm font-medium truncate transition-colors duration-200 ${
-                            isSelected ? 'text-[#eeeef2]' : 'text-[#8b8d9a]'
+                            isSelected ? 'text-[#ffffff]' : 'text-[#b0b3c0]'
                           }`}
                         >
                           {elevName}
                         </p>
                       </div>
                       {isNew ? (
-                        <p className="text-[10px] text-[#3e3f4d] mt-0.5 font-medium">
+                        <p className="text-[10px] text-[#5a5c6e] mt-0.5 font-medium">
                           Click Update to calculate
                         </p>
                       ) : cost !== null ? (
-                        <p className="text-xs text-[#55566a] mt-0.5 font-mono tabular-nums">
+                        <p className="text-xs text-[#7a7c90] mt-0.5 font-mono tabular-nums">
                           ${cost.discounted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                       ) : null}
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {/* Duplicate button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDuplicateElevation(elevName);
+                          setDuplicateName(`${elevName} (Copy)`);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-[#3b82f6]/10 text-[#5a5c6e] hover:text-[#3b82f6] transition-colors duration-200"
+                        title="Duplicate elevation"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
                       {/* Delete button */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setConfirmDelete(elevName);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-[#f87171]/10 text-[#3e3f4d] hover:text-[#f87171] transition-colors duration-200"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-[#f87171]/10 text-[#5a5c6e] hover:text-[#f87171] transition-colors duration-200"
                         title="Delete elevation"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -491,7 +549,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                       }
                     }}
                     placeholder="Elevation name"
-                    className="w-full px-3 py-2 bg-[#0c0c12] border border-[#1e1e2a] rounded-lg text-sm text-[#eeeef2] placeholder-[#3e3f4d] focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors duration-200"
+                    className="w-full px-3 py-2 bg-[#0c0c12] border border-[#1e1e2a] rounded-lg text-sm text-[#ffffff] placeholder-[#5a5c6e] focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors duration-200"
                     autoFocus
                   />
                   <div className="flex items-center gap-2">
@@ -507,7 +565,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                         setShowAddElevation(false);
                         setNewElevationName('');
                       }}
-                      className="flex-1 px-3 py-1.5 text-[#8b8d9a] hover:text-[#eeeef2] text-xs font-medium rounded-lg hover:bg-[#1e1e2a] transition-colors duration-200"
+                      className="flex-1 px-3 py-1.5 text-[#b0b3c0] hover:text-[#ffffff] text-xs font-medium rounded-lg hover:bg-[#1e1e2a] transition-colors duration-200"
                     >
                       Cancel
                     </button>
@@ -516,7 +574,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               ) : (
                 <button
                   onClick={() => setShowAddElevation(true)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#3b82f6]/5 rounded-xl border border-dashed border-[#1e1e2a] hover:border-[#3b82f6]/40 transition-colors duration-200"
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-[#b0b3c0] hover:text-[#ffffff] hover:bg-[#3b82f6]/5 rounded-xl border border-dashed border-[#1e1e2a] hover:border-[#3b82f6]/40 transition-colors duration-200"
                 >
                   <Plus className="w-4 h-4" />
                   Add Elevation
@@ -566,12 +624,12 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                         <div className="w-16 h-16 rounded-2xl bg-[#111118] border border-[#1e1e2a] flex items-center justify-center mx-auto mb-6 shadow-lg shadow-black/20">
                           <Layers className="w-8 h-8 text-[#2a2a3a]" />
                         </div>
-                        <h3 className="text-lg font-semibold text-[#eeeef2] mb-2">
+                        <h3 className="text-lg font-semibold text-[#ffffff] mb-2">
                           {elevationNames.length === 0
                             ? 'No elevations yet'
                             : 'Select an elevation'}
                         </h3>
-                        <p className="text-sm text-[#55566a] max-w-xs mx-auto leading-relaxed">
+                        <p className="text-sm text-[#7a7c90] max-w-xs mx-auto leading-relaxed">
                           {elevationNames.length === 0
                             ? 'Add your first elevation from the sidebar to start estimating.'
                             : 'Choose an elevation from the sidebar to view and edit its details.'}
@@ -609,25 +667,25 @@ export default function ProjectPage({ params }: ProjectPageProps) {
                 <Trash2 className="w-5 h-5 text-[#f87171]" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-[#eeeef2]">
+                <h3 className="text-base font-semibold text-[#ffffff]">
                   Delete Elevation
                 </h3>
-                <p className="text-xs text-[#8b8d9a]">
+                <p className="text-xs text-[#b0b3c0]">
                   This action cannot be undone
                 </p>
               </div>
             </div>
 
-            <p className="text-sm text-[#8b8d9a] mb-6 leading-relaxed">
+            <p className="text-sm text-[#b0b3c0] mb-6 leading-relaxed">
               Are you sure you want to delete{' '}
-              <span className="font-semibold text-[#eeeef2]">{confirmDelete}</span>?
+              <span className="font-semibold text-[#ffffff]">{confirmDelete}</span>?
               All associated data will be permanently removed.
             </p>
 
             <div className="flex items-center gap-3 justify-end">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-4 py-2.5 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
+                className="px-4 py-2.5 text-sm font-medium text-[#b0b3c0] hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
               >
                 Cancel
               </button>
@@ -637,6 +695,66 @@ export default function ProjectPage({ params }: ProjectPageProps) {
               >
                 <Trash2 className="w-4 h-4" />
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Elevation Modal */}
+      {duplicateElevation && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-overlay"
+          onClick={() => { setDuplicateElevation(null); setDuplicateName(''); }}
+        >
+          <div
+            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-sm mx-4 p-7 shadow-2xl shadow-black/60 animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-[#3b82f6]/10 border border-[#3b82f6]/15 flex items-center justify-center flex-shrink-0">
+                <Copy className="w-5 h-5 text-[#3b82f6]" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[#ffffff]">
+                  Duplicate Elevation
+                </h3>
+                <p className="text-xs text-[#8b8d9a]">
+                  Copy of <span className="text-[#ffffff]">{duplicateElevation}</span>
+                </p>
+              </div>
+            </div>
+
+            <label className="block text-xs font-medium text-[#8b8d9a] mb-1.5">
+              New elevation name
+            </label>
+            <input
+              type="text"
+              value={duplicateName}
+              onChange={(e) => setDuplicateName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleDuplicateElevation();
+                if (e.key === 'Escape') { setDuplicateElevation(null); setDuplicateName(''); }
+              }}
+              placeholder="Enter name..."
+              className="w-full px-3.5 py-2.5 text-sm bg-[#0a0a12] border border-[#1e1e2a] rounded-xl text-[#eeeef2] placeholder-[#3e3f4d] focus:border-[#3b82f6]/50 focus:outline-none transition-colors duration-200 mb-5"
+              autoFocus
+            />
+
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                onClick={() => { setDuplicateElevation(null); setDuplicateName(''); }}
+                className="px-4 py-2.5 text-sm font-medium text-[#8b8d9a] hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDuplicateElevation}
+                disabled={!duplicateName.trim() || !!elevations[duplicateName.trim()]}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors duration-200"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicate
               </button>
             </div>
           </div>
