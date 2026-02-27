@@ -1,4 +1,4 @@
-from data.part_number import (PART_NUMBER_MAP)
+from data.part_number import PART_NUMBER_MAP
 from utils.formulas import (
     calculate_total_gasket_ft,
     calculate_end_dam,
@@ -23,8 +23,9 @@ from utils.formulas import (
     calculate_total_glass,
     calculate_fabrication_joints,
     calculate_total_door_area,
-    calculate_glass_to_add_back
+    calculate_glass_to_add_back,
 )
+
 
 def calculate_yes45tu_quantities(
     bays_wide: int,
@@ -35,7 +36,7 @@ def calculate_yes45tu_quantities(
     doors=None,
     custom_bay_widths=None,
     glass_per_sqft=None,
-    fabrication_cost_per_joint=None
+    fabrication_cost_per_joint=None,
 ) -> list:
     """
     Calculates all the specific output quantities for the 'YES 45TU Front Set(OG)' system
@@ -56,22 +57,57 @@ def calculate_yes45tu_quantities(
         ("E2-0166", calculate_side_block(bays_wide, bays_tall, total_count)),
         ("E2-0177", calculate_setting_block(bays_wide, total_count)),
         ("E2-0545", calculate_anti_walk_block_deep(bays_tall, total_count)),
-        ("E2-0154", calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count)),
+        (
+            "E2-0154",
+            calculate_anti_walk_block_shallow(bays_wide, bays_tall, total_count),
+        ),
         ("E2-0611", calculate_setting_block_int_horizontal(bays_wide, total_count)),
         ("BE9-2513", calculate_jamb_ft_v(opening_height, total_count)),
-        ("BE9-2513", calculate_sill_ft_h(opening_width, total_count, bays_wide, custom_bay_widths)),
+        (
+            "BE9-2513",
+            calculate_sill_ft_h(
+                opening_width, total_count, bays_wide, custom_bay_widths
+            ),
+        ),
         ("E9-2512", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
         ("BE9-2511", calculate_int_vertical(bays_wide, total_count, opening_height)),
-        ("BE9-2515", calculate_og_int_horizontal(opening_width, total_count, bays_wide, custom_bay_widths)),
-        ("BE9-2514", calculate_og_head_h(opening_width, total_count, bays_wide, custom_bay_widths)),
+        (
+            "BE9-2515",
+            calculate_og_int_horizontal(
+                opening_width, total_count, bays_wide, custom_bay_widths
+            ),
+        ),
+        (
+            "BE9-2514",
+            calculate_og_head_h(
+                opening_width, total_count, bays_wide, custom_bay_widths
+            ),
+        ),
         ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
-        ("E9-2519", calculate_glass_stop(opening_width, bays_tall, total_count, bays_wide, custom_bay_widths)),
-        ("E2-0052", calculate_total_gasket_ft(bays_wide, bays_tall, opening_width, opening_height, total_count))
+        (
+            "E9-2519",
+            calculate_glass_stop(
+                opening_width, bays_tall, total_count, bays_wide, custom_bay_widths
+            ),
+        ),
+        (
+            "E2-0052",
+            calculate_total_gasket_ft(
+                bays_wide, bays_tall, opening_width, opening_height, total_count
+            ),
+        ),
     ]
 
     # --- Total area calculations ---
-    total_glass_area = calculate_total_glass(opening_width, opening_height, total_count, bays_wide, bays_tall)
-    
+    total_glass_area = calculate_total_glass(
+        opening_width,
+        opening_height,
+        total_count,
+        bays_wide,
+        bays_tall,
+        custom_bay_widths,
+    )
+
     # Only calculate door area if doors exist
     # Door count is per elevation, so multiply by total_count for total calculations
     has_doors = doors and len(doors) > 0
@@ -80,11 +116,13 @@ def calculate_yes45tu_quantities(
         doors_with_total_count = []
         for door in doors:
             door_copy = door.copy()
-            door_copy['count'] = door.get('count', 0) * total_count
+            door_copy["count"] = door.get("count", 0) * total_count
             doors_with_total_count.append(door_copy)
         total_door_area = calculate_total_door_area(doors_with_total_count)
         total_glass_to_add_back = calculate_glass_to_add_back(doors_with_total_count)
-        adjusted_glass_area = max(total_glass_area - total_door_area + total_glass_to_add_back, 0)  # Prevent negative glass area
+        adjusted_glass_area = max(
+            total_glass_area - total_door_area + total_glass_to_add_back, 0
+        )  # Prevent negative glass area
     else:
         total_door_area = 0.0
         total_glass_to_add_back = 0.0
@@ -128,13 +166,15 @@ def calculate_yes45tu_quantities(
             part_type = "UNKNOWN"
             part_number = "UNKNOWN"
 
-        results.append({
-            "description": desc,
-            "quantity": quantity,
-            "part_number": part_number,
-            "type": part_type
-        })
-    
+        results.append(
+            {
+                "description": desc,
+                "quantity": quantity,
+                "part_number": part_number,
+                "type": part_type,
+            }
+        )
+
     # Check if the adjusted glass area is zero and add a specific message.
     if adjusted_glass_area == 0:
         glass_output = {
@@ -142,10 +182,10 @@ def calculate_yes45tu_quantities(
             "quantity": 0,
             "part_number": "N/A",
             "type": "Glass",
-            'price': 0.0,
-            'unit': 'sqft',
-            'manual': True,
-            'message': "Total door area equals or exceeds total glass area. No glass is needed."
+            "price": 0.0,
+            "unit": "sqft",
+            "manual": True,
+            "message": "Total door area equals or exceeds total glass area. No glass is needed.",
         }
     else:
         glass_output = {
@@ -153,12 +193,16 @@ def calculate_yes45tu_quantities(
             "quantity": adjusted_glass_area,
             "part_number": "N/A",
             "type": "Glass",
-            'price': float(glass_per_sqft) if glass_per_sqft is not None else 10.5,
-            'unit': 'sqft',
-            'manual': True
+            "price": float(glass_per_sqft) if glass_per_sqft is not None else 10.5,
+            "unit": "sqft",
+            "manual": True,
         }
 
-    fab_price = float(fabrication_cost_per_joint) if fabrication_cost_per_joint is not None else 15.0
+    fab_price = (
+        float(fabrication_cost_per_joint)
+        if fabrication_cost_per_joint is not None
+        else 15.0
+    )
     manual_outputs = [
         glass_output,
         {
@@ -166,22 +210,25 @@ def calculate_yes45tu_quantities(
             "quantity": calculate_fabrication_joints(bays_wide, bays_tall, total_count),
             "part_number": "N/A",
             "type": "Fabrication",
-            'price': fab_price,
-            'unit': 'joints',
-            'manual': True
-        }
+            "price": fab_price,
+            "unit": "joints",
+            "manual": True,
+        },
     ]
-    
+
     # Only include door area calculation if doors exist
     if has_doors:
-        manual_outputs.insert(1, {
-            "description": "Door Area (to subtract from glass)",
-            "quantity": total_door_area,
-            "part_number": "N/A",
-            "type": "Calculations",
-            'unit': 'sqft',
-            'manual': True
-        })
+        manual_outputs.insert(
+            1,
+            {
+                "description": "Door Area (to subtract from glass)",
+                "quantity": total_door_area,
+                "part_number": "N/A",
+                "type": "Calculations",
+                "unit": "sqft",
+                "manual": True,
+            },
+        )
 
     results.extend(manual_outputs)
     return results

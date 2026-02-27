@@ -1,6 +1,78 @@
 // TypeScript port of utils/formulas.py
 // All formulas, logic, and values are exact copies of the Python source.
 
+// ================================================================
+// D.L.O. (Daylight Opening) & Glass Make Size
+// YES 45 TU framing deductions:
+//   Edge bay  (jamb/head/sill to intermediate) : -3"
+//   Interior  (intermediate to intermediate)    : -2"
+//   Bottom sill additional                      : -7/16"
+//   Glass make size = D.L.O. + 3/4"
+// ================================================================
+
+export const DLO_EDGE_DEDUCTION = 3;        // inches — jamb/head/sill to intermediate
+export const DLO_INTERIOR_DEDUCTION = 2;    // inches — intermediate to intermediate
+export const DLO_SILL_DEDUCTION = 7 / 16;  // inches — additional at bottom of elevation
+export const GLASS_MAKE_ADDITION = 0.75;    // inches — glass make = DLO + 3/4"
+
+/**
+ * Calculate D.L.O. width for a single bay given its column position.
+ * @param cl_width  C/L bay width in inches
+ * @param colIndex  0-based column index
+ * @param totalCols total number of columns (bays wide)
+ */
+export function calculateDloWidth(
+  cl_width: number,
+  colIndex: number,
+  totalCols: number,
+): number {
+  const isEdge = totalCols <= 1 || colIndex === 0 || colIndex === totalCols - 1;
+  return cl_width - (isEdge ? DLO_EDGE_DEDUCTION : DLO_INTERIOR_DEDUCTION);
+}
+
+/**
+ * Calculate D.L.O. height for a single bay given its row position.
+ * Row 0 = bottom row.
+ * @param cl_height  C/L bay height in inches
+ * @param rowIndex   0-based row index (0 = bottom)
+ * @param totalRows  total number of rows (bays tall)
+ */
+export function calculateDloHeight(
+  cl_height: number,
+  rowIndex: number,
+  totalRows: number,
+): number {
+  const isEdge = totalRows <= 1 || rowIndex === 0 || rowIndex === totalRows - 1;
+  const isBottom = rowIndex === 0;
+  let dlo = cl_height - (isEdge ? DLO_EDGE_DEDUCTION : DLO_INTERIOR_DEDUCTION);
+  if (isBottom) dlo -= DLO_SILL_DEDUCTION;
+  return dlo;
+}
+
+/** Glass make (cut) size = D.L.O. + 3/4" */
+export function calculateGlassMakeSize(dlo: number): number {
+  return dlo + GLASS_MAKE_ADDITION;
+}
+
+/**
+ * Build the full D.L.O. grid for all bays.
+ * Returns { dloWidths: number[], dloHeights: number[][] }
+ * dloWidths[col] = D.L.O. width for that column
+ * dloHeights[col][row] = D.L.O. height for that cell (row 0 = bottom)
+ */
+export function buildDloGrid(
+  bayWidths: number[],
+  bayHeights: number[],
+): { dloWidths: number[]; dloHeights: number[][] } {
+  const totalCols = bayWidths.length;
+  const totalRows = bayHeights.length;
+  const dloWidths = bayWidths.map((w, col) => calculateDloWidth(w, col, totalCols));
+  const dloHeights = bayWidths.map((_w, _col) =>
+    bayHeights.map((h, row) => calculateDloHeight(h, row, totalRows)),
+  );
+  return { dloWidths, dloHeights };
+}
+
 export function calculate_rectangle_area(length: number, width: number): number {
   return length * width;
 }
@@ -343,14 +415,35 @@ export function calculate_total_glass(
   opening_height: number,
   total_count: number,
   bays_wide: number,
-  bays_tall: number
+  bays_tall: number,
+  custom_bay_widths?: number[] | null,
+  custom_bay_heights?: number[] | null,
 ): number {
-  return (
-    ((opening_width - 2 * (bays_wide + 1)) *
-      (opening_height - 2 * (bays_tall + 1)) *
-      total_count) /
-    144
-  );
+  // Resolve per-bay C/L dimensions
+  const bayWidths: number[] =
+    custom_bay_widths && custom_bay_widths.length === bays_wide
+      ? custom_bay_widths
+      : Array(bays_wide).fill(opening_width / bays_wide);
+
+  const bayHeights: number[] =
+    custom_bay_heights && custom_bay_heights.length === bays_tall
+      ? custom_bay_heights
+      : Array(bays_tall).fill(opening_height / bays_tall);
+
+  // Build D.L.O. grid and sum glass areas from DLO dimensions
+  const { dloWidths, dloHeights } = buildDloGrid(bayWidths, bayHeights);
+
+  // Sum per-lite glass make sizes (DLO + 3/4") to get actual glass area
+  let totalSqft = 0;
+  for (let col = 0; col < bays_wide; col++) {
+    for (let row = 0; row < bays_tall; row++) {
+      const glassW = calculateGlassMakeSize(dloWidths[col]);
+      const glassH = calculateGlassMakeSize(dloHeights[col][row]);
+      totalSqft += (glassW * glassH) / 144;
+    }
+  }
+
+  return totalSqft * total_count;
 }
 
 export function calculate_door_size(door_size_str: string): number {
