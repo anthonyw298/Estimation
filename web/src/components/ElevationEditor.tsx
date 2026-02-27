@@ -105,7 +105,7 @@ const inputClass =
   'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 text-sm';
 const selectClass =
   'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 appearance-none text-sm';
-const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1.5';
+const labelClass = 'block text-sm font-medium text-[#ffffff] mb-1.5';
 const cardClass =
   'bg-[#111118] border border-[#1e1e2a] rounded-2xl p-6 space-y-4 shadow-lg shadow-black/15';
 const sectionTitleClass = 'text-lg font-semibold text-white tracking-tight';
@@ -199,7 +199,7 @@ export default function ElevationEditor({
       return Array(w).fill(w > 0 ? ow / w : 0);
     },
   );
-  const [customBayHeights, setCustomBayHeights] = useState<number[]>(
+     const [customBayHeights, setCustomBayHeights] = useState<number[]>(
     () => {
       if (
         elevationData.custom_bay_heights &&
@@ -212,6 +212,11 @@ export default function ElevationEditor({
       return Array(h).fill(h > 0 ? oh / h : 0);
     },
   );
+
+  // Track which bay indices the user has manually edited (for "Default Rest")
+  const [editedBayWidths, setEditedBayWidths] = useState<Set<number>>(new Set());
+  const [editedBayHeights, setEditedBayHeights] = useState<Set<number>>(new Set());
+
   // Glass & Fabrication pricing is controlled from the Pricing tab (settings),
   // not per-elevation. Read from settings (fallback to elevation data for legacy).
   const glassPerSqft = settings.glass_per_sqft ?? elevationData.glass_per_sqft ?? 10.5;
@@ -273,6 +278,7 @@ export default function ElevationEditor({
   const handleBaysWideChange = useCallback(
     (newBaysWide: number) => {
       setBaysWide(newBaysWide);
+      setEditedBayWidths(new Set());
       const count = Math.max(1, newBaysWide);
       if (openingWidth > 0) {
         setCustomBayWidths(
@@ -291,6 +297,7 @@ export default function ElevationEditor({
     (newWidth: number) => {
       setOpeningWidth(newWidth);
       if (baysWide > 1 && newWidth > 0) {
+        setEditedBayWidths(new Set());
         setCustomBayWidths(
           Array(baysWide).fill(
             Math.round((newWidth / baysWide) * 100) / 100,
@@ -308,9 +315,25 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
+      setEditedBayWidths((prev) => new Set(prev).add(index));
     },
     [],
   );
+
+  /** Distribute remaining opening width equally among non-edited bays. */
+  const handleDefaultRestWidths = useCallback(() => {
+    if (editedBayWidths.size === 0 || editedBayWidths.size >= baysWide) return;
+    const editedSum = customBayWidths.reduce(
+      (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum),
+      0,
+    );
+    const remaining = openingWidth - editedSum;
+    const unedited = baysWide - editedBayWidths.size;
+    const each = Math.round((remaining / unedited) * 100) / 100;
+    setCustomBayWidths((prev) =>
+      prev.map((w, i) => (editedBayWidths.has(i) ? w : each)),
+    );
+  }, [editedBayWidths, customBayWidths, openingWidth, baysWide]);
 
   // ---------------------------------------------------------------------------
   // Bay height logic
@@ -325,6 +348,7 @@ export default function ElevationEditor({
   const handleBaysTallChange = useCallback(
     (newBaysTall: number) => {
       setBaysTall(newBaysTall);
+      setEditedBayHeights(new Set());
       const count = Math.max(1, newBaysTall);
       if (openingHeight > 0) {
         setCustomBayHeights(
@@ -343,6 +367,7 @@ export default function ElevationEditor({
     (newHeight: number) => {
       setOpeningHeight(newHeight);
       if (baysTall > 1 && newHeight > 0) {
+        setEditedBayHeights(new Set());
         setCustomBayHeights(
           Array(baysTall).fill(
             Math.round((newHeight / baysTall) * 100) / 100,
@@ -360,9 +385,25 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
+      setEditedBayHeights((prev) => new Set(prev).add(index));
     },
     [],
   );
+
+  /** Distribute remaining opening height equally among non-edited bays. */
+  const handleDefaultRestHeights = useCallback(() => {
+    if (editedBayHeights.size === 0 || editedBayHeights.size >= baysTall) return;
+    const editedSum = customBayHeights.reduce(
+      (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum),
+      0,
+    );
+    const remaining = openingHeight - editedSum;
+    const unedited = baysTall - editedBayHeights.size;
+    const each = Math.round((remaining / unedited) * 100) / 100;
+    setCustomBayHeights((prev) =>
+      prev.map((h, i) => (editedBayHeights.has(i) ? h : each)),
+    );
+  }, [editedBayHeights, customBayHeights, openingHeight, baysTall]);
 
   // ---------------------------------------------------------------------------
   // Door management
@@ -827,9 +868,9 @@ export default function ElevationEditor({
         <h3 className={sectionTitleClass}>{title}</h3>
       </div>
       {collapsedSections[sectionKey] ? (
-        <ChevronDown className="h-5 w-5 text-[#8b8d9a]" />
+        <ChevronDown className="h-5 w-5 text-[#ffffff]" />
       ) : (
-        <ChevronUp className="h-5 w-5 text-[#8b8d9a]" />
+        <ChevronUp className="h-5 w-5 text-[#ffffff]" />
       )}
     </button>
   );
@@ -843,7 +884,7 @@ export default function ElevationEditor({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs text-[#55566a] font-medium tracking-wide uppercase">{projectName}</p>
+          <p className="text-xs text-[#ffffff] font-medium tracking-wide uppercase">{projectName}</p>
           <h2 className="text-2xl font-bold text-white tracking-tight">{elevationName}</h2>
         </div>
       </div>
@@ -859,7 +900,7 @@ export default function ElevationEditor({
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 ${
               !doorOnly
                 ? 'bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white'
-                : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
+                : 'text-[#ffffff] hover:text-[#ffffff]'
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -871,7 +912,7 @@ export default function ElevationEditor({
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors duration-200 ${
               doorOnly
                 ? 'bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white'
-                : 'text-[#8b8d9a] hover:text-[#c4c5cf]'
+                : 'text-[#ffffff] hover:text-[#ffffff]'
             }`}
           >
             <DoorOpen className="w-4 h-4" />
@@ -879,7 +920,7 @@ export default function ElevationEditor({
           </button>
         </div>
         {doorOnly && (
-          <span className="text-xs text-[#55566a] ml-1">
+          <span className="text-xs text-[#ffffff] ml-1">
             Door-only mode: no system, bays, or glass — just doors.
           </span>
         )}
@@ -1043,14 +1084,28 @@ export default function ElevationEditor({
 
               {baysWide > 1 && (
                 <div className="mt-3 space-y-3">
-                  <p className="text-sm font-medium text-[#8b8d9a]">
-                    Custom Bay Widths (inches)
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-medium text-[#ffffff]">
+                      Custom Bay Widths (inches)
+                    </p>
+                    {editedBayWidths.size > 0 && editedBayWidths.size < baysWide && (
+                      <button
+                        type="button"
+                        onClick={handleDefaultRestWidths}
+                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      >
+                        Default Rest
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {customBayWidths.map((w, i) => (
                       <div key={i}>
-                        <label className="mb-1 block text-xs text-[#55566a]">
+                        <label className="mb-1 block text-xs text-[#ffffff]">
                           Bay {i + 1}
+                          {editedBayWidths.has(i) && (
+                            <span className="ml-1 text-blue-400">*</span>
+                          )}
                         </label>
                         <input
                           type="number"
@@ -1071,7 +1126,7 @@ export default function ElevationEditor({
 
                   {/* Sum indicator */}
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="text-[#55566a]">
+                    <span className="text-[#ffffff]">
                       Sum: {bayWidthSum.toFixed(2)}&Prime; / {openingWidth.toFixed(2)}&Prime;
                     </span>
                     {bayWidthMismatch && (
@@ -1085,35 +1140,54 @@ export default function ElevationEditor({
 
               {baysTall > 1 && (
                 <div className="mt-3 space-y-3">
-                  <p className="text-sm font-medium text-[#8b8d9a]">
-                    Custom Bay Heights (inches)
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-medium text-[#ffffff]">
+                      Custom Bay Heights &mdash; Bottom to Top (inches)
+                    </p>
+                    {editedBayHeights.size > 0 && editedBayHeights.size < baysTall && (
+                      <button
+                        type="button"
+                        onClick={handleDefaultRestHeights}
+                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      >
+                        Default Rest
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                    {customBayHeights.map((h, i) => (
-                      <div key={i}>
-                        <label className="mb-1 block text-xs text-[#55566a]">
-                          Bay {i + 1}
-                        </label>
-                        <input
-                          type="number"
-                          className={inputClass}
-                          min={0}
-                          step="0.01"
-                          value={h || ''}
-                          onChange={(e) =>
-                            handleCustomBayHeightChange(
-                              i,
-                              parseFloat(e.target.value) || 0,
-                            )
-                          }
-                        />
-                      </div>
-                    ))}
+                    {[...customBayHeights].reverse().map((h, displayIdx) => {
+                      const internalIdx = customBayHeights.length - 1 - displayIdx;
+                      return (
+                        <div key={internalIdx}>
+                          <label className="mb-1 block text-xs text-[#ffffff]">
+                            Bay {displayIdx + 1}
+                            {displayIdx === 0 && ' (Bot)'}
+                            {displayIdx === customBayHeights.length - 1 && customBayHeights.length > 1 && ' (Top)'}
+                            {editedBayHeights.has(internalIdx) && (
+                              <span className="ml-1 text-blue-400">*</span>
+                            )}
+                          </label>
+                          <input
+                            type="number"
+                            className={inputClass}
+                            min={0}
+                            step="0.01"
+                            value={h || ''}
+                            onChange={(e) =>
+                              handleCustomBayHeightChange(
+                                internalIdx,
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Sum indicator */}
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="text-[#55566a]">
+                    <span className="text-[#ffffff]">
                       Sum: {bayHeightSum.toFixed(2)}&Prime; / {openingHeight.toFixed(2)}&Prime;
                     </span>
                     {bayHeightMismatch && (
@@ -1152,7 +1226,7 @@ export default function ElevationEditor({
         {!collapsedSections.doors && (
           <>
             {doors.length === 0 && (
-              <p className="text-sm text-[#55566a]">
+              <p className="text-sm text-[#ffffff]">
                 No doors configured. Click &ldquo;Add Door&rdquo; to begin.
               </p>
             )}
@@ -1164,7 +1238,7 @@ export default function ElevationEditor({
                   className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-[#c4c5cf]">
+                    <span className="text-sm font-semibold text-[#ffffff]">
                       Door {di + 1}
                     </span>
                     <button
@@ -1241,7 +1315,7 @@ export default function ElevationEditor({
                       {HARDWARE_OPTIONS.map((hw) => (
                         <label
                           key={hw}
-                          className="flex items-center gap-2 text-sm text-[#c4c5cf] cursor-pointer select-none"
+                          className="flex items-center gap-2 text-sm text-[#ffffff] cursor-pointer select-none"
                         >
                           <input
                             type="checkbox"
@@ -1249,7 +1323,7 @@ export default function ElevationEditor({
                             onChange={(e) =>
                               updateDoorHardware(di, hw, e.target.checked)
                             }
-                            className="h-4 w-4 rounded border-[#3e3f4d] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
+                            className="h-4 w-4 rounded border-[#ffffff] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
                           />
                           {hw}
                         </label>
@@ -1263,7 +1337,7 @@ export default function ElevationEditor({
             <button
               type="button"
               onClick={addDoor}
-              className="mt-2 rounded-xl border border-dashed border-[#2a2a3a] px-4 py-2.5 text-sm text-[#8b8d9a] hover:border-[#3b82f6]/50 hover:text-blue-400 hover:bg-[#3b82f6]/5 transition-colors duration-200"
+              className="mt-2 rounded-xl border border-dashed border-[#2a2a3a] px-4 py-2.5 text-sm text-[#ffffff] hover:border-[#3b82f6]/50 hover:text-blue-400 hover:bg-[#3b82f6]/5 transition-colors duration-200"
             >
               + Add Door
             </button>
@@ -1306,7 +1380,7 @@ export default function ElevationEditor({
         </div>
 
         {!results && (
-          <p className="text-sm text-[#55566a]">
+          <p className="text-sm text-[#ffffff]">
             Configure the elevation above, then click &ldquo;{isExisting ? 'Update' : 'Save'}&rdquo; to price all materials and save.
           </p>
         )}
@@ -1317,15 +1391,15 @@ export default function ElevationEditor({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-5">
                 <div>
-                  <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">List Price Total</p>
+                  <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">List Price Total</p>
                   <p className="text-xl font-bold font-mono text-white tabular-nums">
                     {formatCurrency(grandTotal)}
                   </p>
                 </div>
                 <div className="w-px h-12 bg-[#1e1e2a]" />
                 <div>
-                  <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">Line Items</p>
-                  <p className="text-xl font-bold text-[#c4c5cf] tabular-nums">
+                  <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">Line Items</p>
+                  <p className="text-xl font-bold text-[#ffffff] tabular-nums">
                     {results.filter(r => r.type !== 'Calculations').length}
                   </p>
                 </div>
@@ -1333,7 +1407,7 @@ export default function ElevationEditor({
                   <>
                     <div className="w-px h-12 bg-[#1e1e2a]" />
                     <div>
-                      <p className="text-[10px] text-[#55566a] font-semibold uppercase tracking-wider mb-1">Doors</p>
+                      <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">Doors</p>
                       <p className="text-xl font-bold text-purple-400 tabular-nums">
                         {doors.reduce((s, d) => s + d.count, 0)}
                       </p>
@@ -1344,7 +1418,7 @@ export default function ElevationEditor({
               <button
                 type="button"
                 onClick={() => setResultsTableExpanded(!resultsTableExpanded)}
-                className="flex items-center gap-2 text-xs text-[#8b8d9a] hover:text-[#c4c5cf] transition-colors duration-200"
+                className="flex items-center gap-2 text-xs text-[#ffffff] hover:text-[#ffffff] transition-colors duration-200"
               >
                 <Table className="h-3.5 w-3.5" />
                 {resultsTableExpanded ? 'Hide Details' : 'Show Details'}
@@ -1379,14 +1453,14 @@ export default function ElevationEditor({
           <div className="mt-3 space-y-3 animate-fade-in">
             {/* Column visibility picker */}
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-[#8b8d9a]">
+              <p className="text-xs font-medium text-[#ffffff]">
                 Material Stock List
               </p>
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowColumnPicker(!showColumnPicker)}
-                  className="flex items-center gap-1.5 rounded-md border border-[#1e1e2a] bg-[#0c0c12] px-3 py-1.5 text-xs text-[#8b8d9a] hover:border-[#3b82f6]/40 hover:text-[#c4c5cf] transition-colors duration-200"
+                  className="flex items-center gap-1.5 rounded-md border border-[#1e1e2a] bg-[#0c0c12] px-3 py-1.5 text-xs text-[#ffffff] hover:border-[#3b82f6]/40 hover:text-[#ffffff] transition-colors duration-200"
                 >
                   {showColumnPicker ? (
                     <EyeOff className="h-3 w-3" />
@@ -1397,7 +1471,7 @@ export default function ElevationEditor({
                 </button>
                 {showColumnPicker && (
                   <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-lg border border-[#1e1e2a] bg-[#111118] p-3 shadow-xl shadow-black/30">
-                    <p className="mb-2 text-xs font-medium text-[#55566a] uppercase tracking-wider">
+                    <p className="mb-2 text-xs font-medium text-[#ffffff] uppercase tracking-wider">
                       Toggle Columns
                     </p>
                     <div className="space-y-1">
@@ -1412,16 +1486,16 @@ export default function ElevationEditor({
                               type="checkbox"
                               checked={visibleColumns.has(col.key)}
                               onChange={() => toggleColumnVisibility(col.key)}
-                              className="h-3.5 w-3.5 rounded border-[#3e3f4d] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
+                              className="h-3.5 w-3.5 rounded border-[#ffffff] bg-[#0c0c12] text-[#3b82f6] focus:ring-[#3b82f6]/20 accent-[#3b82f6]"
                             />
-                            <span className={visibleColumns.has(col.key) ? 'text-[#c4c5cf]' : 'text-[#55566a]'}>
+                            <span className={visibleColumns.has(col.key) ? 'text-[#ffffff]' : 'text-[#ffffff]'}>
                               {col.label}
                             </span>
                           </label>
                         ))}
                     </div>
                     {totalCount > 1 && (
-                      <p className="mt-2 text-[10px] text-[#55566a] italic">
+                      <p className="mt-2 text-[10px] text-[#ffffff] italic">
                         &quot;Per Elevation&quot; columns visible because count &gt; 1
                       </p>
                     )}
@@ -1442,20 +1516,20 @@ export default function ElevationEditor({
                 <div key={section} className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] overflow-hidden">
                   {/* Section header */}
                   <div className="flex items-center justify-between border-b border-[#1e1e2a] bg-[#0c0c14] px-4 py-3">
-                    <h4 className="text-xs font-semibold text-[#c4c5cf] uppercase tracking-[0.1em]">
+                    <h4 className="text-xs font-semibold text-[#ffffff] uppercase tracking-[0.1em]">
                       {label}
                     </h4>
                     <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
                       {visibleColumns.has('total_list_cost') && (
-                        <span className="text-[#8b8d9a]">
+                        <span className="text-[#ffffff]">
                           List: <span className="text-white">{formatCurrency(sectionListTotal)}</span>
                         </span>
                       )}
                       {visibleColumns.has('discounted_total_list_cost') && (
-                        <span className="text-[#8b8d9a]">
+                        <span className="text-[#ffffff]">
                           Disc: <span className="text-emerald-400">{formatCurrency(sectionDiscountedTotal)}</span>
                           {isDiscountable && (
-                            <span className="ml-1 text-[#55566a]">
+                            <span className="ml-1 text-[#ffffff]">
                               ({(discountMultiplier * 100).toFixed(1)}%)
                             </span>
                           )}
@@ -1472,7 +1546,7 @@ export default function ElevationEditor({
                           {activeColumns.map((col) => (
                             <th
                               key={col.key}
-                              className={`px-3 py-2 text-left font-medium text-[#55566a] uppercase tracking-wider whitespace-nowrap ${
+                              className={`px-3 py-2 text-left font-medium text-[#ffffff] uppercase tracking-wider whitespace-nowrap ${
                                 col.key.includes('cost') || col.key.includes('quantity') || col.key === 'quantity_per_elevation'
                                   ? 'text-right'
                                   : ''
@@ -1529,24 +1603,24 @@ export default function ElevationEditor({
                           // Cell value lookup
                           const cellValue: Record<string, React.ReactNode> = {
                             description: (
-                              <span className="text-[#c4c5cf]" title={item.description}>
+                              <span className="text-[#ffffff]" title={item.description}>
                                 {item.description}
                               </span>
                             ),
                             part_number: (
-                              <span className="font-mono text-[#8b8d9a]">{item.part_number}</span>
+                              <span className="font-mono text-[#ffffff]">{item.part_number}</span>
                             ),
                             total_quantity_required: (
-                              <span className="font-mono text-[#c4c5cf] tabular-nums">{qtyDisplay}</span>
+                              <span className="font-mono text-[#ffffff] tabular-nums">{qtyDisplay}</span>
                             ),
                             quantity_per_elevation: (
-                              <span className="font-mono text-[#8b8d9a] tabular-nums">{qtyPerElevDisplay}</span>
+                              <span className="font-mono text-[#ffffff] tabular-nums">{qtyPerElevDisplay}</span>
                             ),
                             total_list_cost: (
                               <span className="font-mono text-white tabular-nums">{formatCurrency(listCost)}</span>
                             ),
                             total_list_cost_per_elevation: (
-                              <span className="font-mono text-[#8b8d9a] tabular-nums">{formatCurrency(listCostPerElev)}</span>
+                              <span className="font-mono text-[#ffffff] tabular-nums">{formatCurrency(listCostPerElev)}</span>
                             ),
                             discounted_total_list_cost: (
                               <span className={`font-mono tabular-nums ${isDiscountable ? 'text-emerald-400' : 'text-white'}`}>
@@ -1554,7 +1628,7 @@ export default function ElevationEditor({
                               </span>
                             ),
                             discounted_total_list_cost_per_elevation: (
-                              <span className={`font-mono tabular-nums ${isDiscountable ? 'text-emerald-400/70' : 'text-[#8b8d9a]'}`}>
+                              <span className={`font-mono tabular-nums ${isDiscountable ? 'text-emerald-400/70' : 'text-[#ffffff]'}`}>
                                 {formatCurrency(discountedCostPerElev)}
                               </span>
                             ),
@@ -1596,12 +1670,12 @@ export default function ElevationEditor({
                   </span>
                   <div className="flex items-center gap-4 text-sm font-mono tabular-nums">
                     {visibleColumns.has('total_list_cost') && (
-                      <span className="text-[#8b8d9a]">
+                      <span className="text-[#ffffff]">
                         List: <span className="font-bold text-white">{formatCurrency(grandTotal)}</span>
                       </span>
                     )}
                     {visibleColumns.has('discounted_total_list_cost') && (
-                      <span className="text-[#8b8d9a]">
+                      <span className="text-[#ffffff]">
                         Discounted:{' '}
                         <span className="font-bold text-emerald-400">
                           {formatCurrency(

@@ -40,7 +40,7 @@ const PRICING_DEFAULTS = {
 
 const inputClass =
   'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 text-sm';
-const labelClass = 'block text-sm font-medium text-[#8b8d9a] mb-1.5';
+const labelClass = 'block text-sm font-medium text-[#ffffff] mb-1.5';
 const cardClass = 'bg-[#111118] border border-[#1e1e2a] rounded-2xl p-6 space-y-5 shadow-lg shadow-black/15';
 
 // ---------------------------------------------------------------------------
@@ -213,9 +213,9 @@ export default function PricingAdjustmentTab({
         {icon}
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         {collapsedSections[sectionKey] ? (
-          <ChevronDown className="h-4 w-4 text-[#55566a] ml-auto transition-transform duration-200" />
+          <ChevronDown className="h-4 w-4 text-[#ffffff] ml-auto transition-transform duration-200" />
         ) : (
-          <ChevronUp className="h-4 w-4 text-[#55566a] ml-auto transition-transform duration-200" />
+          <ChevronUp className="h-4 w-4 text-[#ffffff] ml-auto transition-transform duration-200" />
         )}
       </button>
       {action}
@@ -239,7 +239,7 @@ export default function PricingAdjustmentTab({
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
           placeholder="0"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#55566a] text-sm">%</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ffffff] text-sm">%</span>
       </div>
     </div>
   );
@@ -258,7 +258,7 @@ export default function PricingAdjustmentTab({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetPricing}
-                className="px-3 py-2 text-xs font-medium text-[#8b8d9a] hover:text-white hover:bg-[#16161f] rounded-lg transition-colors duration-200"
+                className="px-3 py-2 text-xs font-medium text-[#ffffff] hover:text-white hover:bg-[#16161f] rounded-lg transition-colors duration-200"
               >
                 Reset Defaults
               </button>
@@ -302,7 +302,7 @@ export default function PricingAdjustmentTab({
                     value={discountMultiplierLow}
                     onChange={(e) => setDiscountMultiplierLow(parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-[#3e3f4d] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_low}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_low}</p>
                 </div>
                 <div>
                   <label className={labelClass}>
@@ -317,7 +317,7 @@ export default function PricingAdjustmentTab({
                     value={discountMultiplierHigh}
                     onChange={(e) => setDiscountMultiplierHigh(parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-[#3e3f4d] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_high}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_high}</p>
                 </div>
                 <div>
                   <label className={labelClass}>Discount Threshold ($)</label>
@@ -329,7 +329,7 @@ export default function PricingAdjustmentTab({
                     value={discountThreshold}
                     onChange={(e) => setDiscountThreshold(parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-[#3e3f4d] mt-1">Default: ${PRICING_DEFAULTS.discount_threshold.toLocaleString()}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.discount_threshold.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -348,7 +348,7 @@ export default function PricingAdjustmentTab({
                     value={glassPerSqft}
                     onChange={(e) => setGlassPerSqft(parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-[#3e3f4d] mt-1">Default: ${PRICING_DEFAULTS.glass_per_sqft}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.glass_per_sqft}</p>
                 </div>
                 <div>
                   <label className={labelClass}>Fabrication cost per joint ($)</label>
@@ -360,7 +360,7 @@ export default function PricingAdjustmentTab({
                     value={fabricationCostPerJoint}
                     onChange={(e) => setFabricationCostPerJoint(parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-[#3e3f4d] mt-1">Default: ${PRICING_DEFAULTS.fabrication_cost_per_joint}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.fabrication_cost_per_joint}</p>
                 </div>
               </div>
             </div>

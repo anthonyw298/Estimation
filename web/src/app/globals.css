@@ -29,10 +29,10 @@
   --rose: #f43f5e;
 
   /* Text */
-  --text: #eeeef2;
-  --text-secondary: #8b8d9a;
-  --text-dim: #55566a;
-  --text-ghost: #3e3f4d;
+  --text: #ffffff;
+  --text-secondary: #ffffff;
+  --text-dim: #ffffff;
+  --text-ghost: #ffffff;
 
   /* Semantic */
   --success: #34d399;
@@ -87,7 +87,7 @@ html {
 
 body {
   background: var(--bg);
-  color: var(--text);
+  color: #ffffff;
   position: relative;
 }
 

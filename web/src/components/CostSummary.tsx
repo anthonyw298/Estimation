@@ -294,7 +294,7 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
   if (elevationCosts.length === 0) {
     return (
       <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-6 text-center">
-        <p className="text-sm text-[#55566a]">
+        <p className="text-sm text-[#ffffff]">
           No calculated elevations yet. Calculate an elevation to see the cost summary.
         </p>
       </div>
@@ -305,7 +305,7 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
     <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-[#1e1e2a]">
-        <h3 className="text-sm font-semibold text-[#eeeef2] tracking-tight">
+        <h3 className="text-sm font-semibold text-[#ffffff] tracking-tight">
           Cost Summary
         </h3>
       </div>
@@ -314,8 +314,8 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         {/* Per-elevation breakdown */}
         {elevationCosts.map((elev) => (
           <div key={elev.name} className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#8b8d9a] truncate mr-4">{elev.name}</span>
-            <span className="text-[#eeeef2] font-mono tabular-nums">
+            <span className="text-[#ffffff] truncate mr-4">{elev.name}</span>
+            <span className="text-[#ffffff] font-mono tabular-nums">
               {formatCurrency(elev.listCost)}
             </span>
           </div>
@@ -324,20 +324,20 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         {/* Divider */}
         <div className="border-t border-[#1e1e2a] pt-3 space-y-2">
           <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#8b8d9a] font-medium">List Price Total</span>
-            <span className="text-[#eeeef2] font-mono font-medium tabular-nums">
+            <span className="text-[#ffffff] font-medium">List Price Total</span>
+            <span className="text-[#ffffff] font-mono font-medium tabular-nums">
               {formatCurrency(totalListPrice)}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#3e3f4d] ml-2">Discountable (profiles/gaskets/accessories)</span>
-            <span className="text-[#55566a] font-mono tabular-nums">
+            <span className="text-[#ffffff] ml-2">Discountable (profiles/gaskets/accessories)</span>
+            <span className="text-[#ffffff] font-mono tabular-nums">
               {formatCurrency(totalDiscountable)}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#3e3f4d] ml-2">Non-discountable (glass/doors/fabrication)</span>
-            <span className="text-[#55566a] font-mono tabular-nums">
+            <span className="text-[#ffffff] ml-2">Non-discountable (glass/doors/fabrication)</span>
+            <span className="text-[#ffffff] font-mono tabular-nums">
               {formatCurrency(totalNonDiscountable)}
             </span>
           </div>
@@ -345,9 +345,9 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
 
         {/* Discount multiplier */}
         <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-          <span className="text-[#8b8d9a]">
+          <span className="text-[#ffffff]">
             Discount Multiplier
-            <span className="text-xs text-[#3e3f4d] ml-1">
+            <span className="text-xs text-[#ffffff] ml-1">
               ({totalListPrice < threshold ? `<$${(threshold/1000).toFixed(0)}k` : `>=$${(threshold/1000).toFixed(0)}k`})
             </span>
           </span>
@@ -358,15 +358,15 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
 
         {/* Discounted Total */}
         <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-          <span className="text-[#8b8d9a] font-medium">Discounted Total</span>
-          <span className="text-[#eeeef2] font-mono font-medium tabular-nums">
+          <span className="text-[#ffffff] font-medium">Discounted Total</span>
+          <span className="text-[#ffffff] font-mono font-medium tabular-nums">
             {formatCurrency(discountedTotal)}
           </span>
         </div>
 
         {/* Waste cost */}
         <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-          <span className="text-[#8b8d9a]">Residual / Waste Cost</span>
+          <span className="text-[#ffffff]">Residual / Waste Cost</span>
           <span className="text-yellow-400 font-mono tabular-nums">
             {formatCurrency(estimatedWasteCost)}
           </span>
@@ -375,9 +375,9 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         {/* Additional Costs */}
         {totalAdditionalCostPct > 0 && (
           <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#8b8d9a]">
+            <span className="text-[#ffffff]">
               Additional Costs
-              <span className="text-xs text-[#3e3f4d] ml-1">({totalAdditionalCostPct.toFixed(1)}%)</span>
+              <span className="text-xs text-[#ffffff] ml-1">({totalAdditionalCostPct.toFixed(1)}%)</span>
             </span>
             <span className="text-orange-400 font-mono tabular-nums">
               {formatCurrency(additionalCostsAmount)}
@@ -388,9 +388,9 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         {/* Markups */}
         {totalMarkupPct > 0 && (
           <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#8b8d9a]">
+            <span className="text-[#ffffff]">
               Markups
-              <span className="text-xs text-[#3e3f4d] ml-1">({totalMarkupPct.toFixed(1)}%)</span>
+              <span className="text-xs text-[#ffffff] ml-1">({totalMarkupPct.toFixed(1)}%)</span>
             </span>
             <span className="text-purple-400 font-mono tabular-nums">
               {formatCurrency(markupsAmount)}
@@ -401,7 +401,7 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         {/* Grand Total */}
         <div className="border-t border-[#1e1e2a] pt-3">
           <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-gradient-to-r from-[#3b82f6]/10 via-[#111118] to-[#3b82f6]/5">
-            <span className="text-[#eeeef2] font-semibold text-sm">Project Total</span>
+            <span className="text-[#ffffff] font-semibold text-sm">Project Total</span>
             <span className="text-[#3b82f6] font-mono font-bold text-lg tabular-nums">
               {formatCurrency(grandTotal)}
             </span>

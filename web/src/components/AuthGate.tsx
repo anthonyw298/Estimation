@@ -70,7 +70,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           <h1 className="text-3xl font-bold gradient-text-static tracking-tight">
             United Glass Ventures
           </h1>
-          <p className="text-sm text-[#55566a] mt-2 font-medium tracking-[0.2em] uppercase flex items-center justify-center gap-1.5">
+          <p className="text-sm text-[#ffffff] mt-2 font-medium tracking-[0.2em] uppercase flex items-center justify-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-[#3b82f6]/50" />
             Estimator Pro
             <Sparkles className="w-3.5 h-3.5 text-[#8b5cf6]/50" />
@@ -83,11 +83,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           className={`card-glow glass-card rounded-2xl p-8 space-y-6 shadow-2xl shadow-black/50 ${shaking ? 'animate-shake' : ''}`}
         >
           <div>
-            <label className="block text-sm font-medium text-[#8b8d9a] mb-2.5">
+            <label className="block text-sm font-medium text-[#ffffff] mb-2.5">
               Password
             </label>
             <div className="relative group">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#3e3f4d] group-focus-within:text-[#3b82f6] transition-colors duration-200">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ffffff] group-focus-within:text-[#3b82f6] transition-colors duration-200">
                 <Lock className="w-4 h-4" />
               </div>
               <input
@@ -99,7 +99,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
                   if (error) setError(false);
                 }}
                 placeholder="Enter password"
-                className="w-full bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl pl-11 pr-4 py-3.5 text-sm placeholder:text-[#3e3f4d] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors duration-200"
+                className="w-full bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl pl-11 pr-4 py-3.5 text-sm placeholder:text-[#ffffff] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors duration-200"
               />
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="text-center mt-8">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#111118]/50 border border-[#1e1e2a]/50">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-subtle-pulse" />
-            <p className="text-[10px] text-[#55566a] tracking-wide uppercase font-medium">
+            <p className="text-[10px] text-[#ffffff] tracking-wide uppercase font-medium">
               Secure Session
             </p>
           </div>

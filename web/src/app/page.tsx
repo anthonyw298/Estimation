@@ -89,7 +89,7 @@ export default function HomePage() {
               <h1 className="text-lg font-bold gradient-text-static tracking-tight">
                 United Glass Ventures
               </h1>
-              <p className="text-[10px] text-[#55566a] font-semibold tracking-[0.2em] uppercase">
+              <p className="text-[10px] text-[#ffffff] font-semibold tracking-[0.2em] uppercase">
                 Estimator Pro
               </p>
             </div>
@@ -120,7 +120,7 @@ export default function HomePage() {
         {loading && (
           <div className="flex flex-col items-center justify-center py-32">
             <Loader2 className="w-8 h-8 text-[#3b82f6] animate-spin mb-4" />
-            <p className="text-[#8b8d9a] text-sm">Loading projects...</p>
+            <p className="text-[#ffffff] text-sm">Loading projects...</p>
           </div>
         )}
 
@@ -130,13 +130,13 @@ export default function HomePage() {
             <div className="relative mb-8">
               <div className="absolute inset-0 w-24 h-24 rounded-2xl bg-blue-500/8 blur-2xl animate-breathe" />
               <div className="relative w-24 h-24 rounded-2xl bg-[#111118] border border-[#1e1e2a] flex items-center justify-center shadow-2xl shadow-black/30">
-                <FolderOpen className="w-11 h-11 text-[#3e3f4d]" />
+                <FolderOpen className="w-11 h-11 text-[#ffffff]" />
               </div>
             </div>
             <h2 className="text-2xl font-bold gradient-text-static tracking-tight mb-3">
               No projects yet
             </h2>
-            <p className="text-[#8b8d9a] text-sm mb-10 max-w-sm text-center leading-relaxed">
+            <p className="text-[#ffffff] text-sm mb-10 max-w-sm text-center leading-relaxed">
               Get started by creating your first estimation project. Each project can contain multiple elevations and cost breakdowns.
             </p>
             <button
@@ -153,7 +153,7 @@ export default function HomePage() {
         {!loading && projects.length > 0 && (
           <>
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-xs font-semibold text-[#55566a] uppercase tracking-[0.15em]">
+              <h2 className="text-xs font-semibold text-[#ffffff] uppercase tracking-[0.15em]">
                 Projects ({projects.length})
               </h2>
               <div className="h-px flex-1 ml-4 bg-gradient-to-r from-[#1e1e2a] to-transparent" />
@@ -174,10 +174,10 @@ export default function HomePage() {
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-[#eeeef2] truncate group-hover:text-white transition-colors duration-200">
+                        <h3 className="text-sm font-semibold text-[#ffffff] truncate group-hover:text-white transition-colors duration-200">
                           {project}
                         </h3>
-                        <p className="text-xs text-[#3e3f4d] mt-0.5 flex items-center gap-1 transition-colors duration-200 group-hover:text-[#60a5fa]/60">
+                        <p className="text-xs text-[#ffffff] mt-0.5 flex items-center gap-1 transition-colors duration-200 group-hover:text-[#60a5fa]/60">
                           <span>Open project</span>
                           <ChevronRight className="w-3 h-3 transition-transform duration-300 group-hover:translate-x-1" />
                         </p>
@@ -190,7 +190,7 @@ export default function HomePage() {
                         e.stopPropagation();
                         setConfirmDelete(project);
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-[#f87171]/10 text-[#3e3f4d] hover:text-[#f87171] transition-colors duration-200"
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-[#f87171]/10 text-[#ffffff] hover:text-[#f87171] transition-colors duration-200"
                       title="Delete project"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -220,7 +220,7 @@ export default function HomePage() {
                 <div className="w-9 h-9 rounded-lg bg-[#3b82f6]/10 border border-[#3b82f6]/20 flex items-center justify-center">
                   <Plus className="w-4 h-4 text-[#3b82f6]" />
                 </div>
-                <h2 className="text-lg font-semibold text-[#eeeef2] tracking-tight">
+                <h2 className="text-lg font-semibold text-[#ffffff] tracking-tight">
                   New Project
                 </h2>
               </div>
@@ -231,7 +231,7 @@ export default function HomePage() {
                     setNewProjectName('');
                   }
                 }}
-                className="p-1.5 rounded-lg hover:bg-[#1e1e2a] text-[#8b8d9a] hover:text-[#eeeef2] transition-colors duration-200"
+                className="p-1.5 rounded-lg hover:bg-[#1e1e2a] text-[#ffffff] hover:text-[#ffffff] transition-colors duration-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -240,7 +240,7 @@ export default function HomePage() {
             <div className="mb-6">
               <label
                 htmlFor="project-name"
-                className="block text-sm font-medium text-[#8b8d9a] mb-2"
+                className="block text-sm font-medium text-[#ffffff] mb-2"
               >
                 Project Name
               </label>
@@ -253,7 +253,7 @@ export default function HomePage() {
                   if (e.key === 'Enter') handleCreateProject();
                 }}
                 placeholder="e.g. Riverside Office Tower"
-                className="w-full px-4 py-3 bg-[#0c0c12] border border-[#1e1e2a] rounded-xl text-sm text-[#eeeef2] placeholder-[#3e3f4d] focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors duration-200"
+                className="w-full px-4 py-3 bg-[#0c0c12] border border-[#1e1e2a] rounded-xl text-sm text-[#ffffff] placeholder-[#ffffff] focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors duration-200"
                 autoFocus
                 disabled={creating}
               />
@@ -267,7 +267,7 @@ export default function HomePage() {
                     setNewProjectName('');
                   }
                 }}
-                className="px-4 py-2.5 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
+                className="px-4 py-2.5 text-sm font-medium text-[#ffffff] hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
                 disabled={creating}
               >
                 Cancel
@@ -311,18 +311,18 @@ export default function HomePage() {
                 <Trash2 className="w-5 h-5 text-[#f87171]" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-[#eeeef2] tracking-tight">
+                <h3 className="text-base font-semibold text-[#ffffff] tracking-tight">
                   Delete Project
                 </h3>
-                <p className="text-xs text-[#8b8d9a]">
+                <p className="text-xs text-[#ffffff]">
                   This action cannot be undone
                 </p>
               </div>
             </div>
 
-            <p className="text-sm text-[#8b8d9a] mb-6 leading-relaxed">
+            <p className="text-sm text-[#ffffff] mb-6 leading-relaxed">
               Are you sure you want to delete{' '}
-              <span className="font-semibold text-[#eeeef2]">
+              <span className="font-semibold text-[#ffffff]">
                 {confirmDelete}
               </span>
               ? All elevations and data will be permanently removed.
@@ -333,7 +333,7 @@ export default function HomePage() {
                 onClick={() => {
                   if (!deletingProject) setConfirmDelete(null);
                 }}
-                className="px-4 py-2.5 text-sm font-medium text-[#8b8d9a] hover:text-[#eeeef2] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
+                className="px-4 py-2.5 text-sm font-medium text-[#ffffff] hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
                 disabled={!!deletingProject}
               >
                 Cancel

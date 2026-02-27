@@ -147,7 +147,7 @@ export default function BayDiagram({
   if (!diagram) {
     return (
       <div className="bg-[#111118] border border-[#1e1e2a] rounded-2xl p-8 text-center">
-        <p className="text-sm text-[#55566a]">
+        <p className="text-sm text-[#ffffff]">
           Enter valid opening dimensions and bay counts to see the diagram.
         </p>
       </div>
@@ -269,7 +269,7 @@ export default function BayDiagram({
           y1={oy + rectH + 20}
           x2={ox + rectW}
           y2={oy + rectH + 20}
-          stroke="#8b8d9a"
+          stroke="#ffffff"
           strokeWidth={0.75}
           markerStart="url(#arrowLeft)"
           markerEnd="url(#arrowRight)"
@@ -278,7 +278,7 @@ export default function BayDiagram({
           x={ox + rectW / 2}
           y={oy + rectH + 36}
           textAnchor="middle"
-          fill="#8b8d9a"
+          fill="#ffffff"
           fontSize={12}
           fontWeight={500}
           fontFamily="monospace"
@@ -292,7 +292,7 @@ export default function BayDiagram({
           y1={oy}
           x2={ox + rectW + 50}
           y2={oy + rectH}
-          stroke="#8b8d9a"
+          stroke="#ffffff"
           strokeWidth={0.75}
           markerStart="url(#arrowUp)"
           markerEnd="url(#arrowDown)"
@@ -301,7 +301,7 @@ export default function BayDiagram({
           x={ox + rectW + 54}
           y={oy + rectH / 2}
           textAnchor="start"
-          fill="#8b8d9a"
+          fill="#ffffff"
           fontSize={12}
           fontWeight={500}
           fontFamily="monospace"
@@ -363,7 +363,7 @@ export default function BayDiagram({
             markerHeight={6}
             orient="auto"
           >
-            <path d="M6,0 L0,3 L6,6" fill="none" stroke="#8b8d9a" strokeWidth={1} />
+            <path d="M6,0 L0,3 L6,6" fill="none" stroke="#ffffff" strokeWidth={1} />
           </marker>
           <marker
             id="arrowRight"
@@ -374,7 +374,7 @@ export default function BayDiagram({
             markerHeight={6}
             orient="auto"
           >
-            <path d="M0,0 L6,3 L0,6" fill="none" stroke="#8b8d9a" strokeWidth={1} />
+            <path d="M0,0 L6,3 L0,6" fill="none" stroke="#ffffff" strokeWidth={1} />
           </marker>
           <marker
             id="arrowUp"
@@ -385,7 +385,7 @@ export default function BayDiagram({
             markerHeight={6}
             orient="auto"
           >
-            <path d="M0,6 L3,0 L6,6" fill="none" stroke="#8b8d9a" strokeWidth={1} />
+            <path d="M0,6 L3,0 L6,6" fill="none" stroke="#ffffff" strokeWidth={1} />
           </marker>
           <marker
             id="arrowDown"
@@ -396,7 +396,7 @@ export default function BayDiagram({
             markerHeight={6}
             orient="auto"
           >
-            <path d="M0,0 L3,6 L6,0" fill="none" stroke="#8b8d9a" strokeWidth={1} />
+            <path d="M0,0 L3,6 L6,0" fill="none" stroke="#ffffff" strokeWidth={1} />
           </marker>
         </defs>
       </svg>

@@ -367,7 +367,7 @@ export default function MLAnalyticsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center">
           <Loader2 className="w-8 h-8 text-[#3b82f6] animate-spin mb-4" />
-          <p className="text-[#8b8d9a] text-sm">Loading ML Analytics...</p>
+          <p className="text-[#ffffff] text-sm">Loading ML Analytics...</p>
         </div>
       </div>
     );
@@ -381,25 +381,25 @@ export default function MLAnalyticsPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push('/')}
-              className="p-2 rounded-lg hover:bg-[#111118] text-[#8b8d9a] hover:text-[#eeeef2] transition-colors"
+              className="p-2 rounded-lg hover:bg-[#111118] text-[#ffffff] hover:text-[#ffffff] transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="w-px h-6 bg-[#1e1e2a]" />
             <div className="flex items-center gap-2">
               <Brain className="w-5 h-5 text-purple-500" />
-              <h1 className="text-base font-semibold text-[#eeeef2] tracking-tight">ML Analytics</h1>
+              <h1 className="text-base font-semibold text-[#ffffff] tracking-tight">ML Analytics</h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Status */}
-            <div className="flex items-center gap-2 text-xs text-[#55566a]">
+            <div className="flex items-center gap-2 text-xs text-[#ffffff]">
               <span className="transition-all duration-200">
                 Model: {status.is_trained ? (
                   <span className="text-emerald-400">Trained</span>
                 ) : (
-                  <span className="text-[#55566a]">Not trained</span>
+                  <span className="text-[#ffffff]">Not trained</span>
                 )}
               </span>
               <span className="text-[#2a2a3a]">|</span>
@@ -412,20 +412,20 @@ export default function MLAnalyticsPage() {
                 value={selectedProject}
                 onChange={(e) => handleProjectChange(e.target.value)}
                 disabled={loadingProjects}
-                className="appearance-none bg-[#111118] border border-[#1e1e2a] text-sm text-[#eeeef2] rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all duration-200 cursor-pointer disabled:opacity-40 min-w-[180px]"
+                className="appearance-none bg-[#111118] border border-[#1e1e2a] text-sm text-[#ffffff] rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all duration-200 cursor-pointer disabled:opacity-40 min-w-[180px]"
               >
                 <option value="">Select Project</option>
                 {projects.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55566a] pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#ffffff] pointer-events-none" />
             </div>
 
             <button
               onClick={() => { loadProjectNames(); if (selectedProject) loadProjectElevations(selectedProject); }}
               disabled={loadingProjects || loadingElevations}
-              className="p-2 text-[#8b8d9a] hover:text-[#eeeef2] hover:bg-[#111118] rounded-lg transition-all duration-200 disabled:opacity-40"
+              className="p-2 text-[#ffffff] hover:text-[#ffffff] hover:bg-[#111118] rounded-lg transition-all duration-200 disabled:opacity-40"
               title="Refresh"
             >
               {(loadingProjects || loadingElevations) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -441,14 +441,14 @@ export default function MLAnalyticsPage() {
         <div className="flex-1 flex flex-col overflow-hidden border-r border-[#1e1e2a]">
           <div className="px-4 py-3 border-b border-[#1e1e2a] bg-[#0a0a10]">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold text-[#55566a] uppercase tracking-wider">
+              <h2 className="text-xs font-semibold text-[#ffffff] uppercase tracking-wider">
                 {selectedProject ? `${selectedProject} — Elevations (${entries.length})` : 'Elevations'}
               </h2>
               {entries.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <button onClick={selectAll} className="text-xs text-[#55566a] hover:text-[#c4c5cf] transition-colors duration-200">Select All</button>
+                  <button onClick={selectAll} className="text-xs text-[#ffffff] hover:text-[#ffffff] transition-colors duration-200">Select All</button>
                   <span className="text-[#2a2a3a]">|</span>
-                  <button onClick={deselectAll} className="text-xs text-[#55566a] hover:text-[#c4c5cf] transition-colors duration-200">Deselect</button>
+                  <button onClick={deselectAll} className="text-xs text-[#ffffff] hover:text-[#ffffff] transition-colors duration-200">Deselect</button>
                   <span className="text-[#2a2a3a]">|</span>
                   <button
                     onClick={addSelectedToTraining}
@@ -479,15 +479,15 @@ export default function MLAnalyticsPage() {
             {loadingElevations ? (
               <div className="flex flex-col items-center justify-center h-full">
                 <Loader2 className="w-6 h-6 text-purple-500 animate-spin mb-3" />
-                <p className="text-xs text-[#55566a]">Loading elevations...</p>
+                <p className="text-xs text-[#ffffff]">Loading elevations...</p>
               </div>
             ) : entries.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-up opacity-0" style={{ animationFillMode: 'forwards', animationDelay: '0.1s' }}>
-                <Layers className="w-10 h-10 text-[#3e3f4d] mb-4" />
-                <p className="text-sm text-[#8b8d9a] mb-2">
+                <Layers className="w-10 h-10 text-[#ffffff] mb-4" />
+                <p className="text-sm text-[#ffffff] mb-2">
                   {selectedProject ? 'No elevations found' : 'Select a project'}
                 </p>
-                <p className="text-xs text-[#3e3f4d] max-w-xs">
+                <p className="text-xs text-[#ffffff] max-w-xs">
                   {selectedProject
                     ? 'This project has no elevations yet.'
                     : 'Choose a project from the dropdown above to view its elevations.'}
@@ -518,14 +518,14 @@ export default function MLAnalyticsPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-[#eeeef2] truncate">
+                      <span className="text-sm font-medium text-[#ffffff] truncate">
                         {entry.project} / {entry.elevation}
                       </span>
                       {entry.isInTraining && (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                       )}
                     </div>
-                    <div className="text-xs text-[#55566a] mt-0.5">
+                    <div className="text-xs text-[#ffffff] mt-0.5">
                       {entry.data.opening_width_inches}&Prime; x {entry.data.opening_height_inches}&Prime;
                       {' | '}
                       {entry.data.bays_wide}x{entry.data.bays_tall} bays
@@ -538,10 +538,10 @@ export default function MLAnalyticsPage() {
                   <div className="text-right flex-shrink-0">
                     {entry.cost != null ? (
                       <div>
-                        <p className="text-sm font-mono font-bold text-[#eeeef2] tabular-nums">
+                        <p className="text-sm font-mono font-bold text-[#ffffff] tabular-nums">
                           {fmtCurrency(entry.cost)}
                         </p>
-                        <p className="text-[10px] text-[#55566a]">actual</p>
+                        <p className="text-[10px] text-[#ffffff]">actual</p>
                       </div>
                     ) : entry.prediction ? (
                       <div>
@@ -553,7 +553,7 @@ export default function MLAnalyticsPage() {
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-[#3e3f4d]">No data</p>
+                      <p className="text-xs text-[#ffffff]">No data</p>
                     )}
                   </div>
 
@@ -577,17 +577,17 @@ export default function MLAnalyticsPage() {
 
         {/* Right Panel - Pattern Insights */}
         <div className="w-[380px] flex-shrink-0 bg-[#0a0a10] overflow-y-auto p-5 space-y-5">
-          <h2 className="text-xs font-semibold text-[#55566a] uppercase tracking-wider">
+          <h2 className="text-xs font-semibold text-[#ffffff] uppercase tracking-wider">
             Pattern Insights
           </h2>
 
           {!stats || !status.is_trained ? (
             <div className="text-center py-16">
-              <Brain className="w-10 h-10 text-[#3e3f4d] mx-auto mb-4" />
-              <p className="text-sm text-[#8b8d9a] mb-1">
+              <Brain className="w-10 h-10 text-[#ffffff] mx-auto mb-4" />
+              <p className="text-sm text-[#ffffff] mb-1">
                 {!stats ? 'No training data yet' : 'Model not trained'}
               </p>
-              <p className="text-xs text-[#3e3f4d]">
+              <p className="text-xs text-[#ffffff]">
                 {!stats
                   ? 'Add elevations to training, then train the model to see pattern insights.'
                   : `${stats.sample_count} sample(s) loaded. Click "Train Model" to see pattern insights.`}
@@ -610,7 +610,7 @@ export default function MLAnalyticsPage() {
                   <span className={`text-sm font-medium ${status.is_trained ? 'text-emerald-400' : 'text-yellow-400'}`}>
                     {status.is_trained ? 'Model Trained' : 'Model Not Trained'}
                   </span>
-                  <span className="text-xs text-[#55566a] ml-auto">{stats.sample_count} samples</span>
+                  <span className="text-xs text-[#ffffff] ml-auto">{stats.sample_count} samples</span>
                 </div>
               </div>
 
@@ -618,30 +618,30 @@ export default function MLAnalyticsPage() {
               <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-4 space-y-3 shadow-lg shadow-black/20">
                 <div className="flex items-center gap-2 mb-2">
                   <BarChart3 className="w-4 h-4 text-blue-500" />
-                  <h3 className="text-sm font-semibold text-[#eeeef2]">Statistics</h3>
+                  <h3 className="text-sm font-semibold text-[#ffffff]">Statistics</h3>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-2.5">
-                    <p className="text-[10px] text-[#55566a] uppercase">Avg Cost</p>
-                    <p className="text-sm font-mono font-bold text-[#eeeef2] tabular-nums">
+                    <p className="text-[10px] text-[#ffffff] uppercase">Avg Cost</p>
+                    <p className="text-sm font-mono font-bold text-[#ffffff] tabular-nums">
                       {fmtCurrency(stats.avg_cost)}
                     </p>
                   </div>
                   <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-2.5">
-                    <p className="text-[10px] text-[#55566a] uppercase">Avg SQFT</p>
-                    <p className="text-sm font-mono font-bold text-[#eeeef2] tabular-nums">
+                    <p className="text-[10px] text-[#ffffff] uppercase">Avg SQFT</p>
+                    <p className="text-sm font-mono font-bold text-[#ffffff] tabular-nums">
                       {stats.avg_sqft.toFixed(1)}
                     </p>
                   </div>
                   <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-2.5">
-                    <p className="text-[10px] text-[#55566a] uppercase">Avg Size</p>
-                    <p className="text-sm font-mono text-[#eeeef2] tabular-nums">
+                    <p className="text-[10px] text-[#ffffff] uppercase">Avg Size</p>
+                    <p className="text-sm font-mono text-[#ffffff] tabular-nums">
                       {stats.avg_width.toFixed(0)}&Prime; x {stats.avg_height.toFixed(0)}&Prime;
                     </p>
                   </div>
                   <div className="bg-[#08080e] border border-[#1e1e2a] rounded-lg p-2.5">
-                    <p className="text-[10px] text-[#55566a] uppercase">Avg $/sqft</p>
+                    <p className="text-[10px] text-[#ffffff] uppercase">Avg $/sqft</p>
                     <p className="text-sm font-mono font-bold text-emerald-400 tabular-nums">
                       {fmtCurrency(stats.avg_cost_per_sqft)}
                     </p>
@@ -653,12 +653,12 @@ export default function MLAnalyticsPage() {
               <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-4 space-y-3 shadow-lg shadow-black/20">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-4 h-4 text-emerald-500" />
-                  <h3 className="text-sm font-semibold text-[#eeeef2]">Cost Range</h3>
+                  <h3 className="text-sm font-semibold text-[#ffffff]">Cost Range</h3>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] text-[#55566a] uppercase">Min</p>
+                    <p className="text-[10px] text-[#ffffff] uppercase">Min</p>
                     <p className="text-sm font-mono text-red-400 tabular-nums">
                       {fmtCurrency(stats.min_cost)}
                     </p>
@@ -670,7 +670,7 @@ export default function MLAnalyticsPage() {
                     />
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] text-[#55566a] uppercase">Max</p>
+                    <p className="text-[10px] text-[#ffffff] uppercase">Max</p>
                     <p className="text-sm font-mono text-emerald-400 tabular-nums">
                       {fmtCurrency(stats.max_cost)}
                     </p>
@@ -683,13 +683,13 @@ export default function MLAnalyticsPage() {
                 <div className="bg-[#111118] border border-[#1e1e2a] rounded-xl p-4 space-y-3 shadow-lg shadow-black/20">
                   <div className="flex items-center gap-2 mb-2">
                     <Activity className="w-4 h-4 text-cyan-500" />
-                    <h3 className="text-sm font-semibold text-[#eeeef2]">Common Configurations</h3>
+                    <h3 className="text-sm font-semibold text-[#ffffff]">Common Configurations</h3>
                   </div>
 
                   <div className="space-y-2">
                     {stats.common_configurations.map((config, i) => (
                       <div key={i} className="flex items-center justify-between">
-                        <span className="text-xs text-[#c4c5cf]">{config.config}</span>
+                        <span className="text-xs text-[#ffffff]">{config.config}</span>
                         <div className="flex items-center gap-2">
                           <div className="w-16 h-1.5 bg-[#1e1e2a] rounded-full overflow-hidden">
                             <div
@@ -697,7 +697,7 @@ export default function MLAnalyticsPage() {
                               style={{ width: `${config.percentage}%` }}
                             />
                           </div>
-                          <span className="text-xs text-[#55566a] font-mono tabular-nums w-14 text-right">
+                          <span className="text-xs text-[#ffffff] font-mono tabular-nums w-14 text-right">
                             {config.count} ({config.percentage.toFixed(0)}%)
                           </span>
                         </div>
@@ -714,7 +714,7 @@ export default function MLAnalyticsPage() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-purple-500" />
-                <h3 className="text-sm font-semibold text-[#eeeef2]">Training Samples ({status.sample_count})</h3>
+                <h3 className="text-sm font-semibold text-[#ffffff]">Training Samples ({status.sample_count})</h3>
               </div>
               {status.sample_count > 0 && (
                 <button
@@ -728,7 +728,7 @@ export default function MLAnalyticsPage() {
             </div>
 
             {status.sample_count === 0 ? (
-              <p className="text-xs text-[#3e3f4d] text-center py-4">
+              <p className="text-xs text-[#ffffff] text-center py-4">
                 No training samples. Add elevations from the left panel.
               </p>
             ) : (
@@ -739,16 +739,16 @@ export default function MLAnalyticsPage() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1e1e2a] bg-[#08080e] group"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-[#c4c5cf] truncate">
+                      <p className="text-xs font-medium text-[#ffffff] truncate">
                         {sample.project} / {sample.elevation}
                       </p>
-                      <p className="text-[10px] text-[#55566a]">
+                      <p className="text-[10px] text-[#ffffff]">
                         {sample.width}&Prime; x {sample.height}&Prime; | {sample.bays_wide}x{sample.bays_tall} | {sample.finish} | {fmtCurrency(sample.cost)}
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemoveSampleById(sample.id)}
-                      className="p-1 rounded text-[#3e3f4d] hover:text-red-400 hover:bg-red-500/10 transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                      className="p-1 rounded text-[#ffffff] hover:text-red-400 hover:bg-red-500/10 transition-colors duration-200 opacity-0 group-hover:opacity-100"
                       title="Remove sample"
                     >
                       <Minus className="w-3.5 h-3.5" />
