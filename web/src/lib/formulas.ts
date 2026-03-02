@@ -430,18 +430,16 @@ export function calculate_total_glass(
       ? custom_bay_heights
       : Array(bays_tall).fill(opening_height / bays_tall);
 
-  // Build D.L.O. grid and sum glass areas from DLO dimensions
+  // Build D.L.O. grid
   const { dloWidths, dloHeights } = buildDloGrid(bayWidths, bayHeights);
 
-  // Sum per-lite glass make sizes (DLO + 3/4") to get actual glass area
-  let totalSqft = 0;
-  for (let col = 0; col < bays_wide; col++) {
-    for (let row = 0; row < bays_tall; row++) {
-      const glassW = calculateGlassMakeSize(dloWidths[col]);
-      const glassH = calculateGlassMakeSize(dloHeights[col][row]);
-      totalSqft += (glassW * glassH) / 144;
-    }
-  }
+  // Total DLO Area approach:
+  // Sum all DLO widths across columns, sum all DLO heights across rows,
+  // then multiply to get total glass area as one rectangle.
+  const totalDloWidth = dloWidths.reduce((sum, w) => sum + w, 0);
+  // Heights are the same for every column, so just use column 0
+  const totalDloHeight = dloHeights[0].reduce((sum, h) => sum + h, 0);
+  const totalSqft = (totalDloWidth * totalDloHeight) / 144;
 
   return totalSqft * total_count;
 }

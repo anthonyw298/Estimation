@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import type { DoorConfig } from '@/types';
+import { calculateDloWidth, calculateDloHeight, DLO_EDGE_DEDUCTION, DLO_INTERIOR_DEDUCTION, DLO_SILL_DEDUCTION } from '@/lib/formulas';
 
 interface BayDiagramProps {
   baysWide: number;
@@ -40,7 +41,7 @@ export default function BayDiagram({
 
     // SVG layout constants
     const maxWidth = 500;
-    const padding = { top: 40, right: 70, bottom: 50, left: 20 };
+    const padding = { top: 58, right: 100, bottom: 60, left: 30 };
     const availableDrawWidth = maxWidth - padding.left - padding.right;
     const scale = availableDrawWidth / openingWidth;
     const drawHeight = openingHeight * scale;
@@ -189,76 +190,186 @@ export default function BayDiagram({
           strokeWidth={1.5}
         />
 
-        {/* Vertical grid lines (between bays) */}
-        {vLinePositions.map((pos, i) => (
-          <line
-            key={`v-${i}`}
-            x1={ox + pos * scale}
-            y1={oy}
-            x2={ox + pos * scale}
-            y2={oy + rectH}
-            stroke="#2a2a3a"
-            strokeWidth={1}
-            strokeDasharray="4 3"
-          />
-        ))}
+        {/* Outer frame — jambs (left/right 2"), head (top 2"), sill (bottom 2-7/16") */}
+        {(() => {
+          const frameW = 2 * scale; // 2" for jambs and head
+          const frameFill = '#2a2a3c';
+          const frameStroke = '#40405a';
+          const labelFill = '#8888aa';
+          return (
+            <>
+              {/* Left jamb — 2" */}
+              <rect x={ox} y={oy} width={frameW} height={rectH}
+                fill={frameFill} stroke={frameStroke} strokeWidth={0.5} />
+              <text x={ox - 4} y={oy + rectH / 2} textAnchor="end" dominantBaseline="central"
+                fill={labelFill} fontSize={7} fontFamily="monospace"
+                transform={`rotate(-90, ${ox - 4}, ${oy + rectH / 2})`}>
+                2&quot;
+              </text>
 
-        {/* Horizontal grid lines (between bays) */}
-        {hLinePositions.map((pos, i) => (
-          <line
-            key={`h-${i}`}
-            x1={ox}
-            y1={oy + pos * scale}
-            x2={ox + rectW}
-            y2={oy + pos * scale}
-            stroke="#2a2a3a"
-            strokeWidth={1}
-            strokeDasharray="4 3"
-          />
-        ))}
+              {/* Right jamb — 2" */}
+              <rect x={ox + rectW - frameW} y={oy} width={frameW} height={rectH}
+                fill={frameFill} stroke={frameStroke} strokeWidth={0.5} />
 
-        {/* Bay width labels (at top) */}
+              {/* Head (top) — 2" */}
+              <rect x={ox} y={oy} width={rectW} height={frameW}
+                fill={frameFill} stroke={frameStroke} strokeWidth={0.5} />
+
+              {/* Sill (bottom) — 2-7/16" (2" frame + 7/16" sill deduction) */}
+              {(() => {
+                const sillTotal = (2 + DLO_SILL_DEDUCTION) * scale;
+                return (
+                  <>
+                    <rect x={ox} y={oy + rectH - sillTotal} width={rectW} height={sillTotal}
+                      fill={frameFill} stroke={frameStroke} strokeWidth={0.5} />
+                    <text x={ox + rectW / 2} y={oy + rectH + 8} textAnchor="middle"
+                      fill={labelFill} fontSize={7} fontFamily="monospace">
+                      2-7/16&quot;
+                    </text>
+                  </>
+                );
+              })()}
+            </>
+          );
+        })()}
+
+        {/* Vertical mullions (between bays) — 2″ wide */}
+        {vLinePositions.map((pos, i) => {
+          const mullionW = DLO_INTERIOR_DEDUCTION * scale;
+          const cx = ox + pos * scale;
+          return (
+            <g key={`v-${i}`}>
+              <rect
+                x={cx - mullionW / 2}
+                y={oy}
+                width={mullionW}
+                height={rectH}
+                fill="#3a3a4c"
+                stroke="#50506a"
+                strokeWidth={0.5}
+              />
+              {/* 2″ label at top, between adjacent DLO labels */}
+              <text
+                x={cx}
+                y={oy - 18}
+                textAnchor="middle"
+                fill="#8888aa"
+                fontSize={8}
+                fontFamily="monospace"
+              >
+                2&quot;
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Horizontal mullions (between bays) — 2″ tall */}
+        {hLinePositions.map((pos, i) => {
+          const mullionH = DLO_INTERIOR_DEDUCTION * scale;
+          const cy = oy + pos * scale;
+          return (
+            <g key={`h-${i}`}>
+              <rect
+                x={ox}
+                y={cy - mullionH / 2}
+                width={rectW}
+                height={mullionH}
+                fill="#3a3a4c"
+                stroke="#50506a"
+                strokeWidth={0.5}
+              />
+              {/* 2″ label on right, between adjacent DLO labels */}
+              <text
+                x={ox + rectW + 10}
+                y={cy}
+                textAnchor="start"
+                dominantBaseline="central"
+                fill="#8888aa"
+                fontSize={8}
+                fontFamily="monospace"
+              >
+                2&quot;
+              </text>
+            </g>
+          );
+        })}
+
+        {/* (7/16″ sill deduction is now integrated into the combined 2-7/16" sill frame above) */}
+
+        {/* Bay width labels (at top) — C/L and D.L.O. */}
         {(() => {
           let xAcc = 0;
           return verticalLines.map((v, i) => {
             const midX = ox + (xAcc + bayWidths[i] / 2) * scale;
+            const dlo = calculateDloWidth(bayWidths[i], i, baysWide);
             xAcc += bayWidths[i];
             return (
-              <text
-                key={`wl-${i}`}
-                x={midX}
-                y={oy - 12}
-                textAnchor="middle"
-                fill="#3b82f6"
-                fontSize={11}
-                fontWeight={600}
-                fontFamily="monospace"
-              >
-                {v.label}
-              </text>
+              <g key={`wl-${i}`}>
+                <text
+                  x={midX}
+                  y={oy - 26}
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize={9}
+                  fontFamily="monospace"
+                  opacity={0.5}
+                >
+                  C/L {v.label}
+                </text>
+                <text
+                  x={midX}
+                  y={oy - 12}
+                  textAnchor="middle"
+                  fill="#3b82f6"
+                  fontSize={11}
+                  fontWeight={600}
+                  fontFamily="monospace"
+                >
+                  DLO {dlo.toFixed(1)}&quot;
+                </text>
+              </g>
             );
           });
         })()}
 
-        {/* Bay height labels (on right) */}
+        {/* Bay height labels (on right) — C/L and D.L.O. */}
+        {/* Note: heights are stored bottom-to-top (index 0 = bottom row) */}
         {(() => {
+          // SVG draws top-to-bottom, but bayHeights[0] = bottom row
+          // The diagram draws from top, so reverse the display order
           let yAcc = 0;
           return horizontalLines.map((h, i) => {
             const midY = oy + (yAcc + bayHeights[i] / 2) * scale;
+            // In SVG, row 0 drawn at top — but in our data row 0 = bottom
+            // The diagram reversal: SVG index i corresponds to data row (baysTall - 1 - i) for bottom=0
+            const dataRow = baysTall - 1 - i;
+            const dlo = calculateDloHeight(bayHeights[i], dataRow, baysTall);
             yAcc += bayHeights[i];
             return (
-              <text
-                key={`hl-${i}`}
-                x={ox + rectW + 10}
-                y={midY + 4}
-                textAnchor="start"
-                fill="#3b82f6"
-                fontSize={11}
-                fontWeight={600}
-                fontFamily="monospace"
-              >
-                {h.label}
-              </text>
+              <g key={`hl-${i}`}>
+                <text
+                  x={ox + rectW + 10}
+                  y={midY - 4}
+                  textAnchor="start"
+                  fill="#ffffff"
+                  fontSize={9}
+                  fontFamily="monospace"
+                  opacity={0.5}
+                >
+                  C/L {h.label}
+                </text>
+                <text
+                  x={ox + rectW + 10}
+                  y={midY + 10}
+                  textAnchor="start"
+                  fill="#3b82f6"
+                  fontSize={11}
+                  fontWeight={600}
+                  fontFamily="monospace"
+                >
+                  DLO {dlo.toFixed(1)}&quot;
+                </text>
+              </g>
             );
           });
         })()}
@@ -288,9 +399,9 @@ export default function BayDiagram({
 
         {/* Overall height label (right side, further out) */}
         <line
-          x1={ox + rectW + 50}
+          x1={ox + rectW + 70}
           y1={oy}
-          x2={ox + rectW + 50}
+          x2={ox + rectW + 70}
           y2={oy + rectH}
           stroke="#ffffff"
           strokeWidth={0.75}
@@ -298,14 +409,14 @@ export default function BayDiagram({
           markerEnd="url(#arrowDown)"
         />
         <text
-          x={ox + rectW + 54}
+          x={ox + rectW + 74}
           y={oy + rectH / 2}
           textAnchor="start"
           fill="#ffffff"
           fontSize={12}
           fontWeight={500}
           fontFamily="monospace"
-          transform={`rotate(90, ${ox + rectW + 54}, ${oy + rectH / 2})`}
+          transform={`rotate(90, ${ox + rectW + 74}, ${oy + rectH / 2})`}
         >
           {openingHeight.toFixed(1)}&quot; H
         </text>

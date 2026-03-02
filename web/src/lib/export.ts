@@ -7,6 +7,7 @@ import type {
   ReportConfig,
 } from '@/types';
 import { getUnitPriceByPart, getPriceByPart, applyMaterialImpactInMemory, parseLengthToFeet } from '@/lib/pricing';
+import { calculateDloWidth, calculateDloHeight, calculateGlassMakeSize, calculate_total_glass, buildDloGrid } from '@/lib/formulas';
 import { partsData } from '@/data/parts-data';
 import { PART_NUMBER_MAP } from '@/data/part-number';
 
@@ -393,8 +394,8 @@ function writeSystemInput(
       : 'Equal distribution'],
     ['Opening Width', `${(elev.opening_width_inches || 0).toFixed(2)} in`],
     ['Opening Height', `${(elev.opening_height_inches || 0).toFixed(2)} in`],
-    ['Sq Ft per Type', `${((elev.opening_width_inches * elev.opening_height_inches) / 144).toFixed(2)} sqft`],
-    ['Total Sq Ft', `${(((elev.opening_width_inches * elev.opening_height_inches) / 144) * (elev.total_count || 1)).toFixed(2)} sqft`],
+    ['Sq Ft per Type (DLO)', `${calculate_total_glass(elev.opening_width_inches, elev.opening_height_inches, 1, elev.bays_wide || 1, elev.bays_tall || 1, elev.custom_bay_widths, elev.custom_bay_heights).toFixed(2)} sqft`],
+    ['Total Sq Ft (DLO)', `${calculate_total_glass(elev.opening_width_inches, elev.opening_height_inches, elev.total_count || 1, elev.bays_wide || 1, elev.bays_tall || 1, elev.custom_bay_widths, elev.custom_bay_heights).toFixed(2)} sqft`],
     ['Perimeter Ft', `${((2 * (elev.opening_width_inches + elev.opening_height_inches)) / 12).toFixed(2)} ft`],
     ['Total Perimeter Ft', `${(((2 * (elev.opening_width_inches + elev.opening_height_inches)) / 12) * (elev.total_count || 1)).toFixed(2)} ft`],
     ['Doors', doors.length > 0
@@ -1307,7 +1308,7 @@ function writeElevationSummaryTable(
     const qty = elev.total_count || 1;
     const w = elev.opening_width_inches || 0;
     const h = elev.opening_height_inches || 0;
-    const sqft = ((w * h) / 144) * qty;
+    const sqft = calculate_total_glass(w, h, qty, elev.bays_wide || 1, elev.bays_tall || 1, elev.custom_bay_widths, elev.custom_bay_heights);
     const perimeter = ((2 * (w + h)) / 12) * qty;
     totalQty += qty;
     totalSqft += sqft;
@@ -1355,7 +1356,7 @@ function parseDoorSizeInches(sizeStr: string): [number, number] {
 
 /**
  * Creates a bay distribution diagram as a PNG base64 string for embedding in Excel.
- * Matches Python's _create_bay_diagram() + _add_bay_diagram_to_excel().
+ * @param mode 'cl' for centerline dimensions, 'dlo' for D.L.O. dimensions
  */
 function createBayDiagram(
   baysWide: number,
@@ -1365,6 +1366,7 @@ function createBayDiagram(
   customBayWidths?: number[],
   customBayHeights?: number[],
   doors?: DoorConfig[],
+  mode: 'cl' | 'dlo' = 'cl',
 ): string | null {
   if (baysWide <= 0 || baysTall <= 0 || openingWidth <= 0 || openingHeight <= 0) return null;
 
@@ -1411,7 +1413,11 @@ function createBayDiagram(
   ctx.font = 'bold 12px Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Bay Distribution Layout', diagramWidth / 2, 10);
+  ctx.fillText(
+    mode === 'dlo' ? 'Bay Distribution — D.L.O. Dimensions' : 'Bay Distribution — C/L Dimensions',
+    diagramWidth / 2,
+    10,
+  );
 
   // Draw vertical grid lines (between bays)
   let accX = startX;
@@ -1446,7 +1452,7 @@ function createBayDiagram(
   ctx.lineWidth = 3;
   ctx.strokeRect(startX, startY, scaledTotalWidth, scaledTotalHeight);
 
-  // Bay labels (B1, B2, ... with dimensions)
+  // Bay labels (B1, B2, ... with dimensions — C/L or D.L.O.)
   ctx.font = '8px Arial, sans-serif';
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'center';
@@ -1456,11 +1462,22 @@ function createBayDiagram(
   let rowY = startY;
   for (let row = 0; row < baysTall; row++) {
     let colX = startX;
+    // SVG draws top-to-bottom: row 0 at top = data row (baysTall-1) which is the top row
+    // In our data, row 0 = bottom. So dataRow for SVG row index:
+    const dataRow = baysTall - 1 - row;
     for (let col = 0; col < baysWide; col++) {
       const cx = colX + (bayWidths[col] * scale) / 2;
       const cy = rowY + (bayHeights[row] * scale) / 2;
       ctx.fillText(`B${bayNum}`, cx, cy - 6);
-      ctx.fillText(`${bayWidths[col].toFixed(1)}" x ${bayHeights[row].toFixed(1)}"`, cx, cy + 6);
+      if (mode === 'dlo') {
+        const dloW = calculateDloWidth(bayWidths[col], col, baysWide);
+        const dloH = calculateDloHeight(bayHeights[row], dataRow, baysTall);
+        ctx.fillStyle = '#1565C0';
+        ctx.fillText(`${dloW.toFixed(1)}" x ${dloH.toFixed(1)}"`, cx, cy + 6);
+        ctx.fillStyle = '#000000';
+      } else {
+        ctx.fillText(`${bayWidths[col].toFixed(1)}" x ${bayHeights[row].toFixed(1)}"`, cx, cy + 6);
+      }
       colX += bayWidths[col] * scale;
       bayNum++;
     }
@@ -1507,7 +1524,7 @@ function createBayDiagram(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(
-    `Total: ${openingWidth.toFixed(1)}" W x ${openingHeight.toFixed(1)}" H`,
+    `Total (C/L): ${openingWidth.toFixed(1)}" W x ${openingHeight.toFixed(1)}" H`,
     diagramWidth / 2,
     diagramHeight - 20,
   );
@@ -1761,30 +1778,43 @@ export async function exportToExcel(
     // Auto-fit all material columns so descriptions are never truncated
     autofitColumns(sheet, 5, 16);
 
-    // --- Bay Diagram (embedded as PNG, directly under system input / Doors row) ---
+    // --- Bay Diagrams (C/L above, D.L.O. below) ---
     if (elevSections?.diagram !== false && elev.bays_wide > 0 && elev.bays_tall > 0) {
-      // *Note - C/L Dimensions label: directly under system input, above diagram
       const noteRow = inputEndRow;
       const noteCell = sheet.getRow(noteRow).getCell(1);
-      noteCell.value = '*Note - C/L Dimensions';
+      noteCell.value = '*Bay Distribution — C/L & D.L.O. Diagrams';
       setFont(noteCell, { size: 12 });
 
-      // Diagram image starts one row below the note
       const diagramRow = noteRow + 1;
+      // 300px diagram height ÷ ~20px per default row ≈ 15 rows, +1 for spacing
+      const diagramRowSpan = 16;
 
-      const diagramBase64 = createBayDiagram(
-        elev.bays_wide,
-        elev.bays_tall,
-        elev.opening_width_inches,
-        elev.opening_height_inches,
-        elev.custom_bay_widths,
-        elev.custom_bay_heights,
-        elevDoors,
+      // C/L diagram (top)
+      const clBase64 = createBayDiagram(
+        elev.bays_wide, elev.bays_tall,
+        elev.opening_width_inches, elev.opening_height_inches,
+        elev.custom_bay_widths, elev.custom_bay_heights,
+        elevDoors, 'cl',
       );
-      if (diagramBase64) {
-        const imageId = workbook.addImage({ base64: diagramBase64, extension: 'png' });
-        sheet.addImage(imageId, {
-          tl: { col: 0, row: diagramRow - 1 },  // 0-based row
+      if (clBase64) {
+        const clImg = workbook.addImage({ base64: clBase64, extension: 'png' });
+        sheet.addImage(clImg, {
+          tl: { col: 0, row: diagramRow - 1 },
+          ext: { width: 400, height: 300 },
+        });
+      }
+
+      // D.L.O. diagram (directly below C/L)
+      const dloBase64 = createBayDiagram(
+        elev.bays_wide, elev.bays_tall,
+        elev.opening_width_inches, elev.opening_height_inches,
+        elev.custom_bay_widths, elev.custom_bay_heights,
+        elevDoors, 'dlo',
+      );
+      if (dloBase64) {
+        const dloImg = workbook.addImage({ base64: dloBase64, extension: 'png' });
+        sheet.addImage(dloImg, {
+          tl: { col: 0, row: diagramRow - 1 + diagramRowSpan },
           ext: { width: 400, height: 300 },
         });
       }

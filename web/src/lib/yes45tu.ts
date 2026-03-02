@@ -15,6 +15,7 @@ export function calculateYes45tuQuantities(
   openingHeight: number,
   doors?: DoorConfig[],
   customBayWidths?: number[],
+  customBayHeights?: number[],
   glassPerSqft?: number,
   fabricationCostPerJoint?: number
 ): CalculatedOutput[] {
@@ -46,8 +47,10 @@ export function calculateYes45tuQuantities(
     ['E2-0052', formulas.calculateTotalGasketFt(baysWide, baysTall, openingWidth, openingHeight, totalCount)],
   ];
 
-  // --- Total area calculations ---
-  const totalGlassArea = formulas.calculateTotalGlass(openingWidth, openingHeight, totalCount, baysWide, baysTall);
+  // --- Total area calculations (D.L.O. based) ---
+  const totalGlassArea = formulas.calculateTotalGlass(
+    openingWidth, openingHeight, totalCount, baysWide, baysTall, customBayWidths, customBayHeights,
+  );
 
   // Only calculate door area if doors exist
   // Door count is per elevation, so multiply by totalCount for total calculations

@@ -11,13 +11,20 @@ import {
 } from '@/types';
 import { calculateYes45tuQuantities } from '@/lib/yes45tu';
 import {
+  buildDloGrid,
+  calculateGlassMakeSize,
+  DLO_EDGE_DEDUCTION,
+  DLO_INTERIOR_DEDUCTION,
+  DLO_SILL_DEDUCTION,
+} from '@/lib/formulas';
+import {
   getPriceByPart,
   getUnitPriceByPart,
   applyMaterialImpactInMemory,
   reverseMaterialImpact,
 } from '@/lib/pricing';
 import { calculate_door_info } from '@/lib/formulas';
-import { Calculator, Save, ChevronDown, ChevronUp, DoorOpen, Layers, CheckCircle2, Eye, EyeOff, Table } from 'lucide-react';
+import { Calculator, Save, ChevronDown, ChevronUp, DoorOpen, Layers, CheckCircle2, Eye, EyeOff, Table, AlertTriangle } from 'lucide-react';
 import { PART_NUMBER_MAP } from '@/data/part-number';
 import BayDiagram from './BayDiagram';
 
@@ -103,6 +110,8 @@ const RESULTS_COLUMN_DEFS: ColumnDef[] = [
 
 const inputClass =
   'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 text-sm';
+const inputInvalidClass =
+  'bg-[#0c0c12] border border-red-500/50 text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors duration-200 text-sm';
 const selectClass =
   'bg-[#0c0c12] border border-[#1e1e2a] text-white rounded-xl px-3.5 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 focus:border-[#3b82f6] transition-colors duration-200 appearance-none text-sm';
 const labelClass = 'block text-sm font-medium text-[#ffffff] mb-1.5';
@@ -459,7 +468,31 @@ export default function ElevationEditor({
   // Whether this elevation has been saved before (has calculated_outputs)
   const isExisting = !!(elevationData.calculated_outputs && elevationData.calculated_outputs.length > 0);
 
+  // ---------------------------------------------------------------------------
+  // Validation: collect missing required fields
+  // ---------------------------------------------------------------------------
+  const missingFields = useMemo(() => {
+    if (doorOnly) return [];
+    const missing: string[] = [];
+    if (openingWidth <= 0) missing.push('Opening Width');
+    if (openingHeight <= 0) missing.push('Opening Height');
+    if (baysWide <= 0) missing.push('Bays Wide');
+    if (baysTall <= 0) missing.push('Bays Tall');
+    if (totalCount <= 0) missing.push('Total Count');
+    return missing;
+  }, [doorOnly, openingWidth, openingHeight, baysWide, baysTall, totalCount]);
+
+  const isFormValid = doorOnly ? doors.length > 0 : missingFields.length === 0;
+
   const handleCalculate = useCallback(() => {
+    // Safety net: block calculation if required fields are missing
+    if (!doorOnly && missingFields.length > 0) {
+      return;
+    }
+    if (doorOnly && doors.length === 0) {
+      return;
+    }
+
     setIsCalculating(true);
 
     try {
@@ -513,6 +546,7 @@ export default function ElevationEditor({
           openingHeight,
           doors,
           baysWide > 1 ? customBayWidths : undefined,
+          baysTall > 1 ? customBayHeights : undefined,
           glassPerSqft,
           fabCostPerJoint,
         );
@@ -620,6 +654,7 @@ export default function ElevationEditor({
           openingHeight,
           doors,
           baysWide > 1 ? customBayWidths : undefined,
+          baysTall > 1 ? customBayHeights : undefined,
           glassPerSqft,
           fabCostPerJoint,
         );
@@ -738,6 +773,8 @@ export default function ElevationEditor({
     initialMaterials,
     onSave,
     elevationData,
+    missingFields,
+    isFormValid,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -963,10 +1000,10 @@ export default function ElevationEditor({
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Total Count</label>
+                <label className={labelClass}>Total Count {totalCount <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={inputClass}
+                  className={totalCount <= 0 ? inputInvalidClass : inputClass}
                   min={1}
                   value={totalCount || ''}
                   onChange={(e) =>
@@ -1011,10 +1048,10 @@ export default function ElevationEditor({
           {!collapsedSections.opening && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className={labelClass}>Opening Width (inches)</label>
+                <label className={labelClass}>Opening Width (inches) {openingWidth <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={inputClass}
+                  className={openingWidth <= 0 ? inputInvalidClass : inputClass}
                   min={0}
                   step="0.01"
                   value={openingWidth || ''}
@@ -1025,10 +1062,10 @@ export default function ElevationEditor({
                 />
               </div>
               <div>
-                <label className={labelClass}>Opening Height (inches)</label>
+                <label className={labelClass}>Opening Height (inches) {openingHeight <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={inputClass}
+                  className={openingHeight <= 0 ? inputInvalidClass : inputClass}
                   min={0}
                   step="0.01"
                   value={openingHeight || ''}
@@ -1053,10 +1090,10 @@ export default function ElevationEditor({
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={labelClass}>Bays Wide</label>
+                  <label className={labelClass}>Bays Wide {baysWide <= 0 && <span className="text-red-400">*</span>}</label>
                   <input
                     type="number"
-                    className={inputClass}
+                    className={baysWide <= 0 ? inputInvalidClass : inputClass}
                     min={1}
                     value={baysWide || ''}
                     onChange={(e) =>
@@ -1067,10 +1104,10 @@ export default function ElevationEditor({
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Bays Tall</label>
+                  <label className={labelClass}>Bays Tall {baysTall <= 0 && <span className="text-red-400">*</span>}</label>
                   <input
                     type="number"
-                    className={inputClass}
+                    className={baysTall <= 0 ? inputInvalidClass : inputClass}
                     min={1}
                     value={baysTall || ''}
                     onChange={(e) =>
@@ -1198,6 +1235,58 @@ export default function ElevationEditor({
                   </div>
                 </div>
               )}
+
+              {/* D.L.O. & Glass Make Size summary */}
+              {openingWidth > 0 && openingHeight > 0 && (() => {
+                const resolvedWidths = baysWide > 1 ? customBayWidths : [openingWidth];
+                const resolvedHeights = baysTall > 1 ? customBayHeights : [openingHeight];
+                const { dloWidths, dloHeights } = buildDloGrid(resolvedWidths, resolvedHeights);
+                return (
+                  <div className="mt-3 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-3 space-y-2">
+                    <p className="text-[10px] font-semibold text-[#ffffff] uppercase tracking-wider">
+                      D.L.O. &amp; Glass Make Size
+                    </p>
+                    <div className="text-[10px] text-[#ffffff]/60 space-x-3">
+                      <span>Edge &minus;{DLO_EDGE_DEDUCTION}&Prime;</span>
+                      <span>Interior &minus;{DLO_INTERIOR_DEDUCTION}&Prime;</span>
+                      <span>Sill &minus;{DLO_SILL_DEDUCTION.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}&Prime;</span>
+                      <span>Glass = DLO + &frac34;&Prime;</span>
+                    </div>
+                    {/* Width D.L.O. */}
+                    <div>
+                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Widths</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
+                        {resolvedWidths.map((w, col) => (
+                          <div key={col} className="text-xs font-mono">
+                            <span className="text-[#ffffff]/50">B{col + 1}: </span>
+                            <span className="text-[#ffffff]">{w.toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-blue-400">{dloWidths[col].toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-emerald-400">{calculateGlassMakeSize(dloWidths[col]).toFixed(2)}&Prime;</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Height D.L.O. */}
+                    <div>
+                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Heights (bottom &rarr; top)</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
+                        {resolvedHeights.map((h, row) => (
+                          <div key={row} className="text-xs font-mono">
+                            <span className="text-[#ffffff]/50">R{row + 1}{row === 0 ? ' (Bot)' : ''}: </span>
+                            <span className="text-[#ffffff]">{h.toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-blue-400">{dloHeights[0][row].toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-emerald-400">{calculateGlassMakeSize(dloHeights[0][row]).toFixed(2)}&Prime;</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -1362,7 +1451,7 @@ export default function ElevationEditor({
           <button
             type="button"
             onClick={handleCalculate}
-            disabled={isCalculating || (!doorOnly && (openingWidth <= 0 || openingHeight <= 0)) || (doorOnly && doors.length === 0)}
+            disabled={isCalculating || !isFormValid}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:brightness-110 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200"
           >
             {isCalculating ? (
@@ -1379,7 +1468,23 @@ export default function ElevationEditor({
           </button>
         </div>
 
-        {!results && (
+        {!isFormValid && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+            <div className="text-sm text-amber-300">
+              {doorOnly ? (
+                <span>Add at least one door before saving.</span>
+              ) : (
+                <>
+                  <span className="font-medium">Required fields missing:</span>{' '}
+                  {missingFields.join(', ')}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isFormValid && !results && (
           <p className="text-sm text-[#ffffff]">
             Configure the elevation above, then click &ldquo;{isExisting ? 'Update' : 'Save'}&rdquo; to price all materials and save.
           </p>
