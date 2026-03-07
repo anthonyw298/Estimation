@@ -11,13 +11,6 @@ import {
 } from '@/types';
 import { calculateYes45tuQuantities } from '@/lib/yes45tu';
 import {
-  buildDloGrid,
-  calculateGlassMakeSize,
-  DLO_EDGE_DEDUCTION,
-  DLO_INTERIOR_DEDUCTION,
-  DLO_SILL_DEDUCTION,
-} from '@/lib/formulas';
-import {
   getPriceByPart,
   getUnitPriceByPart,
   applyMaterialImpactInMemory,
@@ -222,9 +215,8 @@ export default function ElevationEditor({
     },
   );
 
-  // Track which bay indices the user has manually edited (for "Default Rest")
-  const [editedBayWidths, setEditedBayWidths] = useState<Set<number>>(new Set());
-  const [editedBayHeights, setEditedBayHeights] = useState<Set<number>>(new Set());
+  // (Removed editedBayWidths/editedBayHeights — "Default Rest" now uses
+  //  value === 0 to identify blank bays that need filling.)
 
   // Glass & Fabrication pricing is controlled from the Pricing tab (settings),
   // not per-elevation. Read from settings (fallback to elevation data for legacy).
@@ -287,34 +279,17 @@ export default function ElevationEditor({
   const handleBaysWideChange = useCallback(
     (newBaysWide: number) => {
       setBaysWide(newBaysWide);
-      setEditedBayWidths(new Set());
       const count = Math.max(1, newBaysWide);
-      if (openingWidth > 0) {
-        setCustomBayWidths(
-          Array(count).fill(
-            Math.round((openingWidth / count) * 100) / 100,
-          ),
-        );
-      } else {
-        setCustomBayWidths(Array(count).fill(0));
-      }
+      setCustomBayWidths(Array(count).fill(0));
     },
-    [openingWidth],
+    [],
   );
 
   const handleOpeningWidthChange = useCallback(
     (newWidth: number) => {
       setOpeningWidth(newWidth);
-      if (baysWide > 1 && newWidth > 0) {
-        setEditedBayWidths(new Set());
-        setCustomBayWidths(
-          Array(baysWide).fill(
-            Math.round((newWidth / baysWide) * 100) / 100,
-          ),
-        );
-      }
     },
-    [baysWide],
+    [],
   );
 
   const handleCustomBayWidthChange = useCallback(
@@ -324,25 +299,36 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
-      setEditedBayWidths((prev) => new Set(prev).add(index));
     },
     [],
   );
 
-  /** Distribute remaining opening width equally among non-edited bays. */
+  /** Distribute remaining opening width equally among blank (zero) bays.
+   *  - All bays blank → equal split across all bays.
+   *  - Some bays blank → distribute remaining width among blank bays.
+   *  - No bays blank (all filled) → reset all to equal split.
+   */
   const handleDefaultRestWidths = useCallback(() => {
-    if (editedBayWidths.size === 0 || editedBayWidths.size >= baysWide) return;
-    const editedSum = customBayWidths.reduce(
-      (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum),
+    const blankCount = customBayWidths.filter((w) => w === 0).length;
+
+    if (blankCount === 0 || blankCount === baysWide) {
+      // All filled or all blank → equal split
+      const each = Math.round((openingWidth / baysWide) * 100) / 100;
+      setCustomBayWidths(Array(baysWide).fill(each));
+      return;
+    }
+
+    // Some filled, some blank → distribute remaining to blank bays
+    const filledSum = customBayWidths.reduce(
+      (sum, w) => (w > 0 ? sum + w : sum),
       0,
     );
-    const remaining = openingWidth - editedSum;
-    const unedited = baysWide - editedBayWidths.size;
-    const each = Math.round((remaining / unedited) * 100) / 100;
+    const remaining = openingWidth - filledSum;
+    const each = Math.round((remaining / blankCount) * 100) / 100;
     setCustomBayWidths((prev) =>
-      prev.map((w, i) => (editedBayWidths.has(i) ? w : each)),
+      prev.map((w) => (w > 0 ? w : each)),
     );
-  }, [editedBayWidths, customBayWidths, openingWidth, baysWide]);
+  }, [customBayWidths, openingWidth, baysWide]);
 
   // ---------------------------------------------------------------------------
   // Bay height logic
@@ -357,34 +343,17 @@ export default function ElevationEditor({
   const handleBaysTallChange = useCallback(
     (newBaysTall: number) => {
       setBaysTall(newBaysTall);
-      setEditedBayHeights(new Set());
       const count = Math.max(1, newBaysTall);
-      if (openingHeight > 0) {
-        setCustomBayHeights(
-          Array(count).fill(
-            Math.round((openingHeight / count) * 100) / 100,
-          ),
-        );
-      } else {
-        setCustomBayHeights(Array(count).fill(0));
-      }
+      setCustomBayHeights(Array(count).fill(0));
     },
-    [openingHeight],
+    [],
   );
 
   const handleOpeningHeightChange = useCallback(
     (newHeight: number) => {
       setOpeningHeight(newHeight);
-      if (baysTall > 1 && newHeight > 0) {
-        setEditedBayHeights(new Set());
-        setCustomBayHeights(
-          Array(baysTall).fill(
-            Math.round((newHeight / baysTall) * 100) / 100,
-          ),
-        );
-      }
     },
-    [baysTall],
+    [],
   );
 
   const handleCustomBayHeightChange = useCallback(
@@ -394,31 +363,45 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
-      setEditedBayHeights((prev) => new Set(prev).add(index));
     },
     [],
   );
 
-  /** Distribute remaining opening height equally among non-edited bays. */
+  /** Distribute remaining opening height equally among blank (zero) bays.
+   *  - All bays blank → equal split across all bays.
+   *  - Some bays blank → distribute remaining height among blank bays.
+   *  - No bays blank (all filled) → reset all to equal split.
+   */
   const handleDefaultRestHeights = useCallback(() => {
-    if (editedBayHeights.size === 0 || editedBayHeights.size >= baysTall) return;
-    const editedSum = customBayHeights.reduce(
-      (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum),
+    const blankCount = customBayHeights.filter((h) => h === 0).length;
+
+    if (blankCount === 0 || blankCount === baysTall) {
+      // All filled or all blank → equal split
+      const each = Math.round((openingHeight / baysTall) * 100) / 100;
+      setCustomBayHeights(Array(baysTall).fill(each));
+      return;
+    }
+
+    // Some filled, some blank → distribute remaining to blank bays
+    const filledSum = customBayHeights.reduce(
+      (sum, h) => (h > 0 ? sum + h : sum),
       0,
     );
-    const remaining = openingHeight - editedSum;
-    const unedited = baysTall - editedBayHeights.size;
-    const each = Math.round((remaining / unedited) * 100) / 100;
+    const remaining = openingHeight - filledSum;
+    const each = Math.round((remaining / blankCount) * 100) / 100;
     setCustomBayHeights((prev) =>
-      prev.map((h, i) => (editedBayHeights.has(i) ? h : each)),
+      prev.map((h) => (h > 0 ? h : each)),
     );
-  }, [editedBayHeights, customBayHeights, openingHeight, baysTall]);
+  }, [customBayHeights, openingHeight, baysTall]);
 
   // ---------------------------------------------------------------------------
   // Door management
   // ---------------------------------------------------------------------------
 
-  const addDoor = useCallback(() => {
+  // --- Bay selector modal state ---
+  const [showBaySelector, setShowBaySelector] = useState(false);
+
+  const addDoor = useCallback((bayIndex?: number) => {
     setDoors((prev) => [
       ...prev,
       {
@@ -426,9 +409,18 @@ export default function ElevationEditor({
         count: 1,
         stile: 'Narrow',
         hardware: Object.fromEntries(HARDWARE_OPTIONS.map((h) => [h, false])),
+        bayIndex: bayIndex ?? 0,
       },
     ]);
   }, []);
+
+  const handleAddDoorClick = useCallback(() => {
+    if (doorOnly || baysWide <= 1) {
+      addDoor(0);
+    } else {
+      setShowBaySelector(true);
+    }
+  }, [doorOnly, baysWide, addDoor]);
 
   const removeDoor = useCallback((index: number) => {
     setDoors((prev) => prev.filter((_, i) => i !== index));
@@ -1125,22 +1117,20 @@ export default function ElevationEditor({
                     <p className="text-sm font-medium text-[#ffffff]">
                       Custom Bay Widths (inches)
                     </p>
-                    {editedBayWidths.size > 0 && editedBayWidths.size < baysWide && (
-                      <button
-                        type="button"
-                        onClick={handleDefaultRestWidths}
-                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
-                      >
-                        Default Rest
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={handleDefaultRestWidths}
+                      className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                    >
+                      Default Rest
+                    </button>
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {customBayWidths.map((w, i) => (
                       <div key={i}>
                         <label className="mb-1 block text-xs text-[#ffffff]">
                           Bay {i + 1}
-                          {editedBayWidths.has(i) && (
+                          {w > 0 && (
                             <span className="ml-1 text-blue-400">*</span>
                           )}
                         </label>
@@ -1181,15 +1171,13 @@ export default function ElevationEditor({
                     <p className="text-sm font-medium text-[#ffffff]">
                       Custom Bay Heights &mdash; Bottom to Top (inches)
                     </p>
-                    {editedBayHeights.size > 0 && editedBayHeights.size < baysTall && (
-                      <button
-                        type="button"
-                        onClick={handleDefaultRestHeights}
-                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
-                      >
-                        Default Rest
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={handleDefaultRestHeights}
+                      className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                    >
+                      Default Rest
+                    </button>
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {[...customBayHeights].reverse().map((h, displayIdx) => {
@@ -1200,7 +1188,7 @@ export default function ElevationEditor({
                             Bay {displayIdx + 1}
                             {displayIdx === 0 && ' (Bot)'}
                             {displayIdx === customBayHeights.length - 1 && customBayHeights.length > 1 && ' (Top)'}
-                            {editedBayHeights.has(internalIdx) && (
+                            {h > 0 && (
                               <span className="ml-1 text-blue-400">*</span>
                             )}
                           </label>
@@ -1236,57 +1224,7 @@ export default function ElevationEditor({
                 </div>
               )}
 
-              {/* D.L.O. & Glass Make Size summary */}
-              {openingWidth > 0 && openingHeight > 0 && (() => {
-                const resolvedWidths = baysWide > 1 ? customBayWidths : [openingWidth];
-                const resolvedHeights = baysTall > 1 ? customBayHeights : [openingHeight];
-                const { dloWidths, dloHeights } = buildDloGrid(resolvedWidths, resolvedHeights);
-                return (
-                  <div className="mt-3 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-3 space-y-2">
-                    <p className="text-[10px] font-semibold text-[#ffffff] uppercase tracking-wider">
-                      D.L.O. &amp; Glass Make Size
-                    </p>
-                    <div className="text-[10px] text-[#ffffff]/60 space-x-3">
-                      <span>Edge &minus;{DLO_EDGE_DEDUCTION}&Prime;</span>
-                      <span>Interior &minus;{DLO_INTERIOR_DEDUCTION}&Prime;</span>
-                      <span>Sill &minus;{DLO_SILL_DEDUCTION.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}&Prime;</span>
-                      <span>Glass = DLO + &frac34;&Prime;</span>
-                    </div>
-                    {/* Width D.L.O. */}
-                    <div>
-                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Widths</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
-                        {resolvedWidths.map((w, col) => (
-                          <div key={col} className="text-xs font-mono">
-                            <span className="text-[#ffffff]/50">B{col + 1}: </span>
-                            <span className="text-[#ffffff]">{w.toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-blue-400">{dloWidths[col].toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-emerald-400">{calculateGlassMakeSize(dloWidths[col]).toFixed(2)}&Prime;</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Height D.L.O. */}
-                    <div>
-                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Heights (bottom &rarr; top)</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
-                        {resolvedHeights.map((h, row) => (
-                          <div key={row} className="text-xs font-mono">
-                            <span className="text-[#ffffff]/50">R{row + 1}{row === 0 ? ' (Bot)' : ''}: </span>
-                            <span className="text-[#ffffff]">{h.toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-blue-400">{dloHeights[0][row].toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-emerald-400">{calculateGlassMakeSize(dloHeights[0][row]).toFixed(2)}&Prime;</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+
             </>
           )}
         </div>
@@ -1327,9 +1265,16 @@ export default function ElevationEditor({
                   className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-[#ffffff]">
-                      Door {di + 1}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#ffffff]">
+                        Door {di + 1}
+                      </span>
+                      {!doorOnly && baysWide > 1 && (
+                        <span className="text-xs bg-[#3b82f6]/10 text-[#3b82f6] px-2 py-0.5 rounded-full border border-[#3b82f6]/20">
+                          Bay {(door.bayIndex ?? 0) + 1}
+                        </span>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeDoor(di)}
@@ -1339,7 +1284,7 @@ export default function ElevationEditor({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className={`grid grid-cols-1 gap-3 ${!doorOnly && baysWide > 1 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
                     {/* Size */}
                     <div>
                       <label className={labelClass}>Size</label>
@@ -1395,6 +1340,26 @@ export default function ElevationEditor({
                         ))}
                       </select>
                     </div>
+
+                    {/* Bay assignment (only when multi-bay, non door-only) */}
+                    {!doorOnly && baysWide > 1 && (
+                      <div>
+                        <label className={labelClass}>Bay</label>
+                        <select
+                          className={selectClass}
+                          value={door.bayIndex ?? 0}
+                          onChange={(e) =>
+                            updateDoor(di, 'bayIndex', parseInt(e.target.value, 10))
+                          }
+                        >
+                          {Array.from({ length: baysWide }, (_, i) => (
+                            <option key={i} value={i}>
+                              Bay {i + 1} ({customBayWidths[i]?.toFixed(1)}&quot;)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Hardware */}
@@ -1425,7 +1390,7 @@ export default function ElevationEditor({
 
             <button
               type="button"
-              onClick={addDoor}
+              onClick={handleAddDoorClick}
               className="mt-2 rounded-xl border border-dashed border-[#2a2a3a] px-4 py-2.5 text-sm text-[#ffffff] hover:border-[#3b82f6]/50 hover:text-blue-400 hover:bg-[#3b82f6]/5 transition-colors duration-200"
             >
               + Add Door
@@ -1433,6 +1398,66 @@ export default function ElevationEditor({
           </>
         )}
       </div>
+
+      {/* Bay Selector Modal */}
+      {showBaySelector && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-overlay"
+          onClick={() => setShowBaySelector(false)}
+        >
+          <div
+            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-md mx-4 p-7 shadow-2xl shadow-black/60 animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 rounded-full bg-[#3b82f6]/10 border border-[#3b82f6]/15 flex items-center justify-center flex-shrink-0">
+                <DoorOpen className="w-5 h-5 text-[#3b82f6]" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[#ffffff]">
+                  Select Bay
+                </h3>
+                <p className="text-xs text-[#ffffff]/50">
+                  Choose which bay to place the door in
+                </p>
+              </div>
+            </div>
+
+            {/* Visual bay selector — proportionally sized */}
+            <div className="flex gap-1.5 mb-5 p-3 bg-[#0a0a12] rounded-xl border border-[#1e1e2a]">
+              {customBayWidths.map((width, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    addDoor(i);
+                    setShowBaySelector(false);
+                  }}
+                  className="relative flex flex-col items-center justify-center rounded-lg border-2 border-[#2a2a3a] hover:border-[#3b82f6] hover:bg-[#3b82f6]/10 transition-all duration-200 py-5 cursor-pointer group min-w-0"
+                  style={{ flex: width }}
+                >
+                  <span className="text-sm font-semibold text-[#ffffff] group-hover:text-[#3b82f6] transition-colors duration-200">
+                    Bay {i + 1}
+                  </span>
+                  <span className="text-xs text-[#ffffff]/40 mt-0.5">
+                    {width.toFixed(1)}&quot;
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBaySelector(false)}
+                className="px-4 py-2.5 text-sm font-medium text-[#ffffff]/70 hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* 6. Save / Update */}

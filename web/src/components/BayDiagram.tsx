@@ -97,6 +97,7 @@ export default function BayDiagram({
     const doorRects: Array<{
       x: number; y: number; width: number; height: number;
       label: string;
+      bayLabel?: string;
     }> = [];
 
     for (const door of doors) {
@@ -108,7 +109,15 @@ export default function BayDiagram({
       // For each copy of this door
       for (let c = 0; c < door.count; c++) {
         let xInches: number;
-        if (door.x_positions && door.x_positions[c] != null) {
+
+        if (door.bayIndex != null && door.bayIndex < bayWidths.length) {
+          // Position door(s) centered within the assigned bay
+          const bayLeft = bayWidths.slice(0, door.bayIndex).reduce((a, b) => a + b, 0);
+          const bayW = bayWidths[door.bayIndex];
+          const totalDoorsW = door.count * doorWidthInches + (door.count - 1) * 2;
+          const startX = bayLeft + bayW / 2 - totalDoorsW / 2;
+          xInches = startX + c * (doorWidthInches + 2);
+        } else if (door.x_positions && door.x_positions[c] != null) {
           xInches = door.x_positions[c];
         } else if (door.x_in != null) {
           xInches = door.x_in + c * (doorWidthInches + 2);
@@ -123,6 +132,7 @@ export default function BayDiagram({
           width: doorWidthInches * scale,
           height: doorHeightInches * scale,
           label: `${sizeParts[1]}' x ${sizeParts[2]}'`,
+          bayLabel: door.bayIndex != null ? `Bay ${door.bayIndex + 1}` : undefined,
         });
       }
     }
@@ -460,6 +470,21 @@ export default function BayDiagram({
             >
               DOOR
             </text>
+            {/* Bay assignment label */}
+            {door.bayLabel && (
+              <text
+                x={ox + door.x + door.width / 2}
+                y={oy + door.y + door.height / 2 + 24}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill="#34d399"
+                fontSize={7}
+                fontFamily="monospace"
+                opacity={0.5}
+              >
+                {door.bayLabel}
+              </text>
+            )}
           </g>
         ))}
 

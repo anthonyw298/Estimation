@@ -1492,7 +1492,15 @@ function createBayDiagram(
       const count = door.count || 1;
       for (let c = 0; c < count; c++) {
         let xCenter: number | undefined;
-        if (door.x_positions && door.x_positions[c] != null) {
+
+        if (door.bayIndex != null && door.bayIndex < bayWidths.length) {
+          // Position door centered within the assigned bay
+          const bayLeft = bayWidths.slice(0, door.bayIndex).reduce((a, b) => a + b, 0);
+          const bayW = bayWidths[door.bayIndex];
+          const totalDoorsW = count * doorW + (count - 1) * 2;
+          const startDoorX = bayLeft + bayW / 2 - totalDoorsW / 2;
+          xCenter = startDoorX + c * (doorW + 2) + doorW / 2;
+        } else if (door.x_positions && door.x_positions[c] != null) {
           xCenter = door.x_positions[c];
         } else if (door.x_in != null && count === 1) {
           xCenter = door.x_in;

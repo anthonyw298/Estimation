@@ -44,6 +44,7 @@ export interface DoorConfig {
   hardware: Record<string, boolean>;
   x_in?: number;
   x_positions?: number[];
+  bayIndex?: number; // which bay (0-indexed) this door is assigned to
 }
 
 // Material impact tracking for inventory management
