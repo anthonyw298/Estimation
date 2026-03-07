@@ -215,8 +215,22 @@ export default function ElevationEditor({
     },
   );
 
-  // (Removed editedBayWidths/editedBayHeights — "Default Rest" now uses
-  //  value === 0 to identify blank bays that need filling.)
+  // Track which bay indices the user has manually set (for "Default Rest").
+  // Clearing a bay back to 0/empty removes it from the set so it becomes
+  // eligible for auto-distribution again.
+  const [editedBayWidths, setEditedBayWidths] = useState<Set<number>>(() => {
+    // On load: treat any saved non-zero bay as "edited"
+    if (elevationData.custom_bay_widths?.length === elevationData.bays_wide) {
+      return new Set(elevationData.custom_bay_widths.map((w, i) => (w > 0 ? i : -1)).filter((i) => i >= 0));
+    }
+    return new Set();
+  });
+  const [editedBayHeights, setEditedBayHeights] = useState<Set<number>>(() => {
+    if (elevationData.custom_bay_heights?.length === elevationData.bays_tall) {
+      return new Set(elevationData.custom_bay_heights.map((h, i) => (h > 0 ? i : -1)).filter((i) => i >= 0));
+    }
+    return new Set();
+  });
 
   // Glass & Fabrication pricing is controlled from the Pricing tab (settings),
   // not per-elevation. Read from settings (fallback to elevation data for legacy).
@@ -279,17 +293,44 @@ export default function ElevationEditor({
   const handleBaysWideChange = useCallback(
     (newBaysWide: number) => {
       setBaysWide(newBaysWide);
+      setEditedBayWidths(new Set());
       const count = Math.max(1, newBaysWide);
-      setCustomBayWidths(Array(count).fill(0));
+      if (openingWidth > 0) {
+        setCustomBayWidths(
+          Array(count).fill(Math.round((openingWidth / count) * 100) / 100),
+        );
+      } else {
+        setCustomBayWidths(Array(count).fill(0));
+      }
     },
-    [],
+    [openingWidth],
   );
 
   const handleOpeningWidthChange = useCallback(
     (newWidth: number) => {
       setOpeningWidth(newWidth);
+      if (baysWide > 1 && newWidth > 0) {
+        if (editedBayWidths.size === 0) {
+          // No manual edits — redistribute equally
+          setCustomBayWidths(
+            Array(baysWide).fill(Math.round((newWidth / baysWide) * 100) / 100),
+          );
+        } else if (editedBayWidths.size < baysWide) {
+          // Some manual edits — keep those, redistribute rest
+          setCustomBayWidths((prev) => {
+            const editedSum = prev.reduce(
+              (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum), 0,
+            );
+            const remaining = newWidth - editedSum;
+            const unedited = baysWide - editedBayWidths.size;
+            const each = Math.round((remaining / unedited) * 100) / 100;
+            return prev.map((w, i) => (editedBayWidths.has(i) ? w : each));
+          });
+        }
+        // All edited — don't touch, mismatch warning will show
+      }
     },
-    [],
+    [baysWide, editedBayWidths],
   );
 
   const handleCustomBayWidthChange = useCallback(
@@ -299,36 +340,45 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
+      // value > 0 → mark as manually set; cleared to 0 → remove so Default Rest can fill it
+      setEditedBayWidths((prev) => {
+        const next = new Set(prev);
+        if (value > 0) {
+          next.add(index);
+        } else {
+          next.delete(index);
+        }
+        return next;
+      });
     },
     [],
   );
 
-  /** Distribute remaining opening width equally among blank (zero) bays.
-   *  - All bays blank → equal split across all bays.
-   *  - Some bays blank → distribute remaining width among blank bays.
-   *  - No bays blank (all filled) → reset all to equal split.
+  /** Distribute remaining opening width among non-edited bays.
+   *  - No edits → equal split all bays.
+   *  - Some edited → keep edited values, split remainder to the rest.
+   *  - All edited → full reset to equal split (clears edit tracking).
    */
   const handleDefaultRestWidths = useCallback(() => {
-    const blankCount = customBayWidths.filter((w) => w === 0).length;
-
-    if (blankCount === 0 || blankCount === baysWide) {
-      // All filled or all blank → equal split
+    if (editedBayWidths.size === 0 || editedBayWidths.size >= baysWide) {
+      // Nothing edited or everything edited → equal split & reset tracking
       const each = Math.round((openingWidth / baysWide) * 100) / 100;
       setCustomBayWidths(Array(baysWide).fill(each));
+      setEditedBayWidths(new Set());
       return;
     }
 
-    // Some filled, some blank → distribute remaining to blank bays
-    const filledSum = customBayWidths.reduce(
-      (sum, w) => (w > 0 ? sum + w : sum),
-      0,
+    // Some edited — distribute remaining to un-edited bays
+    const editedSum = customBayWidths.reduce(
+      (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum), 0,
     );
-    const remaining = openingWidth - filledSum;
-    const each = Math.round((remaining / blankCount) * 100) / 100;
+    const remaining = openingWidth - editedSum;
+    const unedited = baysWide - editedBayWidths.size;
+    const each = Math.round((remaining / unedited) * 100) / 100;
     setCustomBayWidths((prev) =>
-      prev.map((w) => (w > 0 ? w : each)),
+      prev.map((w, i) => (editedBayWidths.has(i) ? w : each)),
     );
-  }, [customBayWidths, openingWidth, baysWide]);
+  }, [editedBayWidths, customBayWidths, openingWidth, baysWide]);
 
   // ---------------------------------------------------------------------------
   // Bay height logic
@@ -343,17 +393,41 @@ export default function ElevationEditor({
   const handleBaysTallChange = useCallback(
     (newBaysTall: number) => {
       setBaysTall(newBaysTall);
+      setEditedBayHeights(new Set());
       const count = Math.max(1, newBaysTall);
-      setCustomBayHeights(Array(count).fill(0));
+      if (openingHeight > 0) {
+        setCustomBayHeights(
+          Array(count).fill(Math.round((openingHeight / count) * 100) / 100),
+        );
+      } else {
+        setCustomBayHeights(Array(count).fill(0));
+      }
     },
-    [],
+    [openingHeight],
   );
 
   const handleOpeningHeightChange = useCallback(
     (newHeight: number) => {
       setOpeningHeight(newHeight);
+      if (baysTall > 1 && newHeight > 0) {
+        if (editedBayHeights.size === 0) {
+          setCustomBayHeights(
+            Array(baysTall).fill(Math.round((newHeight / baysTall) * 100) / 100),
+          );
+        } else if (editedBayHeights.size < baysTall) {
+          setCustomBayHeights((prev) => {
+            const editedSum = prev.reduce(
+              (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum), 0,
+            );
+            const remaining = newHeight - editedSum;
+            const unedited = baysTall - editedBayHeights.size;
+            const each = Math.round((remaining / unedited) * 100) / 100;
+            return prev.map((h, i) => (editedBayHeights.has(i) ? h : each));
+          });
+        }
+      }
     },
-    [],
+    [baysTall, editedBayHeights],
   );
 
   const handleCustomBayHeightChange = useCallback(
@@ -363,36 +437,42 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
+      setEditedBayHeights((prev) => {
+        const next = new Set(prev);
+        if (value > 0) {
+          next.add(index);
+        } else {
+          next.delete(index);
+        }
+        return next;
+      });
     },
     [],
   );
 
-  /** Distribute remaining opening height equally among blank (zero) bays.
-   *  - All bays blank → equal split across all bays.
-   *  - Some bays blank → distribute remaining height among blank bays.
-   *  - No bays blank (all filled) → reset all to equal split.
+  /** Distribute remaining opening height among non-edited bays.
+   *  - No edits → equal split all bays.
+   *  - Some edited → keep edited values, split remainder to the rest.
+   *  - All edited → full reset to equal split (clears edit tracking).
    */
   const handleDefaultRestHeights = useCallback(() => {
-    const blankCount = customBayHeights.filter((h) => h === 0).length;
-
-    if (blankCount === 0 || blankCount === baysTall) {
-      // All filled or all blank → equal split
+    if (editedBayHeights.size === 0 || editedBayHeights.size >= baysTall) {
       const each = Math.round((openingHeight / baysTall) * 100) / 100;
       setCustomBayHeights(Array(baysTall).fill(each));
+      setEditedBayHeights(new Set());
       return;
     }
 
-    // Some filled, some blank → distribute remaining to blank bays
-    const filledSum = customBayHeights.reduce(
-      (sum, h) => (h > 0 ? sum + h : sum),
-      0,
+    const editedSum = customBayHeights.reduce(
+      (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum), 0,
     );
-    const remaining = openingHeight - filledSum;
-    const each = Math.round((remaining / blankCount) * 100) / 100;
+    const remaining = openingHeight - editedSum;
+    const unedited = baysTall - editedBayHeights.size;
+    const each = Math.round((remaining / unedited) * 100) / 100;
     setCustomBayHeights((prev) =>
-      prev.map((h) => (h > 0 ? h : each)),
+      prev.map((h, i) => (editedBayHeights.has(i) ? h : each)),
     );
-  }, [customBayHeights, openingHeight, baysTall]);
+  }, [editedBayHeights, customBayHeights, openingHeight, baysTall]);
 
   // ---------------------------------------------------------------------------
   // Door management
@@ -1130,7 +1210,7 @@ export default function ElevationEditor({
                       <div key={i}>
                         <label className="mb-1 block text-xs text-[#ffffff]">
                           Bay {i + 1}
-                          {w > 0 && (
+                          {editedBayWidths.has(i) && (
                             <span className="ml-1 text-blue-400">*</span>
                           )}
                         </label>
@@ -1188,7 +1268,7 @@ export default function ElevationEditor({
                             Bay {displayIdx + 1}
                             {displayIdx === 0 && ' (Bot)'}
                             {displayIdx === customBayHeights.length - 1 && customBayHeights.length > 1 && ' (Top)'}
-                            {h > 0 && (
+                            {editedBayHeights.has(internalIdx) && (
                               <span className="ml-1 text-blue-400">*</span>
                             )}
                           </label>
