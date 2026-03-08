@@ -27,6 +27,7 @@ type Workbook = import('exceljs').Workbook;
 const BLUE_HEADER = '4472C4';       // Cost Overview header
 const GREEN_HEADER = '548235';      // Additional Costs header
 const ORANGE_HEADER = 'C65911';     // Markups header
+const AMBER_HEADER = 'BF8F00';     // Field Costs header
 const DARK_BLUE = '2F5496';         // Project Total header, Elevation Summary
 const VERY_DARK_BLUE = '203764';    // Grand Total row
 const LIGHT_GRAY = 'D6DCE4';       // Subheaders / totals background
@@ -1022,8 +1023,17 @@ function writeAdditionalCostsSection(
   baseAmount: number,
   startRow: number,
   startCol: number,
+  materialBase?: number,
+  laborBase?: number,
 ): { row: number; total: number } {
   let row = startRow;
+
+  // Category-specific bases:
+  //   Overhead Materials → material total only
+  //   Overhead Labor → fabrication/labor total only
+  //   Rest → project discounted total (baseAmount)
+  const matBase = materialBase ?? baseAmount;
+  const labBase = laborBase ?? baseAmount;
 
   // Header
   const hr = sheet.getRow(row);
@@ -1038,14 +1048,14 @@ function writeAdditionalCostsSection(
   row++;
 
   const items: [string, number, number][] = [
-    ['Overhead Materials', settings.overhead_materials_pct ?? 0, 0],
-    ['Overhead Labor', settings.overhead_labor_pct ?? 0, 0],
-    ['Admin and Management', settings.admin_management_pct ?? 0, 0],
-    ['Engineering', settings.engineering_pct ?? 0, 0],
-    ['Packaging Materials', settings.packaging_materials_pct ?? 0, 0],
-    ['Shipping and Transport', settings.shipping_transport_pct ?? 0, 0],
-    ['Commissions', settings.commissions_pct ?? 0, 0],
-  ].map(([label, pct]) => [label as string, pct as number, baseAmount * ((pct as number) / 100)]);
+    ['Overhead Materials', settings.overhead_materials_pct ?? 0, matBase],
+    ['Overhead Labor', settings.overhead_labor_pct ?? 0, labBase],
+    ['Admin and Management', settings.admin_management_pct ?? 0, baseAmount],
+    ['Engineering', settings.engineering_pct ?? 0, baseAmount],
+    ['Packaging Materials', settings.packaging_materials_pct ?? 0, baseAmount],
+    ['Shipping and Transport', settings.shipping_transport_pct ?? 0, baseAmount],
+    ['Commissions', settings.commissions_pct ?? 0, baseAmount],
+  ].map(([label, pct, base]) => [label as string, pct as number, (base as number) * ((pct as number) / 100)]);
 
   let total = 0;
   const activeItems = items.filter(([, pct]) => pct > 0);
@@ -1170,11 +1180,147 @@ function writeMarkupsSection(
   return { row, total };
 }
 
+// ---------------------------------------------------------------------------
+// Field Costs & Installation section
+// ---------------------------------------------------------------------------
+
+interface FieldCostItems {
+  installationLabor: number;
+  perimeterSealants: number;
+  breakMetal: number;
+  liftEquipment: number;
+}
+
+function computeFieldCosts(
+  elevations: Record<string, ElevationData>,
+  settings: ProjectSettings,
+  subtotalBeforeLift: number,
+): FieldCostItems {
+  const laborRate = settings.installation_labor_rate ?? 65;
+  const laborMkp = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+  const sealRate = settings.sealant_rate_per_ft ?? 3.5;
+  const sealMkp = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+  const bmRate = settings.break_metal_rate_per_ft ?? 12;
+  const bmMkp = 1 + (settings.break_metal_markup_pct ?? 0) / 100;
+
+  let installationLabor = 0;
+  let perimeterSealants = 0;
+  let breakMetal = 0;
+
+  for (const [, elev] of Object.entries(elevations)) {
+    if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) continue;
+    const qty = elev.total_count || 1;
+    const w = elev.opening_width_inches || 0;
+    const h = elev.opening_height_inches || 0;
+    const perimFt = (2 * (w + h)) / 12;
+    const wFt = w / 12;
+    const hFt = h / 12;
+
+    if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+      installationLabor += elev.installation_labor_hours * laborRate * qty * laborMkp;
+    }
+    if (elev.sealant_joints && elev.sealant_joints > 0) {
+      perimeterSealants += elev.sealant_joints * sealRate * perimFt * qty * sealMkp;
+    }
+    if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+      let linFt = 0;
+      for (const sel of elev.break_metal_selections) {
+        if (sel === 'Perimeter') linFt += 2 * (wFt + hFt);
+        else if (sel === 'Head') linFt += wFt;
+        else if (sel === 'Sill') linFt += wFt;
+        else if (sel === 'Left Jamb') linFt += hFt;
+        else if (sel === 'Right Jamb') linFt += hFt;
+        else if (sel === 'Both Jambs') linFt += 2 * hFt;
+      }
+      breakMetal += linFt * bmRate * qty * bmMkp;
+    }
+  }
+
+  const liftAmt = settings.lift_equipment_amount ?? 0;
+  const liftType = settings.lift_equipment_type ?? 'lump_sum';
+  const liftMkp = 1 + (settings.lift_equipment_markup_pct ?? 0) / 100;
+  const baseForLift = subtotalBeforeLift + installationLabor + perimeterSealants + breakMetal;
+  const liftEquipment = liftType === 'percentage'
+    ? baseForLift * (liftAmt / 100) * liftMkp
+    : liftAmt * liftMkp;
+
+  return { installationLabor, perimeterSealants, breakMetal, liftEquipment };
+}
+
+function writeFieldCostsSection(
+  sheet: Worksheet,
+  fieldCosts: FieldCostItems,
+  startRow: number,
+  startCol: number,
+): { row: number; total: number } {
+  let row = startRow;
+
+  // Header
+  const hr = sheet.getRow(row);
+  hr.getCell(startCol).value = 'FIELD COSTS & INSTALLATION';
+  setFill(hr.getCell(startCol), AMBER_HEADER);
+  setFont(hr.getCell(startCol), { bold: true, size: 11, color: WHITE });
+  hr.getCell(startCol).border = { top: mediumBorder(), left: mediumBorder(), bottom: thinBorder() };
+  setFill(hr.getCell(startCol + 1), AMBER_HEADER);
+  hr.getCell(startCol + 1).border = { top: mediumBorder(), bottom: thinBorder() };
+  setFill(hr.getCell(startCol + 2), AMBER_HEADER);
+  hr.getCell(startCol + 2).border = { top: mediumBorder(), right: mediumBorder(), bottom: thinBorder() };
+  row++;
+
+  const items: [string, number][] = [
+    ['Installation Labor', fieldCosts.installationLabor],
+    ['Perimeter Sealants', fieldCosts.perimeterSealants],
+    ['Aluminum Break Metal', fieldCosts.breakMetal],
+    ['Lift Equipment', fieldCosts.liftEquipment],
+  ];
+
+  const activeItems = items.filter(([, amount]) => amount > 0);
+  let total = 0;
+
+  if (activeItems.length === 0) {
+    const r = sheet.getRow(row);
+    r.getCell(startCol).value = '(None configured)';
+    setFont(r.getCell(startCol), { italic: true, size: 10, color: '808080' });
+    r.getCell(startCol).border = { left: mediumBorder() };
+    r.getCell(startCol + 2).border = { right: mediumBorder() };
+    row++;
+  } else {
+    for (const [label, amount] of activeItems) {
+      const r = sheet.getRow(row);
+      r.getCell(startCol).value = label;
+      setFont(r.getCell(startCol), { size: 10 });
+      r.getCell(startCol).border = { left: mediumBorder() };
+      r.getCell(startCol + 2).value = amount;
+      setCurrency(r.getCell(startCol + 2));
+      r.getCell(startCol + 2).alignment = { horizontal: 'right' };
+      r.getCell(startCol + 2).border = { right: mediumBorder() };
+      total += amount;
+      row++;
+    }
+  }
+
+  // Subtotal
+  const sr = sheet.getRow(row);
+  sr.getCell(startCol).value = 'SUBTOTAL';
+  setBoldFont(sr.getCell(startCol), 10);
+  sr.getCell(startCol).border = { left: mediumBorder(), bottom: mediumBorder(), top: thinBorder() };
+  sr.getCell(startCol + 1).border = { bottom: mediumBorder(), top: thinBorder() };
+  sr.getCell(startCol + 2).value = total;
+  setCurrency(sr.getCell(startCol + 2));
+  setBoldFont(sr.getCell(startCol + 2), 10);
+  sr.getCell(startCol + 2).alignment = { horizontal: 'right' };
+  sr.getCell(startCol + 2).border = { right: mediumBorder(), bottom: mediumBorder(), top: thinBorder() };
+  row++;
+
+  return { row, total };
+}
+
 function writeProjectTotalSection(
   sheet: Worksheet,
   discountedTotal: number,
   additionalTotal: number,
   markupTotal: number,
+  fieldCostTotal: number,
   startRow: number,
   startCol: number,
 ): number {
@@ -1230,8 +1376,20 @@ function writeProjectTotalSection(
     row++;
   }
 
+  if (fieldCostTotal > 0) {
+    const fr = sheet.getRow(row);
+    fr.getCell(startCol).value = '+ Field Costs:';
+    setFont(fr.getCell(startCol), { size: 10 });
+    fr.getCell(startCol).border = { left: mediumBorder() };
+    fr.getCell(startCol + 2).value = fieldCostTotal;
+    setCurrency(fr.getCell(startCol + 2));
+    fr.getCell(startCol + 2).alignment = { horizontal: 'right' };
+    fr.getCell(startCol + 2).border = { right: mediumBorder() };
+    row++;
+  }
+
   // Grand Total
-  const grandTotal = discountedTotal + additionalTotal + markupTotal;
+  const grandTotal = discountedTotal + additionalTotal + markupTotal + fieldCostTotal;
   const gr = sheet.getRow(row);
   gr.getCell(startCol).value = 'GRAND TOTAL:';
   setFill(gr.getCell(startCol), VERY_DARK_BLUE);
@@ -1562,8 +1720,9 @@ function createCostPieChart(
   miscCost: number,
   markupCost: number,
   residualCost: number,
+  fieldCost: number = 0,
 ): string | null {
-  const grandTotal = materialCost + miscCost + markupCost + residualCost;
+  const grandTotal = materialCost + miscCost + markupCost + residualCost + fieldCost;
   if (grandTotal <= 0) return null;
 
   const chartWidth = 420;
@@ -1588,12 +1747,14 @@ function createCostPieChart(
   const miscPct = (miscCost / grandTotal) * 100;
   const markupPct = (markupCost / grandTotal) * 100;
   const residualPct = (residualCost / grandTotal) * 100;
+  const fieldPct = (fieldCost / grandTotal) * 100;
 
   // Segment colors (matching Python)
   const MATERIAL_COLOR = '#4472C4';  // Blue
   const MISC_COLOR = '#548235';      // Green
   const MARKUP_COLOR = '#7030A0';    // Purple
   const RESIDUAL_COLOR = '#ED7D31';  // Orange
+  const FIELD_COLOR = '#BF8F00';     // Amber
 
   // Build segments (only non-zero values drawn as slices)
   const segments: PieSegment[] = [];
@@ -1601,6 +1762,7 @@ function createCostPieChart(
   if (miscCost > 0) segments.push({ name: 'Additional', value: miscCost, pct: miscPct, color: MISC_COLOR });
   if (markupCost > 0) segments.push({ name: 'Profit/Markups', value: markupCost, pct: markupPct, color: MARKUP_COLOR });
   if (residualCost > 0) segments.push({ name: 'Residual/Waste', value: residualCost, pct: residualPct, color: RESIDUAL_COLOR });
+  if (fieldCost > 0) segments.push({ name: 'Field Costs', value: fieldCost, pct: fieldPct, color: FIELD_COLOR });
 
   // Title
   ctx.fillStyle = '#333333';
@@ -1890,8 +2052,15 @@ export async function exportToExcel(
   let additionalTotal = 0;
   if (sumCostOverview?.additional_costs !== false) {
     currentRow += 1;
+    // Compute per-category bases for additional costs
+    const addMaterialBase = (summaryCategories.profiles?.total_discounted ?? 0) +
+      (summaryCategories.accessories?.total_discounted ?? 0) +
+      (summaryCategories.gaskets?.total_discounted ?? 0) +
+      (summaryCategories.doors?.total_discounted ?? 0);
+    const addLaborBase = summaryCategories.fabrication?.total_discounted ?? 0;
     const result = writeAdditionalCostsSection(
       summarySheet, settings, totalDiscountedPrice, currentRow, 1,
+      addMaterialBase, addLaborBase,
     );
     currentRow = result.row;
     additionalTotal = result.total;
@@ -1908,10 +2077,22 @@ export async function exportToExcel(
     markupTotal = result.total;
   }
 
+  // Field Costs (installation, sealants, break metal, lift)
+  const subtotalBeforeLift = totalDiscountedPrice + additionalTotal + markupTotal;
+  const fieldCosts = computeFieldCosts(elevations, settings, subtotalBeforeLift);
+  const fieldCostTotal = fieldCosts.installationLabor + fieldCosts.perimeterSealants +
+    fieldCosts.breakMetal + fieldCosts.liftEquipment;
+
+  if (fieldCostTotal > 0) {
+    currentRow += 1;
+    const result = writeFieldCostsSection(summarySheet, fieldCosts, currentRow, 1);
+    currentRow = result.row;
+  }
+
   // Project Total
   if (sumCostOverview?.project_total !== false) {
     currentRow += 1;
-    currentRow = writeProjectTotalSection(summarySheet, totalDiscountedPrice, additionalTotal, markupTotal, currentRow, 1);
+    currentRow = writeProjectTotalSection(summarySheet, totalDiscountedPrice, additionalTotal, markupTotal, fieldCostTotal, currentRow, 1);
   }
 
   // Auto-fit summary columns so descriptions are never truncated
@@ -1929,6 +2110,7 @@ export async function exportToExcel(
       additionalTotal,
       markupTotal,
       totalResidual,
+      fieldCostTotal,
     );
 
     if (pieChartBase64) {

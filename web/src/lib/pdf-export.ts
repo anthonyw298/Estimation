@@ -65,8 +65,9 @@ function createPdfPieChart(
   miscCost: number,
   markupCost: number,
   residualCost: number,
+  fieldCost: number = 0,
 ): string | null {
-  const grandTotal = materialCost + miscCost + markupCost + residualCost;
+  const grandTotal = materialCost + miscCost + markupCost + residualCost + fieldCost;
   if (grandTotal <= 0) return null;
 
   const chartWidth = 420;
@@ -89,11 +90,13 @@ function createPdfPieChart(
   const miscPct = (miscCost / grandTotal) * 100;
   const markupPct = (markupCost / grandTotal) * 100;
   const residualPct = (residualCost / grandTotal) * 100;
+  const fieldPct = (fieldCost / grandTotal) * 100;
 
   const MATERIAL_COLOR = '#4472C4';
   const MISC_COLOR = '#548235';
   const MARKUP_COLOR = '#7030A0';
   const RESIDUAL_COLOR = '#ED7D31';
+  const FIELD_COLOR = '#BF8F00';
 
   interface Seg { name: string; value: number; pct: number; color: string }
   const segments: Seg[] = [];
@@ -101,6 +104,7 @@ function createPdfPieChart(
   if (miscCost > 0) segments.push({ name: 'Additional', value: miscCost, pct: miscPct, color: MISC_COLOR });
   if (markupCost > 0) segments.push({ name: 'Profit/Markups', value: markupCost, pct: markupPct, color: MARKUP_COLOR });
   if (residualCost > 0) segments.push({ name: 'Residual/Waste', value: residualCost, pct: residualPct, color: RESIDUAL_COLOR });
+  if (fieldCost > 0) segments.push({ name: 'Field Costs', value: fieldCost, pct: fieldPct, color: FIELD_COLOR });
 
   // Title
   ctx.fillStyle = '#333333';
@@ -666,20 +670,28 @@ export async function exportToPdf(
   });
 
   // ---- Additional Costs ----
-  const additionalDefs: [string, number][] = [
-    ['Overhead Materials', settings.overhead_materials_pct ?? 0],
-    ['Overhead Labor', settings.overhead_labor_pct ?? 0],
-    ['Admin and Management', settings.admin_management_pct ?? 0],
-    ['Engineering', settings.engineering_pct ?? 0],
-    ['Packaging Materials', settings.packaging_materials_pct ?? 0],
-    ['Shipping and Transport', settings.shipping_transport_pct ?? 0],
-    ['Commissions', settings.commissions_pct ?? 0],
+  // Category-specific bases:
+  //   Overhead Materials → material total only
+  //   Overhead Labor → fabrication/labor total only
+  //   Rest → project discounted total
+  const addMaterialBase = (catDiscounted.profiles ?? 0) + (catDiscounted.accessories ?? 0) +
+    (catDiscounted.gaskets ?? 0) + (catDiscounted.doors ?? 0);
+  const addLaborBase = catDiscounted.fabrication ?? 0;
+
+  const additionalDefs: [string, number, number][] = [
+    ['Overhead Materials', settings.overhead_materials_pct ?? 0, addMaterialBase],
+    ['Overhead Labor', settings.overhead_labor_pct ?? 0, addLaborBase],
+    ['Admin and Management', settings.admin_management_pct ?? 0, discountedTotal],
+    ['Engineering', settings.engineering_pct ?? 0, discountedTotal],
+    ['Packaging Materials', settings.packaging_materials_pct ?? 0, discountedTotal],
+    ['Shipping and Transport', settings.shipping_transport_pct ?? 0, discountedTotal],
+    ['Commissions', settings.commissions_pct ?? 0, discountedTotal],
   ];
   const activeAdditional = additionalDefs.filter(([, pct]) => pct > 0);
-  const additionalTotal = activeAdditional.reduce((s, [, pct]) => s + discountedTotal * (pct / 100), 0);
+  const additionalTotal = activeAdditional.reduce((s, [, pct, base]) => s + base * (pct / 100), 0);
 
   if (activeAdditional.length > 0) {
-    const addRows = activeAdditional.map(([label, pct]) => [`${label} (${pct}%)`, fmtCurrency(discountedTotal * (pct / 100))]);
+    const addRows = activeAdditional.map(([label, pct, base]) => [`${label} (${pct}%)`, fmtCurrency(base * (pct / 100))]);
     addRows.push(['SUBTOTAL', fmtCurrency(additionalTotal)]);
 
     autoTable(doc, {
@@ -737,13 +749,95 @@ export async function exportToPdf(
     });
   }
 
+  // ---- Field Costs ----
+  let fieldInstallation = 0;
+  let fieldSealants = 0;
+  let fieldBreakMetal = 0;
+  {
+    const laborRate = settings.installation_labor_rate ?? 65;
+    const laborMkp = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+    const sealRate = settings.sealant_rate_per_ft ?? 3.5;
+    const sealMkp = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+    const bmRate = settings.break_metal_rate_per_ft ?? 12;
+    const bmMkp = 1 + (settings.break_metal_markup_pct ?? 0) / 100;
+
+    for (const [, elev] of Object.entries(elevations)) {
+      if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) continue;
+      const qty = elev.total_count || 1;
+      const w = elev.opening_width_inches || 0;
+      const h = elev.opening_height_inches || 0;
+      const perimFt = (2 * (w + h)) / 12;
+      const wFt = w / 12;
+      const hFt = h / 12;
+
+      if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+        fieldInstallation += elev.installation_labor_hours * laborRate * qty * laborMkp;
+      }
+      if (elev.sealant_joints && elev.sealant_joints > 0) {
+        fieldSealants += elev.sealant_joints * sealRate * perimFt * qty * sealMkp;
+      }
+      if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+        let linFt = 0;
+        for (const sel of elev.break_metal_selections) {
+          if (sel === 'Perimeter') linFt += 2 * (wFt + hFt);
+          else if (sel === 'Head') linFt += wFt;
+          else if (sel === 'Sill') linFt += wFt;
+          else if (sel === 'Left Jamb') linFt += hFt;
+          else if (sel === 'Right Jamb') linFt += hFt;
+          else if (sel === 'Both Jambs') linFt += 2 * hFt;
+        }
+        fieldBreakMetal += linFt * bmRate * qty * bmMkp;
+      }
+    }
+  }
+
+  const liftAmt = settings.lift_equipment_amount ?? 0;
+  const liftType = settings.lift_equipment_type ?? 'lump_sum';
+  const liftMkp = 1 + (settings.lift_equipment_markup_pct ?? 0) / 100;
+  const fieldSubBeforeLift = fieldInstallation + fieldSealants + fieldBreakMetal;
+  const subtotalBeforeLift = discountedTotal + additionalTotal + markupTotal + fieldSubBeforeLift;
+  const fieldLift = liftType === 'percentage'
+    ? subtotalBeforeLift * (liftAmt / 100) * liftMkp
+    : liftAmt * liftMkp;
+  const fieldCostTotal = fieldSubBeforeLift + fieldLift;
+
+  // Render field costs breakdown table
+  if (fieldCostTotal > 0) {
+    const fcItems: [string, number][] = [
+      ['Installation Labor', fieldInstallation],
+      ['Perimeter Sealants', fieldSealants],
+      ['Aluminum Break Metal', fieldBreakMetal],
+      ['Lift Equipment', fieldLift],
+    ];
+    const activeFc = fcItems.filter(([, amt]) => amt > 0);
+    const fcRows = activeFc.map(([label, amt]) => [label, fmtCurrency(amt)]);
+    fcRows.push(['SUBTOTAL', fmtCurrency(fieldCostTotal)]);
+
+    autoTable(doc, {
+      startY: getLastY() + 6,
+      margin: { left: margin, right: margin },
+      head: [['FIELD COSTS & INSTALLATION', '']],
+      body: fcRows,
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [191, 143, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'right' } },
+      didParseCell: (data: unknown) => {
+        const d = data as { row: { index: number }; section: string; cell: { styles: Record<string, unknown> } };
+        if (d.section === 'body' && d.row.index === fcRows.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
   // ---- Project Total ----
-  const grandTotal = discountedTotal + additionalTotal + markupTotal;
+  const grandTotal = discountedTotal + additionalTotal + markupTotal + fieldCostTotal;
   const ptRows: string[][] = [
     ['Discounted Total:', fmtCurrency(discountedTotal)],
   ];
   if (additionalTotal > 0) ptRows.push(['+ Additional:', fmtCurrency(additionalTotal)]);
   if (markupTotal > 0) ptRows.push(['+ Markups:', fmtCurrency(markupTotal)]);
+  if (fieldCostTotal > 0) ptRows.push(['+ Field Costs:', fmtCurrency(fieldCostTotal)]);
   ptRows.push(['GRAND TOTAL:', fmtCurrency(grandTotal)]);
 
   autoTable(doc, {
@@ -767,7 +861,7 @@ export async function exportToPdf(
   // ---- Pie Chart ----
   try {
     const activeMaterialCost = Math.max(0, discountedTotal - residualCost);
-    const pieBase64 = createPdfPieChart(activeMaterialCost, additionalTotal, markupTotal, residualCost);
+    const pieBase64 = createPdfPieChart(activeMaterialCost, additionalTotal, markupTotal, residualCost, fieldCostTotal);
     if (pieBase64) {
       const lastYPie = getLastY();
       const chartH = 70;

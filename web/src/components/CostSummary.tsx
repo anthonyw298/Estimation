@@ -136,6 +136,14 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
     let totalDiscountable = 0;
     let totalNonDiscountable = 0;
 
+    // Per-category cost tracking for category-specific bases
+    let profilesCost = 0;
+    let accessoriesCost = 0;
+    let gasketsCost = 0;
+    let glassCost = 0;
+    let fabricationCost = 0;
+    let doorsCost = 0;
+
     for (const [, item] of aggregatedMap) {
       if (item.type === 'Calculations') continue;
 
@@ -178,6 +186,14 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
       } else {
         totalNonDiscountable += itemCost;
       }
+
+      // Track per-category
+      if (item.type === 'profiles') profilesCost += itemCost;
+      else if (item.type === 'accessories') accessoriesCost += itemCost;
+      else if (item.type === 'gaskets') gasketsCost += itemCost;
+      else if (item.type === 'Glass') glassCost += itemCost;
+      else if (item.type === 'Fabrication') fabricationCost += itemCost;
+      else if (item.type === 'Doors') doorsCost += itemCost;
     }
 
     const totalListPrice = totalDiscountable + totalNonDiscountable;
@@ -240,32 +256,108 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
 
     const estimatedWasteCost = wasteCost * multiplier;
 
-    // Additional costs
-    const additionalCostPcts = [
-      settings.overhead_materials_pct ?? 0,
-      settings.overhead_labor_pct ?? 0,
-      settings.admin_management_pct ?? 0,
-      settings.engineering_pct ?? 0,
-      settings.packaging_materials_pct ?? 0,
-      settings.shipping_transport_pct ?? 0,
-      settings.commissions_pct ?? 0,
-    ];
-    const totalAdditionalCostPct = additionalCostPcts.reduce((s, v) => s + v, 0);
-    const additionalCostsAmount = discountedTotal * (totalAdditionalCostPct / 100);
+    // ----------------------------------------------------------------
+    // Field Costs (installation labor, sealants, break metal)
+    // ----------------------------------------------------------------
+    const laborRate = settings.installation_labor_rate ?? 65;
+    const laborMarkup = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+    const sealantRate = settings.sealant_rate_per_ft ?? 3.5;
+    const sealantMarkup = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+    const breakMetalRate = settings.break_metal_rate_per_ft ?? 12;
+    const breakMetalMarkup = 1 + (settings.break_metal_markup_pct ?? 0) / 100;
 
-    // Markups
-    const markupPcts = [
-      settings.profit_on_material_pct ?? 0,
-      settings.profit_on_waste_pct ?? 0,
-      settings.profit_on_glass_pct ?? 0,
-      settings.profit_on_wages_pct ?? 0,
-      settings.planning_technical_pct ?? 0,
-      settings.commission_pct ?? 0,
-    ];
-    const totalMarkupPct = markupPcts.reduce((s, v) => s + v, 0);
-    const markupsAmount = discountedTotal * (totalMarkupPct / 100);
+    let totalInstallationCost = 0;
+    let totalSealantCost = 0;
+    let totalBreakMetalCost = 0;
 
-    const grandTotal = discountedTotal + estimatedWasteCost + additionalCostsAmount + markupsAmount;
+    for (const [, elev] of Object.entries(elevations)) {
+      if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) continue;
+      const qty = elev.total_count || 1;
+      const w = elev.opening_width_inches || 0;
+      const h = elev.opening_height_inches || 0;
+      const perimeterFt = (2 * (w + h)) / 12;
+      const widthFt = w / 12;
+      const heightFt = h / 12;
+
+      // Installation labor
+      if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+        totalInstallationCost += elev.installation_labor_hours * laborRate * qty * laborMarkup;
+      }
+
+      // Perimeter sealants
+      if (elev.sealant_joints && elev.sealant_joints > 0) {
+        totalSealantCost += elev.sealant_joints * sealantRate * perimeterFt * qty * sealantMarkup;
+      }
+
+      // Break metal
+      if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+        let linearFt = 0;
+        for (const sel of elev.break_metal_selections) {
+          if (sel === 'Perimeter') linearFt += 2 * (widthFt + heightFt);
+          else if (sel === 'Head') linearFt += widthFt;
+          else if (sel === 'Sill') linearFt += widthFt;
+          else if (sel === 'Left Jamb') linearFt += heightFt;
+          else if (sel === 'Right Jamb') linearFt += heightFt;
+          else if (sel === 'Both Jambs') linearFt += 2 * heightFt;
+        }
+        totalBreakMetalCost += linearFt * breakMetalRate * qty * breakMetalMarkup;
+      }
+    }
+
+    const totalFieldCosts = totalInstallationCost + totalSealantCost + totalBreakMetalCost;
+
+    // Lift equipment (project-level)
+    const liftAmount = settings.lift_equipment_amount ?? 0;
+    const liftType = settings.lift_equipment_type ?? 'lump_sum';
+    const liftMarkup = 1 + (settings.lift_equipment_markup_pct ?? 0) / 100;
+
+    // Per-category discounted bases for additional costs & markups
+    const materialBase = (profilesCost + accessoriesCost + gasketsCost) * multiplier + doorsCost;
+    const glassBase = glassCost; // non-discountable, no multiplier
+    const laborBase = fabricationCost; // non-discountable, no multiplier
+
+    // Additional costs — each uses category-specific base:
+    //   Overhead Materials → material total only
+    //   Overhead Labor → fabrication/labor total only
+    //   Rest → project discounted total
+    const additionalCostItems: [string, number, number][] = [
+      ['Overhead Materials', settings.overhead_materials_pct ?? 0, materialBase],
+      ['Overhead Labor', settings.overhead_labor_pct ?? 0, laborBase],
+      ['Admin and Management', settings.admin_management_pct ?? 0, discountedTotal],
+      ['Engineering', settings.engineering_pct ?? 0, discountedTotal],
+      ['Packaging Materials', settings.packaging_materials_pct ?? 0, discountedTotal],
+      ['Shipping and Transport', settings.shipping_transport_pct ?? 0, discountedTotal],
+      ['Commissions', settings.commissions_pct ?? 0, discountedTotal],
+    ];
+    const additionalCostsAmount = additionalCostItems.reduce(
+      (sum, [, pct, base]) => sum + base * (pct / 100), 0,
+    );
+
+    // Markups — each uses category-specific base:
+    //   Profit on Material → material base (profiles+accessories+gaskets discounted + doors)
+    //   Profit on Waste → waste/residual cost
+    //   Profit on Glass Purchase → glass cost
+    //   Profit on Wages → fabrication/labor cost
+    //   Planning / Commission → project discounted total
+    const markupItems: [string, number, number][] = [
+      ['Profit on Material', settings.profit_on_material_pct ?? 0, materialBase],
+      ['Profit on Waste', settings.profit_on_waste_pct ?? 0, estimatedWasteCost],
+      ['Profit on Glass Purchase', settings.profit_on_glass_pct ?? 0, glassBase],
+      ['Profit on Wages', settings.profit_on_wages_pct ?? 0, laborBase],
+      ['Planning / Technical Office', settings.planning_technical_pct ?? 0, discountedTotal],
+      ['Commission', settings.commission_pct ?? 0, discountedTotal],
+    ];
+    const markupsAmount = markupItems.reduce(
+      (sum, [, pct, base]) => sum + base * (pct / 100), 0,
+    );
+
+    // Lift equipment depends on the subtotal before lift itself
+    const subtotalBeforeLift = discountedTotal + estimatedWasteCost + additionalCostsAmount + markupsAmount + totalFieldCosts;
+    const liftCost = liftType === 'percentage'
+      ? subtotalBeforeLift * (liftAmount / 100) * liftMarkup
+      : liftAmount * liftMarkup;
+
+    const grandTotal = subtotalBeforeLift + liftCost;
 
     return {
       elevationCosts,
@@ -276,10 +368,15 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
       threshold,
       discountedTotal,
       estimatedWasteCost,
+      totalFieldCosts,
+      totalInstallationCost,
+      totalSealantCost,
+      totalBreakMetalCost,
+      liftCost,
       additionalCostsAmount,
-      totalAdditionalCostPct,
+      additionalCostItems,
       markupsAmount,
-      totalMarkupPct,
+      markupItems,
       grandTotal,
     };
   }, [elevations, materials, settings]);
@@ -287,8 +384,10 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
   const {
     elevationCosts, totalListPrice, totalDiscountable, totalNonDiscountable,
     multiplier, threshold, discountedTotal, estimatedWasteCost,
-    additionalCostsAmount, totalAdditionalCostPct,
-    markupsAmount, totalMarkupPct, grandTotal,
+    totalFieldCosts, totalInstallationCost, totalSealantCost, totalBreakMetalCost,
+    liftCost,
+    additionalCostsAmount, additionalCostItems,
+    markupsAmount, markupItems, grandTotal,
   } = summary;
 
   if (elevationCosts.length === 0) {
@@ -372,30 +471,90 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
           </span>
         </div>
 
-        {/* Additional Costs */}
-        {totalAdditionalCostPct > 0 && (
+        {/* Field Costs */}
+        {totalFieldCosts > 0 && (
+          <>
+            <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+              <span className="text-[#ffffff] font-medium">Field Costs</span>
+              <span className="text-amber-400 font-mono tabular-nums">
+                {formatCurrency(totalFieldCosts)}
+              </span>
+            </div>
+            {totalInstallationCost > 0 && (
+              <div className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+                <span className="text-[#ffffff] ml-2">Installation Labor</span>
+                <span className="text-[#ffffff] font-mono tabular-nums">
+                  {formatCurrency(totalInstallationCost)}
+                </span>
+              </div>
+            )}
+            {totalSealantCost > 0 && (
+              <div className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+                <span className="text-[#ffffff] ml-2">Perimeter Sealants</span>
+                <span className="text-[#ffffff] font-mono tabular-nums">
+                  {formatCurrency(totalSealantCost)}
+                </span>
+              </div>
+            )}
+            {totalBreakMetalCost > 0 && (
+              <div className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+                <span className="text-[#ffffff] ml-2">Aluminum Break Metal</span>
+                <span className="text-[#ffffff] font-mono tabular-nums">
+                  {formatCurrency(totalBreakMetalCost)}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Lift Equipment */}
+        {liftCost > 0 && (
           <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#ffffff]">
-              Additional Costs
-              <span className="text-xs text-[#ffffff] ml-1">({totalAdditionalCostPct.toFixed(1)}%)</span>
-            </span>
-            <span className="text-orange-400 font-mono tabular-nums">
-              {formatCurrency(additionalCostsAmount)}
+            <span className="text-[#ffffff]">Lift Equipment</span>
+            <span className="text-amber-400 font-mono tabular-nums">
+              {formatCurrency(liftCost)}
             </span>
           </div>
         )}
 
+        {/* Additional Costs */}
+        {additionalCostsAmount > 0 && (
+          <>
+            <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+              <span className="text-[#ffffff] font-medium">Additional Costs</span>
+              <span className="text-orange-400 font-mono font-medium tabular-nums">
+                {formatCurrency(additionalCostsAmount)}
+              </span>
+            </div>
+            {additionalCostItems.filter(([, pct]) => pct > 0).map(([label, pct, base]) => (
+              <div key={label} className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+                <span className="text-[#ffffff] ml-2">{label} ({pct}%)</span>
+                <span className="text-[#ffffff] font-mono tabular-nums">
+                  {formatCurrency(base * (pct / 100))}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+
         {/* Markups */}
-        {totalMarkupPct > 0 && (
-          <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
-            <span className="text-[#ffffff]">
-              Markups
-              <span className="text-xs text-[#ffffff] ml-1">({totalMarkupPct.toFixed(1)}%)</span>
-            </span>
-            <span className="text-purple-400 font-mono tabular-nums">
-              {formatCurrency(markupsAmount)}
-            </span>
-          </div>
+        {markupsAmount > 0 && (
+          <>
+            <div className="flex items-center justify-between text-sm rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+              <span className="text-[#ffffff] font-medium">Markups</span>
+              <span className="text-purple-400 font-mono font-medium tabular-nums">
+                {formatCurrency(markupsAmount)}
+              </span>
+            </div>
+            {markupItems.filter(([, pct]) => pct > 0).map(([label, pct, base]) => (
+              <div key={label} className="flex items-center justify-between text-xs rounded-md px-2 py-1 hover:bg-[#0c0c12] transition-colors">
+                <span className="text-[#ffffff] ml-2">{label} ({pct}%)</span>
+                <span className="text-[#ffffff] font-mono tabular-nums">
+                  {formatCurrency(base * (pct / 100))}
+                </span>
+              </div>
+            ))}
+          </>
         )}
 
         {/* Grand Total */}
