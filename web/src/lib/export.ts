@@ -238,6 +238,7 @@ function buildElevationCategories(
   totalCount: number,
   multiplier: number,
   singleElevOutputs?: CalculatedOutput[],
+  settings?: ProjectSettings,
 ): Record<string, CategoryData> {
   const categories: Record<string, CategoryData> = {
     profiles: { items: [], total_original: 0, total_discounted: 0, total_original_per_elev: 0, total_discounted_per_elev: 0 },
@@ -277,9 +278,15 @@ function buildElevationCategories(
 
     let totalCost: number;
     if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
-      // Manual items (glass, fabrication, doors): output.price is already the
-      // total cost (ElevationEditor stores qty * unitRate). Use it directly.
-      totalCost = output.price ?? 0;
+      // Manual items: use LIVE settings rates for glass & fabrication so exports
+      // always reflect current pricing. Doors use baked price.
+      if (cat === 'glass' && settings) {
+        totalCost = qty * (settings.glass_per_sqft ?? 10.5);
+      } else if (cat === 'fabrication' && settings) {
+        totalCost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
+      } else {
+        totalCost = output.price ?? 0;
+      }
     } else {
       // Standard parts: re-price from scratch using getPriceByPart
       // This matches the Python _write_output_section approach
@@ -626,6 +633,7 @@ function buildSummaryCategories(
   elevations: Record<string, ElevationData>,
   materials: Record<string, ExtraMaterial>,
   multiplier: number,
+  settings?: ProjectSettings,
 ): Record<string, SummaryCategory> {
   // Step 2: Aggregate quantities across all elevations by category and part number
   // (matching Python create_summary_sheet Steps 2 + 2.5)
@@ -707,10 +715,16 @@ function buildSummaryCategories(
     const isGasket = data.category === 'gaskets';
     const isAccessory = data.category === 'accessories';
 
-    // Compute total_cost: re-price standard parts; use stored price for manual items
+    // Compute total_cost: re-price standard parts; use live settings rates for glass/fab
     let totalCost: number;
     if (data.isManual) {
-      totalCost = data.manual_total_cost;
+      if (data.category === 'glass' && settings) {
+        totalCost = data.total_qty * (settings.glass_per_sqft ?? 10.5);
+      } else if (data.category === 'fabrication' && settings) {
+        totalCost = data.total_qty * (settings.fabrication_cost_per_joint ?? 15.0);
+      } else {
+        totalCost = data.manual_total_cost;
+      }
     } else {
       const useGroup = isGasket;
       // For profiles/gaskets, use quantity_list for cut optimization
@@ -1869,8 +1883,15 @@ export async function exportToExcel(
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
       if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
-        // Manual items: output.price is already the total cost
-        runningGrandTotal += output.price ?? 0;
+        // Manual items: use live settings rates for glass/fab
+        const qty = sumQty(output.quantity);
+        if (cat === 'glass') {
+          runningGrandTotal += qty * (settings.glass_per_sqft ?? 10.5);
+        } else if (cat === 'fabrication') {
+          runningGrandTotal += qty * (settings.fabrication_cost_per_joint ?? 15.0);
+        } else {
+          runningGrandTotal += output.price ?? 0;
+        }
       } else {
         const [price] = getPriceByPart(
           output.part_number, output.quantity, elevFinish,
@@ -1921,7 +1942,7 @@ export async function exportToExcel(
     }
 
     // --- Material sections (starting col E) ---
-    const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier, elev.single_elevation_outputs);
+    const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier, elev.single_elevation_outputs, settings);
     const startCol = 5;
     let sectionRow = 1;
 
@@ -2008,7 +2029,7 @@ export async function exportToExcel(
   const sumCostOverview = reportConfig?.summary_options?.cost_overview;
 
   // Build summary categories
-  const summaryCategories = buildSummaryCategories(elevations, materials, multiplier);
+  const summaryCategories = buildSummaryCategories(elevations, materials, multiplier, settings);
 
   // Compute totals
   let totalListPrice = 0;

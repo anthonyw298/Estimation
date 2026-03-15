@@ -150,8 +150,16 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
       let itemCost = 0;
 
       if (item.manual) {
-        // Manual items: glass, fabrication, doors
-        itemCost = item.manualPrice * item.quantityTotal;
+        // Manual items: use LIVE settings rates for glass & fabrication
+        // so exports always reflect current pricing, not stale baked-in values.
+        if (item.type === 'Glass') {
+          itemCost = item.quantityTotal * (settings.glass_per_sqft ?? 10.5);
+        } else if (item.type === 'Fabrication') {
+          itemCost = item.quantityTotal * (settings.fabrication_cost_per_joint ?? 15.0);
+        } else {
+          // Doors and other manual items: use baked price
+          itemCost = item.manualPrice * item.quantityTotal;
+        }
       } else {
         // Standard parts: reprice from scratch with fresh materials
         const isProfile = profileKeys.includes(item.partNumber);

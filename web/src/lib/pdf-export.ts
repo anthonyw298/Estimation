@@ -204,7 +204,15 @@ export async function exportToPdf(
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
       if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
-        runningGrandTotal += output.price ?? 0;
+        // Use live settings rates for glass/fab
+        const qty = sumQty(output.quantity);
+        if (cat === 'glass') {
+          runningGrandTotal += qty * (settings.glass_per_sqft ?? 10.5);
+        } else if (cat === 'fabrication') {
+          runningGrandTotal += qty * (settings.fabrication_cost_per_joint ?? 15.0);
+        } else {
+          runningGrandTotal += output.price ?? 0;
+        }
       } else {
         const [price] = getPriceByPart(
           output.part_number, output.quantity, elevFinish,
@@ -332,7 +340,14 @@ export async function exportToPdf(
         // Re-price standard parts from scratch (matches Excel buildElevationCategories)
         let cost: number;
         if (item.manual || catKey === 'glass' || catKey === 'fabrication' || catKey === 'doors') {
-          cost = item.price ?? 0;
+          // Use live settings rates for glass/fab
+          if (catKey === 'glass') {
+            cost = qty * (settings.glass_per_sqft ?? 10.5);
+          } else if (catKey === 'fabrication') {
+            cost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
+          } else {
+            cost = item.price ?? 0;
+          }
         } else {
           const isGasket = catKey === 'gaskets';
           const isProfile = catKey === 'profiles';
@@ -547,7 +562,15 @@ export async function exportToPdf(
 
       let cost: number;
       if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
-        cost = output.price ?? 0;
+        // Use live settings rates for glass/fab
+        const qty = sumQty(output.quantity);
+        if (cat === 'glass') {
+          cost = qty * (settings.glass_per_sqft ?? 10.5);
+        } else if (cat === 'fabrication') {
+          cost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
+        } else {
+          cost = output.price ?? 0;
+        }
       } else {
         const isGasket = cat === 'gaskets';
         const isProfile = cat === 'profiles';
