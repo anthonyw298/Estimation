@@ -10,6 +10,7 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronUp,
+  HardHat,
 } from 'lucide-react';
 import type { ProjectSettings } from '@/types';
 
@@ -32,6 +33,18 @@ const PRICING_DEFAULTS = {
   discount_threshold: 50000,
   glass_per_sqft: 10.5,
   fabrication_cost_per_joint: 15,
+};
+
+const FIELD_COST_DEFAULTS = {
+  installation_labor_rate: 65,
+  installation_labor_markup_pct: 0,
+  sealant_rate_per_ft: 3.5,
+  sealant_markup_pct: 0,
+  break_metal_rate_per_ft: 12,
+  break_metal_markup_pct: 0,
+  lift_equipment_amount: 0,
+  lift_equipment_type: 'lump_sum' as const,
+  lift_equipment_markup_pct: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -102,6 +115,17 @@ export default function PricingAdjustmentTab({
   const [planningTechnicalPct, setPlanningTechnicalPct] = useState(settings.planning_technical_pct ?? 0);
   const [commissionPct, setCommissionPct] = useState(settings.commission_pct ?? 0);
 
+  // ---- Field Costs & Installation state ----
+  const [installationLaborRate, setInstallationLaborRate] = useState(settings.installation_labor_rate ?? FIELD_COST_DEFAULTS.installation_labor_rate);
+  const [installationLaborMarkupPct, setInstallationLaborMarkupPct] = useState(settings.installation_labor_markup_pct ?? FIELD_COST_DEFAULTS.installation_labor_markup_pct);
+  const [sealantRatePerFt, setSealantRatePerFt] = useState(settings.sealant_rate_per_ft ?? FIELD_COST_DEFAULTS.sealant_rate_per_ft);
+  const [sealantMarkupPct, setSealantMarkupPct] = useState(settings.sealant_markup_pct ?? FIELD_COST_DEFAULTS.sealant_markup_pct);
+  const [breakMetalRatePerFt, setBreakMetalRatePerFt] = useState(settings.break_metal_rate_per_ft ?? FIELD_COST_DEFAULTS.break_metal_rate_per_ft);
+  const [breakMetalMarkupPct, setBreakMetalMarkupPct] = useState(settings.break_metal_markup_pct ?? FIELD_COST_DEFAULTS.break_metal_markup_pct);
+  const [liftEquipmentAmount, setLiftEquipmentAmount] = useState(settings.lift_equipment_amount ?? FIELD_COST_DEFAULTS.lift_equipment_amount);
+  const [liftEquipmentType, setLiftEquipmentType] = useState(settings.lift_equipment_type ?? FIELD_COST_DEFAULTS.lift_equipment_type);
+  const [liftEquipmentMarkupPct, setLiftEquipmentMarkupPct] = useState(settings.lift_equipment_markup_pct ?? FIELD_COST_DEFAULTS.lift_equipment_markup_pct);
+
   // Sync from props when settings change externally
   useEffect(() => {
     setDiscountMultiplierLow(settings.discount_multiplier_low ?? PRICING_DEFAULTS.discount_multiplier_low);
@@ -122,6 +146,15 @@ export default function PricingAdjustmentTab({
     setProfitOnWagesPct(settings.profit_on_wages_pct ?? 0);
     setPlanningTechnicalPct(settings.planning_technical_pct ?? 0);
     setCommissionPct(settings.commission_pct ?? 0);
+    setInstallationLaborRate(settings.installation_labor_rate ?? FIELD_COST_DEFAULTS.installation_labor_rate);
+    setInstallationLaborMarkupPct(settings.installation_labor_markup_pct ?? FIELD_COST_DEFAULTS.installation_labor_markup_pct);
+    setSealantRatePerFt(settings.sealant_rate_per_ft ?? FIELD_COST_DEFAULTS.sealant_rate_per_ft);
+    setSealantMarkupPct(settings.sealant_markup_pct ?? FIELD_COST_DEFAULTS.sealant_markup_pct);
+    setBreakMetalRatePerFt(settings.break_metal_rate_per_ft ?? FIELD_COST_DEFAULTS.break_metal_rate_per_ft);
+    setBreakMetalMarkupPct(settings.break_metal_markup_pct ?? FIELD_COST_DEFAULTS.break_metal_markup_pct);
+    setLiftEquipmentAmount(settings.lift_equipment_amount ?? FIELD_COST_DEFAULTS.lift_equipment_amount);
+    setLiftEquipmentType(settings.lift_equipment_type ?? FIELD_COST_DEFAULTS.lift_equipment_type);
+    setLiftEquipmentMarkupPct(settings.lift_equipment_markup_pct ?? FIELD_COST_DEFAULTS.lift_equipment_markup_pct);
   }, [settings]);
 
   // ---- Save Pricing ----
@@ -201,7 +234,50 @@ export default function PricingAdjustmentTab({
     profitOnWagesPct, planningTechnicalPct, commissionPct,
   ]);
 
+  // ---- Save Field Costs ----
+  const [savingFieldCosts, setSavingFieldCosts] = useState(false);
+  const [savedFieldCosts, setSavedFieldCosts] = useState(false);
 
+  const handleSaveFieldCosts = useCallback(async () => {
+    setSavingFieldCosts(true);
+    setSavedFieldCosts(false);
+    try {
+      await onSettingsUpdate({
+        ...settings,
+        installation_labor_rate: installationLaborRate,
+        installation_labor_markup_pct: installationLaborMarkupPct,
+        sealant_rate_per_ft: sealantRatePerFt,
+        sealant_markup_pct: sealantMarkupPct,
+        break_metal_rate_per_ft: breakMetalRatePerFt,
+        break_metal_markup_pct: breakMetalMarkupPct,
+        lift_equipment_amount: liftEquipmentAmount,
+        lift_equipment_type: liftEquipmentType,
+        lift_equipment_markup_pct: liftEquipmentMarkupPct,
+      });
+      setSavedFieldCosts(true);
+      setTimeout(() => setSavedFieldCosts(false), 2000);
+    } finally {
+      setSavingFieldCosts(false);
+    }
+  }, [
+    settings, onSettingsUpdate,
+    installationLaborRate, installationLaborMarkupPct,
+    sealantRatePerFt, sealantMarkupPct,
+    breakMetalRatePerFt, breakMetalMarkupPct,
+    liftEquipmentAmount, liftEquipmentType, liftEquipmentMarkupPct,
+  ]);
+
+  const handleResetFieldCosts = useCallback(() => {
+    setInstallationLaborRate(FIELD_COST_DEFAULTS.installation_labor_rate);
+    setInstallationLaborMarkupPct(FIELD_COST_DEFAULTS.installation_labor_markup_pct);
+    setSealantRatePerFt(FIELD_COST_DEFAULTS.sealant_rate_per_ft);
+    setSealantMarkupPct(FIELD_COST_DEFAULTS.sealant_markup_pct);
+    setBreakMetalRatePerFt(FIELD_COST_DEFAULTS.break_metal_rate_per_ft);
+    setBreakMetalMarkupPct(FIELD_COST_DEFAULTS.break_metal_markup_pct);
+    setLiftEquipmentAmount(FIELD_COST_DEFAULTS.lift_equipment_amount);
+    setLiftEquipmentType(FIELD_COST_DEFAULTS.lift_equipment_type);
+    setLiftEquipmentMarkupPct(FIELD_COST_DEFAULTS.lift_equipment_markup_pct);
+  }, []);
 
   // ---- Section Header helper ----
   const SectionHeader = ({ sectionKey, title, icon, action }: {
@@ -299,8 +375,9 @@ export default function PricingAdjustmentTab({
                     min={0}
                     max={1}
                     step="0.001"
-                    value={discountMultiplierLow}
+                    value={discountMultiplierLow || ''}
                     onChange={(e) => setDiscountMultiplierLow(parseFloat(e.target.value) || 0)}
+                    placeholder={String(PRICING_DEFAULTS.discount_multiplier_low)}
                   />
                   <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_low}</p>
                 </div>
@@ -314,8 +391,9 @@ export default function PricingAdjustmentTab({
                     min={0}
                     max={1}
                     step="0.001"
-                    value={discountMultiplierHigh}
+                    value={discountMultiplierHigh || ''}
                     onChange={(e) => setDiscountMultiplierHigh(parseFloat(e.target.value) || 0)}
+                    placeholder={String(PRICING_DEFAULTS.discount_multiplier_high)}
                   />
                   <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_high}</p>
                 </div>
@@ -326,8 +404,9 @@ export default function PricingAdjustmentTab({
                     className={inputClass}
                     min={0}
                     step="1000"
-                    value={discountThreshold}
+                    value={discountThreshold || ''}
                     onChange={(e) => setDiscountThreshold(parseFloat(e.target.value) || 0)}
+                    placeholder={String(PRICING_DEFAULTS.discount_threshold)}
                   />
                   <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.discount_threshold.toLocaleString()}</p>
                 </div>
@@ -345,8 +424,9 @@ export default function PricingAdjustmentTab({
                     className={inputClass}
                     min={0}
                     step="0.5"
-                    value={glassPerSqft}
+                    value={glassPerSqft || ''}
                     onChange={(e) => setGlassPerSqft(parseFloat(e.target.value) || 0)}
+                    placeholder={String(PRICING_DEFAULTS.glass_per_sqft)}
                   />
                   <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.glass_per_sqft}</p>
                 </div>
@@ -357,8 +437,9 @@ export default function PricingAdjustmentTab({
                     className={inputClass}
                     min={0}
                     step="0.5"
-                    value={fabricationCostPerJoint}
+                    value={fabricationCostPerJoint || ''}
                     onChange={(e) => setFabricationCostPerJoint(parseFloat(e.target.value) || 0)}
+                    placeholder={String(PRICING_DEFAULTS.fabrication_cost_per_joint)}
                   />
                   <p className="text-xs text-[#ffffff] mt-1">Default: ${PRICING_DEFAULTS.fabrication_cost_per_joint}</p>
                 </div>
@@ -369,7 +450,142 @@ export default function PricingAdjustmentTab({
       </div>
 
       {/* ================================================================== */}
-      {/* 2. Additional Cost Settings                                        */}
+      {/* 2. Field Costs & Installation                                      */}
+      {/* ================================================================== */}
+      <div className={cardClass}>
+        <SectionHeader
+          sectionKey="fieldCosts"
+          title="Field Costs & Installation"
+          icon={<HardHat className="w-5 h-5 text-amber-500" />}
+          action={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleResetFieldCosts}
+                className="px-3 py-2 text-xs font-medium text-[#ffffff] hover:text-white hover:bg-[#16161f] rounded-lg transition-colors duration-200"
+              >
+                Reset Defaults
+              </button>
+              <button
+                onClick={handleSaveFieldCosts}
+                disabled={savingFieldCosts}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:brightness-110 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 transition-colors duration-200"
+              >
+                {savingFieldCosts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {savedFieldCosts ? 'Saved!' : 'Save'}
+              </button>
+            </div>
+          }
+        />
+        {!collapsedSections.fieldCosts && (
+          <>
+            {/* Info box */}
+            <div className="flex items-start gap-2.5 p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+              <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                Set default rates and markups for field costs. Per-elevation quantities (labor hours, sealant joints, break metal selections)
+                are entered on each elevation. Lift equipment is a project-level cost entered here.
+              </p>
+            </div>
+
+            {/* Installation Labor */}
+            <div>
+              <h4 className="text-sm font-semibold text-[#c4c5d0] mb-3">Installation Labor</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Labor Rate ($ / man-hour)</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={0}
+                    step="1"
+                    value={installationLaborRate || ''}
+                    onChange={(e) => setInstallationLaborRate(parseFloat(e.target.value) || 0)}
+                    placeholder={String(FIELD_COST_DEFAULTS.installation_labor_rate)}
+                  />
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${FIELD_COST_DEFAULTS.installation_labor_rate}/hr</p>
+                </div>
+                <PctInput label="Markup %" value={installationLaborMarkupPct} onChange={setInstallationLaborMarkupPct} />
+              </div>
+            </div>
+
+            {/* Perimeter Sealants */}
+            <div className="border-t border-[#1e1e2a] pt-4">
+              <h4 className="text-sm font-semibold text-[#c4c5d0] mb-3">Perimeter Sealants</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Sealant Rate ($ / linear ft)</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={0}
+                    step="0.25"
+                    value={sealantRatePerFt || ''}
+                    onChange={(e) => setSealantRatePerFt(parseFloat(e.target.value) || 0)}
+                    placeholder={String(FIELD_COST_DEFAULTS.sealant_rate_per_ft)}
+                  />
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${FIELD_COST_DEFAULTS.sealant_rate_per_ft}/ft</p>
+                </div>
+                <PctInput label="Markup %" value={sealantMarkupPct} onChange={setSealantMarkupPct} />
+              </div>
+            </div>
+
+            {/* Aluminum Break Metal */}
+            <div className="border-t border-[#1e1e2a] pt-4">
+              <h4 className="text-sm font-semibold text-[#c4c5d0] mb-3">Aluminum Break Metal</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Break Metal Rate ($ / linear ft)</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={0}
+                    step="0.5"
+                    value={breakMetalRatePerFt || ''}
+                    onChange={(e) => setBreakMetalRatePerFt(parseFloat(e.target.value) || 0)}
+                    placeholder={String(FIELD_COST_DEFAULTS.break_metal_rate_per_ft)}
+                  />
+                  <p className="text-xs text-[#ffffff] mt-1">Default: ${FIELD_COST_DEFAULTS.break_metal_rate_per_ft}/ft</p>
+                </div>
+                <PctInput label="Markup %" value={breakMetalMarkupPct} onChange={setBreakMetalMarkupPct} />
+              </div>
+            </div>
+
+            {/* Lift Equipment */}
+            <div className="border-t border-[#1e1e2a] pt-4">
+              <h4 className="text-sm font-semibold text-[#c4c5d0] mb-3">Lift Equipment</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className={labelClass}>Amount</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    min={0}
+                    step="100"
+                    value={liftEquipmentAmount || ''}
+                    onChange={(e) => setLiftEquipmentAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Type</label>
+                  <select
+                    className={inputClass}
+                    value={liftEquipmentType}
+                    onChange={(e) => setLiftEquipmentType(e.target.value)}
+                  >
+                    <option value="lump_sum">Lump Sum ($)</option>
+                    <option value="percentage">% of Project Cost</option>
+                  </select>
+                </div>
+                <PctInput label="Markup %" value={liftEquipmentMarkupPct} onChange={setLiftEquipmentMarkupPct} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ================================================================== */}
+      {/* 3. Additional Cost Settings                                        */}
       {/* ================================================================== */}
       <div className={cardClass}>
         <SectionHeader

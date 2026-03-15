@@ -11,6 +11,13 @@ import {
 } from '@/types';
 import { calculateYes45tuQuantities } from '@/lib/yes45tu';
 import {
+  buildDloGrid,
+  calculateGlassMakeSize,
+  DLO_EDGE_DEDUCTION,
+  DLO_INTERIOR_DEDUCTION,
+  DLO_SILL_DEDUCTION,
+} from '@/lib/formulas';
+import {
   getPriceByPart,
   getUnitPriceByPart,
   applyMaterialImpactInMemory,
@@ -215,22 +222,9 @@ export default function ElevationEditor({
     },
   );
 
-  // Track which bay indices the user has manually set (for "Default Rest").
-  // Clearing a bay back to 0/empty removes it from the set so it becomes
-  // eligible for auto-distribution again.
-  const [editedBayWidths, setEditedBayWidths] = useState<Set<number>>(() => {
-    // On load: treat any saved non-zero bay as "edited"
-    if (elevationData.custom_bay_widths?.length === elevationData.bays_wide) {
-      return new Set(elevationData.custom_bay_widths.map((w, i) => (w > 0 ? i : -1)).filter((i) => i >= 0));
-    }
-    return new Set();
-  });
-  const [editedBayHeights, setEditedBayHeights] = useState<Set<number>>(() => {
-    if (elevationData.custom_bay_heights?.length === elevationData.bays_tall) {
-      return new Set(elevationData.custom_bay_heights.map((h, i) => (h > 0 ? i : -1)).filter((i) => i >= 0));
-    }
-    return new Set();
-  });
+  // Track which bay indices the user has manually edited (for "Default Rest")
+  const [editedBayWidths, setEditedBayWidths] = useState<Set<number>>(new Set());
+  const [editedBayHeights, setEditedBayHeights] = useState<Set<number>>(new Set());
 
   // Glass & Fabrication pricing is controlled from the Pricing tab (settings),
   // not per-elevation. Read from settings (fallback to elevation data for legacy).
@@ -239,6 +233,22 @@ export default function ElevationEditor({
 
   // --- Doors ---
   const [doors, setDoors] = useState<DoorConfig[]>(initialDoors);
+
+  // --- Field Costs (per-elevation) ---
+  const [installationLaborHours, setInstallationLaborHours] = useState(
+    elevationData.installation_labor_hours ?? 0,
+  );
+  const [sealantJoints, setSealantJoints] = useState(
+    elevationData.sealant_joints ?? 0,
+  );
+  const [breakMetalSelections, setBreakMetalSelections] = useState<string[]>(
+    elevationData.break_metal_selections ?? [],
+  );
+  const [fieldCostExpanded, setFieldCostExpanded] = useState(
+    (elevationData.installation_labor_hours ?? 0) > 0 ||
+    (elevationData.sealant_joints ?? 0) > 0 ||
+    (elevationData.break_metal_selections ?? []).length > 0,
+  );
 
   // --- Results ---
   const [results, setResults] = useState<CalculatedOutput[] | null>(
@@ -251,6 +261,9 @@ export default function ElevationEditor({
 
   // --- Save success indicator ---
   const [justSaved, setJustSaved] = useState(false);
+
+  // --- Validation: only show red highlights after first save attempt ---
+  const [saveAttempted, setSaveAttempted] = useState(false);
 
   // --- Column visibility for results table ---
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
@@ -297,7 +310,9 @@ export default function ElevationEditor({
       const count = Math.max(1, newBaysWide);
       if (openingWidth > 0) {
         setCustomBayWidths(
-          Array(count).fill(Math.round((openingWidth / count) * 100) / 100),
+          Array(count).fill(
+            Math.round((openingWidth / count) * 100) / 100,
+          ),
         );
       } else {
         setCustomBayWidths(Array(count).fill(0));
@@ -340,37 +355,33 @@ export default function ElevationEditor({
         next[index] = value;
         return next;
       });
-      // value > 0 → mark as manually set; cleared to 0 → remove so Default Rest can fill it
+      // Mark as edited when value > 0, remove when cleared to 0
       setEditedBayWidths((prev) => {
         const next = new Set(prev);
-        if (value > 0) {
-          next.add(index);
-        } else {
-          next.delete(index);
-        }
+        if (value > 0) next.add(index); else next.delete(index);
         return next;
       });
     },
     [],
   );
 
-  /** Distribute remaining opening width among non-edited bays.
-   *  - No edits → equal split all bays.
-   *  - Some edited → keep edited values, split remainder to the rest.
-   *  - All edited → full reset to equal split (clears edit tracking).
-   */
+  /** Reset all bay widths to equal split. */
+  const handleDefaultAllWidths = useCallback(() => {
+    const each = Math.round((openingWidth / baysWide) * 100) / 100;
+    setCustomBayWidths(Array(baysWide).fill(each));
+    setEditedBayWidths(new Set());
+  }, [openingWidth, baysWide]);
+
+  /** Keep edited bays, distribute remaining to un-edited bays. */
   const handleDefaultRestWidths = useCallback(() => {
     if (editedBayWidths.size === 0 || editedBayWidths.size >= baysWide) {
-      // Nothing edited or everything edited → equal split & reset tracking
-      const each = Math.round((openingWidth / baysWide) * 100) / 100;
-      setCustomBayWidths(Array(baysWide).fill(each));
-      setEditedBayWidths(new Set());
+      // Nothing edited or all edited — just do equal split
+      handleDefaultAllWidths();
       return;
     }
-
-    // Some edited — distribute remaining to un-edited bays
     const editedSum = customBayWidths.reduce(
-      (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum), 0,
+      (sum, w, i) => (editedBayWidths.has(i) ? sum + w : sum),
+      0,
     );
     const remaining = openingWidth - editedSum;
     const unedited = baysWide - editedBayWidths.size;
@@ -378,7 +389,7 @@ export default function ElevationEditor({
     setCustomBayWidths((prev) =>
       prev.map((w, i) => (editedBayWidths.has(i) ? w : each)),
     );
-  }, [editedBayWidths, customBayWidths, openingWidth, baysWide]);
+  }, [editedBayWidths, customBayWidths, openingWidth, baysWide, handleDefaultAllWidths]);
 
   // ---------------------------------------------------------------------------
   // Bay height logic
@@ -397,7 +408,9 @@ export default function ElevationEditor({
       const count = Math.max(1, newBaysTall);
       if (openingHeight > 0) {
         setCustomBayHeights(
-          Array(count).fill(Math.round((openingHeight / count) * 100) / 100),
+          Array(count).fill(
+            Math.round((openingHeight / count) * 100) / 100,
+          ),
         );
       } else {
         setCustomBayHeights(Array(count).fill(0));
@@ -439,32 +452,29 @@ export default function ElevationEditor({
       });
       setEditedBayHeights((prev) => {
         const next = new Set(prev);
-        if (value > 0) {
-          next.add(index);
-        } else {
-          next.delete(index);
-        }
+        if (value > 0) next.add(index); else next.delete(index);
         return next;
       });
     },
     [],
   );
 
-  /** Distribute remaining opening height among non-edited bays.
-   *  - No edits → equal split all bays.
-   *  - Some edited → keep edited values, split remainder to the rest.
-   *  - All edited → full reset to equal split (clears edit tracking).
-   */
+  /** Reset all bay heights to equal split. */
+  const handleDefaultAllHeights = useCallback(() => {
+    const each = Math.round((openingHeight / baysTall) * 100) / 100;
+    setCustomBayHeights(Array(baysTall).fill(each));
+    setEditedBayHeights(new Set());
+  }, [openingHeight, baysTall]);
+
+  /** Keep edited bays, distribute remaining to un-edited bays. */
   const handleDefaultRestHeights = useCallback(() => {
     if (editedBayHeights.size === 0 || editedBayHeights.size >= baysTall) {
-      const each = Math.round((openingHeight / baysTall) * 100) / 100;
-      setCustomBayHeights(Array(baysTall).fill(each));
-      setEditedBayHeights(new Set());
+      handleDefaultAllHeights();
       return;
     }
-
     const editedSum = customBayHeights.reduce(
-      (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum), 0,
+      (sum, h, i) => (editedBayHeights.has(i) ? sum + h : sum),
+      0,
     );
     const remaining = openingHeight - editedSum;
     const unedited = baysTall - editedBayHeights.size;
@@ -472,16 +482,13 @@ export default function ElevationEditor({
     setCustomBayHeights((prev) =>
       prev.map((h, i) => (editedBayHeights.has(i) ? h : each)),
     );
-  }, [editedBayHeights, customBayHeights, openingHeight, baysTall]);
+  }, [editedBayHeights, customBayHeights, openingHeight, baysTall, handleDefaultAllHeights]);
 
   // ---------------------------------------------------------------------------
   // Door management
   // ---------------------------------------------------------------------------
 
-  // --- Bay selector modal state ---
-  const [showBaySelector, setShowBaySelector] = useState(false);
-
-  const addDoor = useCallback((bayIndex?: number) => {
+  const addDoor = useCallback(() => {
     setDoors((prev) => [
       ...prev,
       {
@@ -489,18 +496,9 @@ export default function ElevationEditor({
         count: 1,
         stile: 'Narrow',
         hardware: Object.fromEntries(HARDWARE_OPTIONS.map((h) => [h, false])),
-        bayIndex: bayIndex ?? 0,
       },
     ]);
   }, []);
-
-  const handleAddDoorClick = useCallback(() => {
-    if (doorOnly || baysWide <= 1) {
-      addDoor(0);
-    } else {
-      setShowBaySelector(true);
-    }
-  }, [doorOnly, baysWide, addDoor]);
 
   const removeDoor = useCallback((index: number) => {
     setDoors((prev) => prev.filter((_, i) => i !== index));
@@ -557,6 +555,7 @@ export default function ElevationEditor({
   const isFormValid = doorOnly ? doors.length > 0 : missingFields.length === 0;
 
   const handleCalculate = useCallback(() => {
+    setSaveAttempted(true);
     // Safety net: block calculation if required fields are missing
     if (!doorOnly && missingFields.length > 0) {
       return;
@@ -784,6 +783,13 @@ export default function ElevationEditor({
       }
 
       // Build updated elevation data and call onSave
+      // Field cost fields (preserved across saves)
+      const fieldCostFields = {
+        installation_labor_hours: installationLaborHours || undefined,
+        sealant_joints: sealantJoints || undefined,
+        break_metal_selections: breakMetalSelections.length > 0 ? breakMetalSelections : undefined,
+      };
+
       const updatedData: ElevationData = doorOnly
         ? {
             system_type: 'Other',
@@ -800,6 +806,7 @@ export default function ElevationEditor({
             door_only: true,
             calculated_outputs: pricedOutputs,
             material_impacts: impacts,
+            ...fieldCostFields,
           }
         : {
             system_type: systemType,
@@ -817,6 +824,7 @@ export default function ElevationEditor({
             single_elevation_outputs: singleElevOutputs,
             material_impacts: impacts,
             door_only: false,
+            ...fieldCostFields,
           };
 
       onSave(elevationName, updatedData, doors, materialsClone);
@@ -847,6 +855,9 @@ export default function ElevationEditor({
     elevationData,
     missingFields,
     isFormValid,
+    installationLaborHours,
+    sealantJoints,
+    breakMetalSelections,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -1072,10 +1083,10 @@ export default function ElevationEditor({
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Total Count {totalCount <= 0 && <span className="text-red-400">*</span>}</label>
+                <label className={labelClass}>Total Count {saveAttempted && totalCount <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={totalCount <= 0 ? inputInvalidClass : inputClass}
+                  className={saveAttempted && totalCount <= 0 ? inputInvalidClass : inputClass}
                   min={1}
                   value={totalCount || ''}
                   onChange={(e) =>
@@ -1120,10 +1131,10 @@ export default function ElevationEditor({
           {!collapsedSections.opening && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className={labelClass}>Opening Width (inches) {openingWidth <= 0 && <span className="text-red-400">*</span>}</label>
+                <label className={labelClass}>Opening Width (inches) {saveAttempted && openingWidth <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={openingWidth <= 0 ? inputInvalidClass : inputClass}
+                  className={saveAttempted && openingWidth <= 0 ? inputInvalidClass : inputClass}
                   min={0}
                   step="0.01"
                   value={openingWidth || ''}
@@ -1134,10 +1145,10 @@ export default function ElevationEditor({
                 />
               </div>
               <div>
-                <label className={labelClass}>Opening Height (inches) {openingHeight <= 0 && <span className="text-red-400">*</span>}</label>
+                <label className={labelClass}>Opening Height (inches) {saveAttempted && openingHeight <= 0 && <span className="text-red-400">*</span>}</label>
                 <input
                   type="number"
-                  className={openingHeight <= 0 ? inputInvalidClass : inputClass}
+                  className={saveAttempted && openingHeight <= 0 ? inputInvalidClass : inputClass}
                   min={0}
                   step="0.01"
                   value={openingHeight || ''}
@@ -1162,10 +1173,10 @@ export default function ElevationEditor({
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={labelClass}>Bays Wide {baysWide <= 0 && <span className="text-red-400">*</span>}</label>
+                  <label className={labelClass}>Bays Wide {saveAttempted && baysWide <= 0 && <span className="text-red-400">*</span>}</label>
                   <input
                     type="number"
-                    className={baysWide <= 0 ? inputInvalidClass : inputClass}
+                    className={saveAttempted && baysWide <= 0 ? inputInvalidClass : inputClass}
                     min={1}
                     value={baysWide || ''}
                     onChange={(e) =>
@@ -1176,10 +1187,10 @@ export default function ElevationEditor({
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Bays Tall {baysTall <= 0 && <span className="text-red-400">*</span>}</label>
+                  <label className={labelClass}>Bays Tall {saveAttempted && baysTall <= 0 && <span className="text-red-400">*</span>}</label>
                   <input
                     type="number"
-                    className={baysTall <= 0 ? inputInvalidClass : inputClass}
+                    className={saveAttempted && baysTall <= 0 ? inputInvalidClass : inputClass}
                     min={1}
                     value={baysTall || ''}
                     onChange={(e) =>
@@ -1199,11 +1210,20 @@ export default function ElevationEditor({
                     </p>
                     <button
                       type="button"
-                      onClick={handleDefaultRestWidths}
-                      className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      onClick={handleDefaultAllWidths}
+                      className="rounded bg-[#1e1e2a] px-2.5 py-1 text-xs font-medium text-[#ffffff]/70 transition-colors hover:bg-[#2a2a3a] hover:text-[#ffffff]"
                     >
-                      Default Rest
+                      Default All
                     </button>
+                    {editedBayWidths.size > 0 && editedBayWidths.size < baysWide && (
+                      <button
+                        type="button"
+                        onClick={handleDefaultRestWidths}
+                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      >
+                        Default Rest
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {customBayWidths.map((w, i) => (
@@ -1253,11 +1273,20 @@ export default function ElevationEditor({
                     </p>
                     <button
                       type="button"
-                      onClick={handleDefaultRestHeights}
-                      className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      onClick={handleDefaultAllHeights}
+                      className="rounded bg-[#1e1e2a] px-2.5 py-1 text-xs font-medium text-[#ffffff]/70 transition-colors hover:bg-[#2a2a3a] hover:text-[#ffffff]"
                     >
-                      Default Rest
+                      Default All
                     </button>
+                    {editedBayHeights.size > 0 && editedBayHeights.size < baysTall && (
+                      <button
+                        type="button"
+                        onClick={handleDefaultRestHeights}
+                        className="rounded bg-blue-600/20 px-2.5 py-1 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-600/30"
+                      >
+                        Default Rest
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {[...customBayHeights].reverse().map((h, displayIdx) => {
@@ -1304,7 +1333,57 @@ export default function ElevationEditor({
                 </div>
               )}
 
-
+              {/* D.L.O. & Glass Make Size summary */}
+              {openingWidth > 0 && openingHeight > 0 && (() => {
+                const resolvedWidths = baysWide > 1 ? customBayWidths : [openingWidth];
+                const resolvedHeights = baysTall > 1 ? customBayHeights : [openingHeight];
+                const { dloWidths, dloHeights } = buildDloGrid(resolvedWidths, resolvedHeights);
+                return (
+                  <div className="mt-3 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-3 space-y-2">
+                    <p className="text-[10px] font-semibold text-[#ffffff] uppercase tracking-wider">
+                      D.L.O. &amp; Glass Make Size
+                    </p>
+                    <div className="text-[10px] text-[#ffffff]/60 space-x-3">
+                      <span>Edge &minus;{DLO_EDGE_DEDUCTION}&Prime;</span>
+                      <span>Interior &minus;{DLO_INTERIOR_DEDUCTION}&Prime;</span>
+                      <span>Sill &minus;{DLO_SILL_DEDUCTION.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}&Prime;</span>
+                      <span>Glass = DLO + &frac34;&Prime;</span>
+                    </div>
+                    {/* Width D.L.O. */}
+                    <div>
+                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Widths</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
+                        {resolvedWidths.map((w, col) => (
+                          <div key={col} className="text-xs font-mono">
+                            <span className="text-[#ffffff]/50">B{col + 1}: </span>
+                            <span className="text-[#ffffff]">{w.toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-blue-400">{dloWidths[col].toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-emerald-400">{calculateGlassMakeSize(dloWidths[col]).toFixed(2)}&Prime;</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Height D.L.O. */}
+                    <div>
+                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Heights (bottom &rarr; top)</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
+                        {resolvedHeights.map((h, row) => (
+                          <div key={row} className="text-xs font-mono">
+                            <span className="text-[#ffffff]/50">R{row + 1}{row === 0 ? ' (Bot)' : ''}: </span>
+                            <span className="text-[#ffffff]">{h.toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-blue-400">{dloHeights[0][row].toFixed(2)}&Prime;</span>
+                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
+                            <span className="text-emerald-400">{calculateGlassMakeSize(dloHeights[0][row]).toFixed(2)}&Prime;</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -1345,16 +1424,9 @@ export default function ElevationEditor({
                   className="rounded-xl border border-[#1e1e2a] bg-[#0a0a10] p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-[#ffffff]">
-                        Door {di + 1}
-                      </span>
-                      {!doorOnly && baysWide > 1 && (
-                        <span className="text-xs bg-[#3b82f6]/10 text-[#3b82f6] px-2 py-0.5 rounded-full border border-[#3b82f6]/20">
-                          Bay {(door.bayIndex ?? 0) + 1}
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-sm font-semibold text-[#ffffff]">
+                      Door {di + 1}
+                    </span>
                     <button
                       type="button"
                       onClick={() => removeDoor(di)}
@@ -1364,7 +1436,7 @@ export default function ElevationEditor({
                     </button>
                   </div>
 
-                  <div className={`grid grid-cols-1 gap-3 ${!doorOnly && baysWide > 1 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {/* Size */}
                     <div>
                       <label className={labelClass}>Size</label>
@@ -1420,26 +1492,6 @@ export default function ElevationEditor({
                         ))}
                       </select>
                     </div>
-
-                    {/* Bay assignment (only when multi-bay, non door-only) */}
-                    {!doorOnly && baysWide > 1 && (
-                      <div>
-                        <label className={labelClass}>Bay</label>
-                        <select
-                          className={selectClass}
-                          value={door.bayIndex ?? 0}
-                          onChange={(e) =>
-                            updateDoor(di, 'bayIndex', parseInt(e.target.value, 10))
-                          }
-                        >
-                          {Array.from({ length: baysWide }, (_, i) => (
-                            <option key={i} value={i}>
-                              Bay {i + 1} ({customBayWidths[i]?.toFixed(1)}&quot;)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
                   </div>
 
                   {/* Hardware */}
@@ -1470,7 +1522,7 @@ export default function ElevationEditor({
 
             <button
               type="button"
-              onClick={handleAddDoorClick}
+              onClick={addDoor}
               className="mt-2 rounded-xl border border-dashed border-[#2a2a3a] px-4 py-2.5 text-sm text-[#ffffff] hover:border-[#3b82f6]/50 hover:text-blue-400 hover:bg-[#3b82f6]/5 transition-colors duration-200"
             >
               + Add Door
@@ -1478,66 +1530,6 @@ export default function ElevationEditor({
           </>
         )}
       </div>
-
-      {/* Bay Selector Modal */}
-      {showBaySelector && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-overlay"
-          onClick={() => setShowBaySelector(false)}
-        >
-          <div
-            className="bg-[#111118] border border-[#1e1e2a] rounded-2xl w-full max-w-md mx-4 p-7 shadow-2xl shadow-black/60 animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-11 h-11 rounded-full bg-[#3b82f6]/10 border border-[#3b82f6]/15 flex items-center justify-center flex-shrink-0">
-                <DoorOpen className="w-5 h-5 text-[#3b82f6]" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-[#ffffff]">
-                  Select Bay
-                </h3>
-                <p className="text-xs text-[#ffffff]/50">
-                  Choose which bay to place the door in
-                </p>
-              </div>
-            </div>
-
-            {/* Visual bay selector — proportionally sized */}
-            <div className="flex gap-1.5 mb-5 p-3 bg-[#0a0a12] rounded-xl border border-[#1e1e2a]">
-              {customBayWidths.map((width, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => {
-                    addDoor(i);
-                    setShowBaySelector(false);
-                  }}
-                  className="relative flex flex-col items-center justify-center rounded-lg border-2 border-[#2a2a3a] hover:border-[#3b82f6] hover:bg-[#3b82f6]/10 transition-all duration-200 py-5 cursor-pointer group min-w-0"
-                  style={{ flex: width }}
-                >
-                  <span className="text-sm font-semibold text-[#ffffff] group-hover:text-[#3b82f6] transition-colors duration-200">
-                    Bay {i + 1}
-                  </span>
-                  <span className="text-xs text-[#ffffff]/40 mt-0.5">
-                    {width.toFixed(1)}&quot;
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowBaySelector(false)}
-                className="px-4 py-2.5 text-sm font-medium text-[#ffffff]/70 hover:text-[#ffffff] rounded-xl hover:bg-[#1e1e2a] transition-colors duration-200"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* 6. Save / Update */}
