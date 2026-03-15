@@ -46,6 +46,9 @@ coverage.xml
 venv/
 env/
 
+# Claude Code local settings
+.claude/settings.local.json
+
 # My own stuff
 *.log
 *.sqlite3

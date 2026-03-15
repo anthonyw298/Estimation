@@ -1814,6 +1814,9 @@ function createCostPieChart(
     { name: 'Profit/Markups', value: markupCost, pct: markupPct, color: MARKUP_COLOR },
     { name: 'Residual/Waste', value: residualCost, pct: residualPct, color: RESIDUAL_COLOR },
   ];
+  if (fieldCost > 0) {
+    legendItems.push({ name: 'Field Costs', value: fieldCost, pct: fieldPct, color: FIELD_COLOR });
+  }
 
   for (let i = 0; i < legendItems.length; i++) {
     const item = legendItems[i];

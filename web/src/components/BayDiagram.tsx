@@ -470,21 +470,6 @@ export default function BayDiagram({
             >
               DOOR
             </text>
-            {/* Bay assignment label */}
-            {door.bayLabel && (
-              <text
-                x={ox + door.x + door.width / 2}
-                y={oy + door.y + door.height / 2 + 24}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fill="#34d399"
-                fontSize={7}
-                fontFamily="monospace"
-                opacity={0.5}
-              >
-                {door.bayLabel}
-              </text>
-            )}
           </g>
         ))}
 

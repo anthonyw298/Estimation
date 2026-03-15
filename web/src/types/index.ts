@@ -20,6 +20,11 @@ export interface ElevationData {
   total_sqft?: number;
   perimeter_ft?: number;
   total_perimeter_ft?: number;
+
+  // Installation & Field Costs (per-elevation inputs)
+  installation_labor_hours?: number;
+  sealant_joints?: number;
+  break_metal_selections?: string[]; // 'Perimeter' | 'Head' | 'Sill' | 'Left Jamb' | 'Right Jamb' | 'Both Jambs'
 }
 
 // A single calculated output item (profile, accessory, glass, fabrication, door)
@@ -98,6 +103,19 @@ export interface ProjectSettings {
   profit_on_wages_pct?: number;
   planning_technical_pct?: number;
   commission_pct?: number;
+
+  // Field Costs & Installation Rates
+  installation_labor_rate?: number;    // $ per man-hour
+  installation_labor_markup_pct?: number;
+  sealant_rate_per_ft?: number;        // $ per linear foot per joint
+  sealant_markup_pct?: number;
+  break_metal_rate_per_ft?: number;    // $ per linear foot
+  break_metal_markup_pct?: number;
+
+  // Lift Equipment (project-level)
+  lift_equipment_amount?: number;      // dollar value or percentage value
+  lift_equipment_type?: string;        // 'lump_sum' | 'percentage'
+  lift_equipment_markup_pct?: number;
 
   // Elevation Summary Display checkboxes
   show_elevation_names?: boolean;

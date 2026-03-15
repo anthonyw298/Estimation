@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(npm run start)",
+      "Bash(npm install *)",
+      "Bash(npx *)",
+      "Bash(python main.py)",
+      "Bash(pip install *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(bun *)",
+      "Bash(vercel *)",
+      "Read",
+      "Edit",
+      "Write"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./web/.env.local)",
+      "Edit(./config.py)",
+      "Bash(rm -rf *)",
+      "Bash(DROP TABLE *)",
+      "Bash(DELETE FROM *)"
+    ]
+  }
+}

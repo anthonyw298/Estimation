@@ -1532,7 +1532,139 @@ export default function ElevationEditor({
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* 6. Save / Update */}
+      {/* 6. Installation & Field Costs (per-elevation) */}
+      {/* ------------------------------------------------------------------ */}
+      {!doorOnly && (
+        <div className={cardClass}>
+          <button
+            type="button"
+            onClick={() => setFieldCostExpanded(!fieldCostExpanded)}
+            className="flex items-center justify-between w-full group"
+          >
+            <h3 className={sectionTitleClass}>
+              <span className="text-amber-400/80 mr-2">$</span>
+              Installation & Field Costs
+            </h3>
+            {fieldCostExpanded ? (
+              <ChevronUp className="h-4 w-4 text-[#ffffff] group-hover:text-white transition-colors" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[#ffffff] group-hover:text-white transition-colors" />
+            )}
+          </button>
+
+          {fieldCostExpanded && (
+            <div className="space-y-4 pt-2">
+              <p className="text-xs text-[#ffffff]">
+                Per-elevation field cost quantities. Rates & markups are configured in the Pricing tab.
+              </p>
+
+              {/* Installation Labor Hours */}
+              <div>
+                <label className={labelClass}>Installation Labor Hours</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={installationLaborHours || ''}
+                    onChange={(e) => setInstallationLaborHours(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className={inputClass + ' max-w-[180px]'}
+                  />
+                  <span className="text-xs text-[#ffffff]">
+                    hrs x {totalCount || 1} elev = {((installationLaborHours || 0) * (totalCount || 1)).toFixed(1)} total hrs
+                  </span>
+                </div>
+              </div>
+
+              {/* Sealant Joints */}
+              <div>
+                <label className={labelClass}>Perimeter Sealant Joints</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={sealantJoints || ''}
+                    onChange={(e) => setSealantJoints(parseInt(e.target.value, 10) || 0)}
+                    placeholder="0"
+                    className={inputClass + ' max-w-[180px]'}
+                  />
+                  <span className="text-xs text-[#ffffff]">
+                    joints &times; {((2 * (openingWidth + openingHeight)) / 12).toFixed(1)} ft perimeter
+                  </span>
+                </div>
+              </div>
+
+              {/* Break Metal Selections */}
+              <div>
+                <label className={labelClass}>Aluminum Break Metal</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Perimeter', 'Head', 'Sill', 'Left Jamb', 'Right Jamb', 'Both Jambs'].map((opt) => {
+                    const selected = breakMetalSelections.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => {
+                          setBreakMetalSelections((prev) =>
+                            selected ? prev.filter((s) => s !== opt) : [...prev, opt],
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150 ${
+                          selected
+                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                            : 'bg-[#0c0c12] border-[#2a2a3a] text-[#ffffff] hover:border-amber-500/30'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                {breakMetalSelections.length > 0 && (
+                  <p className="text-xs text-[#ffffff] mt-2">
+                    Linear footage:{' '}
+                    {(() => {
+                      const wFt = openingWidth / 12;
+                      const hFt = openingHeight / 12;
+                      let total = 0;
+                      for (const sel of breakMetalSelections) {
+                        if (sel === 'Perimeter') total += 2 * (wFt + hFt);
+                        else if (sel === 'Head') total += wFt;
+                        else if (sel === 'Sill') total += wFt;
+                        else if (sel === 'Left Jamb') total += hFt;
+                        else if (sel === 'Right Jamb') total += hFt;
+                        else if (sel === 'Both Jambs') total += 2 * hFt;
+                      }
+                      return total.toFixed(1);
+                    })()}{' '}
+                    ft/elev &times; {totalCount || 1} ={' '}
+                    {(() => {
+                      const wFt = openingWidth / 12;
+                      const hFt = openingHeight / 12;
+                      let total = 0;
+                      for (const sel of breakMetalSelections) {
+                        if (sel === 'Perimeter') total += 2 * (wFt + hFt);
+                        else if (sel === 'Head') total += wFt;
+                        else if (sel === 'Sill') total += wFt;
+                        else if (sel === 'Left Jamb') total += hFt;
+                        else if (sel === 'Right Jamb') total += hFt;
+                        else if (sel === 'Both Jambs') total += 2 * hFt;
+                      }
+                      return (total * (totalCount || 1)).toFixed(1);
+                    })()}{' '}
+                    total ft
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 7. Save / Update */}
       {/* ------------------------------------------------------------------ */}
       <div className={cardClass}>
         <div className="flex items-center justify-between">
