@@ -411,6 +411,17 @@ function writeSystemInput(
       : 'None'],
   ];
 
+  // Field cost inputs (only show when configured)
+  if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+    rows.push(['Installation Labor Hours', `${elev.installation_labor_hours} hrs`]);
+  }
+  if (elev.sealant_joints && elev.sealant_joints > 0) {
+    rows.push(['Perimeter Sealant Joints', String(elev.sealant_joints)]);
+  }
+  if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+    rows.push(['Break Metal', elev.break_metal_selections.join(', ')]);
+  }
+
   let row = startRow;
   for (const [label, value] of rows) {
     const r = sheet.getRow(row);
@@ -527,6 +538,8 @@ function writeElevationCostSummary(
   startRow: number,
   startCol: number,
   includedSections?: Record<string, boolean>,
+  elev?: ElevationData,
+  settings?: ProjectSettings,
 ): number {
   let row = startRow;
 
@@ -573,6 +586,71 @@ function writeElevationCostSummary(
     row++;
   }
 
+  // Per-elevation field costs
+  if (elev && settings) {
+    const qty = totalCount || 1;
+    const w = elev.opening_width_inches || 0;
+    const h = elev.opening_height_inches || 0;
+    const perimFt = (2 * (w + h)) / 12;
+    const wFt = w / 12;
+    const hFt = h / 12;
+
+    if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+      const rate = settings.installation_labor_rate ?? 65;
+      const mkp = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+      const perElevCost = elev.installation_labor_hours * rate * mkp;
+      const totalCost = perElevCost * qty;
+      const r = sheet.getRow(row);
+      r.getCell(startCol).value = 'INSTALLATION LABOR';
+      r.getCell(startCol + 1).value = perElevCost;
+      setCurrency(r.getCell(startCol + 1));
+      r.getCell(startCol + 2).value = totalCost;
+      setCurrency(r.getCell(startCol + 2));
+      totalCostPerElev += perElevCost;
+      totalCostAll += totalCost;
+      row++;
+    }
+    if (elev.sealant_joints && elev.sealant_joints > 0) {
+      const rate = settings.sealant_rate_per_ft ?? 3.5;
+      const mkp = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+      const perElevCost = elev.sealant_joints * rate * perimFt * mkp;
+      const totalCost = perElevCost * qty;
+      const r = sheet.getRow(row);
+      r.getCell(startCol).value = 'PERIMETER SEALANTS';
+      r.getCell(startCol + 1).value = perElevCost;
+      setCurrency(r.getCell(startCol + 1));
+      r.getCell(startCol + 2).value = totalCost;
+      setCurrency(r.getCell(startCol + 2));
+      totalCostPerElev += perElevCost;
+      totalCostAll += totalCost;
+      row++;
+    }
+    if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+      const rate = settings.break_metal_rate_per_ft ?? 12;
+      const mkp = 1 + (settings.break_metal_markup_pct ?? 0) / 100;
+      let linFt = 0;
+      for (const sel of elev.break_metal_selections) {
+        if (sel === 'Perimeter') linFt += 2 * (wFt + hFt);
+        else if (sel === 'Head') linFt += wFt;
+        else if (sel === 'Sill') linFt += wFt;
+        else if (sel === 'Left Jamb') linFt += hFt;
+        else if (sel === 'Right Jamb') linFt += hFt;
+        else if (sel === 'Both Jambs') linFt += 2 * hFt;
+      }
+      const perElevCost = linFt * rate * mkp;
+      const totalCost = perElevCost * qty;
+      const r = sheet.getRow(row);
+      r.getCell(startCol).value = 'ALUMINUM BREAK METAL';
+      r.getCell(startCol + 1).value = perElevCost;
+      setCurrency(r.getCell(startCol + 1));
+      r.getCell(startCol + 2).value = totalCost;
+      setCurrency(r.getCell(startCol + 2));
+      totalCostPerElev += perElevCost;
+      totalCostAll += totalCost;
+      row++;
+    }
+  }
+
   // Separator
   const sepRow = sheet.getRow(row);
   [startCol, startCol + 1, startCol + 2].forEach(c => {
@@ -593,7 +671,7 @@ function writeElevationCostSummary(
 
   // Note
   const noteRow = sheet.getRow(row);
-  noteRow.getCell(startCol).value = '*Note - Elevation costs based on discounted material costs';
+  noteRow.getCell(startCol).value = '*Note - Elevation costs include discounted materials and field costs';
   setFont(noteRow.getCell(startCol), { size: 9, italic: true, color: '808080' });
   row += 2;
 
@@ -1966,7 +2044,7 @@ export async function exportToExcel(
 
     // --- Elevation Cost Summary ---
     if (elevSections?.elevation_cost_summary !== false) {
-      sectionRow = writeElevationCostSummary(sheet, categories, elevName, totalCount, sectionRow, startCol, elevSections);
+      sectionRow = writeElevationCostSummary(sheet, categories, elevName, totalCount, sectionRow, startCol, elevSections, elev, settings);
     }
 
     // Auto-fit all material columns so descriptions are never truncated

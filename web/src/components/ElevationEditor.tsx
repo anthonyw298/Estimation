@@ -1333,57 +1333,6 @@ export default function ElevationEditor({
                 </div>
               )}
 
-              {/* D.L.O. & Glass Make Size summary */}
-              {openingWidth > 0 && openingHeight > 0 && (() => {
-                const resolvedWidths = baysWide > 1 ? customBayWidths : [openingWidth];
-                const resolvedHeights = baysTall > 1 ? customBayHeights : [openingHeight];
-                const { dloWidths, dloHeights } = buildDloGrid(resolvedWidths, resolvedHeights);
-                return (
-                  <div className="mt-3 rounded-lg border border-[#1e1e2a] bg-[#0a0a10] p-3 space-y-2">
-                    <p className="text-[10px] font-semibold text-[#ffffff] uppercase tracking-wider">
-                      D.L.O. &amp; Glass Make Size
-                    </p>
-                    <div className="text-[10px] text-[#ffffff]/60 space-x-3">
-                      <span>Edge &minus;{DLO_EDGE_DEDUCTION}&Prime;</span>
-                      <span>Interior &minus;{DLO_INTERIOR_DEDUCTION}&Prime;</span>
-                      <span>Sill &minus;{DLO_SILL_DEDUCTION.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}&Prime;</span>
-                      <span>Glass = DLO + &frac34;&Prime;</span>
-                    </div>
-                    {/* Width D.L.O. */}
-                    <div>
-                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Widths</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
-                        {resolvedWidths.map((w, col) => (
-                          <div key={col} className="text-xs font-mono">
-                            <span className="text-[#ffffff]/50">B{col + 1}: </span>
-                            <span className="text-[#ffffff]">{w.toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-blue-400">{dloWidths[col].toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-emerald-400">{calculateGlassMakeSize(dloWidths[col]).toFixed(2)}&Prime;</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Height D.L.O. */}
-                    <div>
-                      <p className="text-[10px] text-[#ffffff]/70 font-medium mb-1">Heights (bottom &rarr; top)</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 md:grid-cols-4">
-                        {resolvedHeights.map((h, row) => (
-                          <div key={row} className="text-xs font-mono">
-                            <span className="text-[#ffffff]/50">R{row + 1}{row === 0 ? ' (Bot)' : ''}: </span>
-                            <span className="text-[#ffffff]">{h.toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-blue-400">{dloHeights[0][row].toFixed(2)}&Prime;</span>
-                            <span className="text-[#ffffff]/40 mx-0.5">&rarr;</span>
-                            <span className="text-emerald-400">{calculateGlassMakeSize(dloHeights[0][row]).toFixed(2)}&Prime;</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
             </>
           )}
         </div>
@@ -1607,9 +1556,17 @@ export default function ElevationEditor({
                         key={opt}
                         type="button"
                         onClick={() => {
-                          setBreakMetalSelections((prev) =>
-                            selected ? prev.filter((s) => s !== opt) : [...prev, opt],
-                          );
+                          setBreakMetalSelections((prev) => {
+                            if (selected) return prev.filter((s) => s !== opt);
+                            if (opt === 'Perimeter') return ['Perimeter'];
+                            let next = prev.filter((s) => s !== 'Perimeter');
+                            if (opt === 'Both Jambs') {
+                              next = next.filter((s) => s !== 'Left Jamb' && s !== 'Right Jamb');
+                            } else if (opt === 'Left Jamb' || opt === 'Right Jamb') {
+                              next = next.filter((s) => s !== 'Both Jambs');
+                            }
+                            return [...next, opt];
+                          });
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150 ${
                           selected
@@ -1725,9 +1682,23 @@ export default function ElevationEditor({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-5">
                 <div>
-                  <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">List Price Total</p>
+                  <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">List Price</p>
                   <p className="text-xl font-bold font-mono text-white tabular-nums">
                     {formatCurrency(grandTotal)}
+                  </p>
+                </div>
+                <div className="w-px h-12 bg-[#1e1e2a]" />
+                <div>
+                  <p className="text-[10px] text-[#ffffff] font-semibold uppercase tracking-wider mb-1">Elevation Total</p>
+                  <p className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
+                    {formatCurrency(
+                      groupedResults.reduce((s, g) => {
+                        const sectionTotal = g.items.reduce((a, r) => a + (r.price ?? 0), 0);
+                        return s + (g.isDiscountable ? sectionTotal * discountMultiplier : sectionTotal);
+                      }, 0)
+                      + ((installationLaborHours || 0) * (settings.installation_labor_rate ?? 65) * (1 + (settings.installation_labor_markup_pct ?? 0) / 100))
+                      + ((sealantJoints || 0) * (settings.sealant_rate_per_ft ?? 3.5) * ((2 * (openingWidth + openingHeight)) / 12) * (1 + (settings.sealant_markup_pct ?? 0) / 100))
+                    )}
                   </p>
                 </div>
                 <div className="w-px h-12 bg-[#1e1e2a]" />
@@ -1763,6 +1734,55 @@ export default function ElevationEditor({
                 )}
               </button>
             </div>
+
+            {/* Per-category cost breakdown (matches Excel COST/ELEVATION) */}
+            {groupedResults.length > 0 && (() => {
+              const laborRate = settings.installation_labor_rate ?? 65;
+              const laborMkp = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+              const sealRate = settings.sealant_rate_per_ft ?? 3.5;
+              const sealMkp = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+              const perimFt = (2 * (openingWidth + openingHeight)) / 12;
+              const installCost = (installationLaborHours || 0) * laborRate * laborMkp;
+              const sealCost = (sealantJoints || 0) * sealRate * perimFt * sealMkp;
+
+              const categories = groupedResults.map((g) => {
+                const listTotal = g.items.reduce((a, r) => a + (r.price ?? 0), 0);
+                const discTotal = g.isDiscountable ? listTotal * discountMultiplier : listTotal;
+                return { label: g.label, listTotal, discTotal };
+              });
+
+              const elevTotal = categories.reduce((a, c) => a + c.discTotal, 0) + installCost + sealCost;
+
+              return (
+                <div className="mt-4 pt-3 border-t border-[#1e1e2a]">
+                  <p className="text-[10px] text-[#ffffff]/60 font-semibold uppercase tracking-wider mb-2">Cost / Elevation</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                    {categories.map((c) => (
+                      <div key={c.label} className="flex items-center justify-between text-xs">
+                        <span className="text-[#ffffff]/70">{c.label}</span>
+                        <span className="font-mono tabular-nums text-[#ffffff]">{formatCurrency(c.discTotal)}</span>
+                      </div>
+                    ))}
+                    {installCost > 0 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[#ffffff]/70">Installation Labor</span>
+                        <span className="font-mono tabular-nums text-[#ffffff]">{formatCurrency(installCost)}</span>
+                      </div>
+                    )}
+                    {sealCost > 0 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[#ffffff]/70">Perimeter Sealants</span>
+                        <span className="font-mono tabular-nums text-[#ffffff]">{formatCurrency(sealCost)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#1e1e2a]">
+                    <span className="text-xs font-semibold text-white">Elev Total</span>
+                    <span className="text-sm font-bold font-mono tabular-nums text-emerald-400">{formatCurrency(elevTotal)}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

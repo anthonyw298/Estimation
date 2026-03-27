@@ -337,6 +337,44 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       discountedTotal += DISCOUNTABLE.has(cat) ? price * multiplier : price;
     }
 
+    // Include field costs (installation labor, perimeter sealants, break metal)
+    const w = elev.opening_width_inches || 0;
+    const h = elev.opening_height_inches || 0;
+    const perimFt = (2 * (w + h)) / 12;
+    const laborRate = settings.installation_labor_rate ?? 65;
+    const laborMkp = 1 + (settings.installation_labor_markup_pct ?? 0) / 100;
+    const sealRate = settings.sealant_rate_per_ft ?? 3.5;
+    const sealMkp = 1 + (settings.sealant_markup_pct ?? 0) / 100;
+    const bmRate = settings.break_metal_rate_per_ft ?? 12;
+    const bmMkp = 1 + (settings.break_metal_markup_pct ?? 0) / 100;
+
+    if (elev.installation_labor_hours && elev.installation_labor_hours > 0) {
+      const cost = elev.installation_labor_hours * laborRate * laborMkp;
+      listTotal += cost;
+      discountedTotal += cost;
+    }
+    if (elev.sealant_joints && elev.sealant_joints > 0) {
+      const cost = elev.sealant_joints * sealRate * perimFt * sealMkp;
+      listTotal += cost;
+      discountedTotal += cost;
+    }
+    if (elev.break_metal_selections && elev.break_metal_selections.length > 0) {
+      const wFt = w / 12;
+      const hFt = h / 12;
+      let linFt = 0;
+      for (const sel of elev.break_metal_selections) {
+        if (sel === 'Perimeter') linFt += 2 * (wFt + hFt);
+        else if (sel === 'Head') linFt += wFt;
+        else if (sel === 'Sill') linFt += wFt;
+        else if (sel === 'Left Jamb') linFt += hFt;
+        else if (sel === 'Right Jamb') linFt += hFt;
+        else if (sel === 'Both Jambs') linFt += 2 * hFt;
+      }
+      const cost = linFt * bmRate * bmMkp;
+      listTotal += cost;
+      discountedTotal += cost;
+    }
+
     return { list: listTotal, discounted: discountedTotal };
   }
 

@@ -460,6 +460,9 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
           </span>
           <span className="text-[#3b82f6] font-mono font-semibold tabular-nums">
             x {multiplier.toFixed(3)}
+            <span className="text-xs text-[#ffffff]/50 ml-1">
+              ({((1 - multiplier) * 100).toFixed(1)}% off)
+            </span>
           </span>
         </div>
 
