@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Lock, Building2, Sparkles } from 'lucide-react';
 
-const CORRECT_PASSWORD = 'password';
+const CORRECT_PASSWORD = 'UnitedGlass01!#';
 const AUTH_KEY = 'ugv_authenticated';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
