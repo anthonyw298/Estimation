@@ -379,7 +379,10 @@ export default function PricingAdjustmentTab({
                     onChange={(e) => setDiscountMultiplierLow(parseFloat(e.target.value) || 0)}
                     placeholder={String(PRICING_DEFAULTS.discount_multiplier_low)}
                   />
-                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_low}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_low} ({((1 - PRICING_DEFAULTS.discount_multiplier_low) * 100).toFixed(1)}% discount)</p>
+                  {discountMultiplierLow > 0 && discountMultiplierLow !== PRICING_DEFAULTS.discount_multiplier_low && (
+                    <p className="text-xs text-blue-400 mt-0.5">= {((1 - discountMultiplierLow) * 100).toFixed(1)}% discount</p>
+                  )}
                 </div>
                 <div>
                   <label className={labelClass}>
@@ -395,7 +398,10 @@ export default function PricingAdjustmentTab({
                     onChange={(e) => setDiscountMultiplierHigh(parseFloat(e.target.value) || 0)}
                     placeholder={String(PRICING_DEFAULTS.discount_multiplier_high)}
                   />
-                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_high}</p>
+                  <p className="text-xs text-[#ffffff] mt-1">Default: {PRICING_DEFAULTS.discount_multiplier_high} ({((1 - PRICING_DEFAULTS.discount_multiplier_high) * 100).toFixed(1)}% discount)</p>
+                  {discountMultiplierHigh > 0 && discountMultiplierHigh !== PRICING_DEFAULTS.discount_multiplier_high && (
+                    <p className="text-xs text-blue-400 mt-0.5">= {((1 - discountMultiplierHigh) * 100).toFixed(1)}% discount</p>
+                  )}
                 </div>
                 <div>
                   <label className={labelClass}>Discount Threshold ($)</label>
