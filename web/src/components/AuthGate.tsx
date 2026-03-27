@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Lock, Building2, Sparkles } from 'lucide-react';
 
-const CORRECT_PASSWORD = 'UnitedGlass01!#';
 const AUTH_KEY = 'ugv_authenticated';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
@@ -25,13 +24,25 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      if (password === CORRECT_PASSWORD) {
-        sessionStorage.setItem(AUTH_KEY, 'true');
-        setAuthenticated(true);
-        setError(false);
-      } else {
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (res.ok) {
+          sessionStorage.setItem(AUTH_KEY, 'true');
+          setAuthenticated(true);
+          setError(false);
+        } else {
+          setError(true);
+          setShaking(true);
+          setPassword('');
+          setTimeout(() => setShaking(false), 500);
+        }
+      } catch {
         setError(true);
         setShaking(true);
         setPassword('');
