@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import AuthGate from "@/components/AuthGate";
 import { BubbleBackground } from "@/components/BubbleBackground";
 import "./globals.css";
 
@@ -43,7 +42,7 @@ export default function RootLayout({
         />
         <div className="fixed inset-0 z-[1] bg-[#06060a]/60 pointer-events-none" />
         <div className="relative z-10 min-h-screen">
-          <AuthGate>{children}</AuthGate>
+          {children}
         </div>
       </body>
     </html>
