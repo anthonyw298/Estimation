@@ -4,6 +4,7 @@ import json, os, re, sys, datetime, base64, io, time, traceback, shutil
 # Assuming your utils and systems are in their respective directories
 from utils.excel_generator import generate_excel_report
 from systems.yes45tu_front_set import calculate_yes45tu_quantities
+from systems.yes45tu_center_set import calculate_yes45tu_center_set_quantities
 from utils.formulas import (
     calculate_rectangle_area,
     calculate_perimeter,
@@ -456,7 +457,7 @@ def main(page: ft.Page):
         "current_doors": [],
         "selected_door_index": None,
         "report_intent": None,  # "excel" or "pdf" when user clicks Generate Report or Export PDF
-        "system_options": ["YES 45TU FRONT SET(OG)", "Other"],
+        "system_options": ["YES 45TU FRONT SET(OG)", "YES 45TU CENTER SET", "Other"],
         "finish_options": ["Clear", "Black", "Paint"],
         "door_options": [
             "None",
@@ -2357,7 +2358,7 @@ def main(page: ft.Page):
                 return
 
             door_only = state.get("workspace_mode") == "door_only"
-            is_yes45 = inputs["system"].value == "YES 45TU FRONT SET(OG)"
+            is_yes45 = inputs["system"].value in ("YES 45TU FRONT SET(OG)", "YES 45TU CENTER SET")
             show_bays = is_yes45 and not door_only
             if inputs.get("bay_config_container"):
                 inputs["bay_config_container"].visible = show_bays
@@ -2630,7 +2631,7 @@ def main(page: ft.Page):
             """Automatically refresh bay diagram when inputs change."""
             try:
                 # Only refresh if YES 45TU system is selected
-                if inputs["system"].value != "YES 45TU FRONT SET(OG)":
+                if inputs["system"].value not in ("YES 45TU FRONT SET(OG)", "YES 45TU CENTER SET"):
                     if inputs.get("bay_diagram_container"):
                         inputs["bay_diagram_container"].visible = False
                     return
@@ -3361,14 +3362,14 @@ def main(page: ft.Page):
                     data["custom_bay_widths"] = []
                     data["custom_bay_heights"] = []
                     data["calculated_outputs"] = []
-                elif data["system"] == "YES 45TU FRONT SET(OG)":
+                elif data["system"] in ("YES 45TU FRONT SET(OG)", "YES 45TU CENTER SET"):
                     if not inputs["bays_wide"].value:
                         raise ValueError(
-                            "Bays Wide is required for YES 45TU FRONT SET(OG)"
+                            f"Bays Wide is required for {data['system']}"
                         )
                     if not inputs["bays_tall"].value:
                         raise ValueError(
-                            "Bays Tall is required for YES 45TU FRONT SET(OG)"
+                            f"Bays Tall is required for {data['system']}"
                         )
                     bw = int(inputs["bays_wide"].value)
                     bh = int(inputs["bays_tall"].value)
@@ -3485,7 +3486,12 @@ def main(page: ft.Page):
                     )
                     glass_override = proj_settings.get("glass_per_sqft")
                     fab_override = proj_settings.get("fabrication_cost_per_joint")
-                    data["calculated_outputs"] = calculate_yes45tu_quantities(
+                    calc_fn = (
+                        calculate_yes45tu_center_set_quantities
+                        if data["system"] == "YES 45TU CENTER SET"
+                        else calculate_yes45tu_quantities
+                    )
+                    data["calculated_outputs"] = calc_fn(
                         bw,
                         bh,
                         total,
@@ -5710,7 +5716,7 @@ def main(page: ft.Page):
         # so page.update() in update_bay_visibility fails if called directly.
         # Instead, we just set the initial visibility state of the controls.
 
-        is_yes45_init = inputs["system"].value == "YES 45TU FRONT SET(OG)"
+        is_yes45_init = inputs["system"].value in ("YES 45TU FRONT SET(OG)", "YES 45TU CENTER SET")
         door_only_init = state.get("workspace_mode") == "door_only"
         show_bays_init = is_yes45_init and not door_only_init
 
