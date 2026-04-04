@@ -52,6 +52,13 @@ export const PART_NUMBER_MAP: Record<string, Record<string, string>> = {
     "AS-0718": "OHCC Door Stop E2-0051 Elastomer Included",
     "E9-2540": "Interior Transom Head Glass Stop",
     "E9-0407": 'Threshold 1/2" x 4"',
+    "BE9-2551": "Jamb Screw Spline Assembly",
+    "BE9-2553": "Head",
+    "BE9-2556": "Horizontal Screw Spline Assembly",
+    "BE9-2579": "Sill",
+    "BE9-2555": "One Piece Mullion",
+    "BE9-2552": "Pocket Filler Slotted",
+    "E9-1015": "Glass Stop",
   },
   accessories: {
     "E9-1040": 'Glazing Adaptor For 1/4" Glazing',
@@ -115,5 +122,13 @@ export const PART_NUMBER_MAP: Record<string, Record<string, string>> = {
       '#12 x 3/4" UFHSMS Type A, Zinc Plated Steel For End Dam Attachment',
     "PC-1228":
       '#12 x 1-3/4" PHSMS Type AB Zinc Plated Steel, For Attachment of Shear Block to Vertical',
+    "E1-1058": "Shear Block For Sill/Horizontal",
+    "E1-1059": "Shear Block For Head",
+    "PC-1216": "Screw Spline Attachment",
+    "PC-1028": "Shear Block to Vertical Attachment",
+    "FC-1212": "Head to Shear Block Attachment",
+    "PM-1008-SS": "Sill to Sill Flashing Screw",
+    "E2-0153": "W Side Block For Deep Pocket",
+    "E1-1054": "Flat Filler",
   },
 };

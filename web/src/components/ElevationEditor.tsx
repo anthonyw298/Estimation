@@ -10,6 +10,7 @@ import {
   MaterialImpactDetails,
 } from '@/types';
 import { calculateYes45tuQuantities } from '@/lib/yes45tu';
+import { calculateYes45tuCenterSetQuantities } from '@/lib/yes45tu-center-set';
 import {
   buildDloGrid,
   calculateGlassMakeSize,
@@ -47,7 +48,7 @@ interface ElevationEditorProps {
   settings: ProjectSettings;
 }
 
-const SYSTEM_TYPES = ['YES 45TU Front Set (OG)'];
+const SYSTEM_TYPES = ['YES 45TU Front Set (OG)', 'YES 45TU Center Set'];
 const FINISHES = ['Clear', 'Black', 'Paint'];
 const DOOR_SIZES = [
   "3' X 7'",
@@ -609,7 +610,10 @@ export default function ElevationEditor({
       } else {
         // ---- Standard elevation mode ----
         // 1. Run the YES 45TU quantity calculations
-        const rawOutputs = calculateYes45tuQuantities(
+        const calcFn = systemType === 'YES 45TU Center Set'
+          ? calculateYes45tuCenterSetQuantities
+          : calculateYes45tuQuantities;
+        const rawOutputs = calcFn(
           baysWide,
           baysTall,
           totalCount,
@@ -717,7 +721,10 @@ export default function ElevationEditor({
         const GASKET_PARTS_SET = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
 
         // 1. Run formulas with count=1
-        const singleRawOutputs = calculateYes45tuQuantities(
+        const singleCalcFn = systemType === 'YES 45TU Center Set'
+          ? calculateYes45tuCenterSetQuantities
+          : calculateYes45tuQuantities;
+        const singleRawOutputs = singleCalcFn(
           baysWide,
           baysTall,
           1,
