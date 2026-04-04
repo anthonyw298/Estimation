@@ -71,7 +71,15 @@ export function calculateYes45tuCenterSetQuantities(
     ['BE9-2579', formulas.calculateSillFtH(openingWidth, totalCount, baysWide, customBayWidths)],
     ['BE9-2552', formulas.calculateFlushFillerV(baysWide, totalCount, openingHeight)],
     ['BE9-2555', formulas.calculateIntVertical(baysWide, totalCount, openingHeight)],
-    ['BE9-2556', formulas.calculateOgIntHorizontal(openingWidth, totalCount, baysWide, customBayWidths)],
+    ['BE9-2556', (() => {
+      // Center set: (baysTall - 1) * baysWide pieces, each cut to bay width
+      const bayWidthsFt = customBayWidths && customBayWidths.length === baysWide
+        ? customBayWidths.map(w => w / 12.0)
+        : Array(baysWide).fill((openingWidth / baysWide) / 12);
+      const numRows = baysTall - 1;
+      const pieces = Array.from({ length: numRows }, () => bayWidthsFt).flat();
+      return totalCount > 1 ? Array.from({ length: totalCount }, () => pieces).flat() : pieces;
+    })()],
     ['BE9-2553', formulas.calculateSillFlashingH(openingWidth, totalCount)], // Head: 1 piece full width
     ['BE9-2578', formulas.calculateSillFlashingH(openingWidth, totalCount)],
     ['E9-1015', formulas.calculateGlassStop(openingWidth, baysTall, totalCount, baysWide, customBayWidths)],
