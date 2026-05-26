@@ -1,16 +1,8 @@
 from data.part_number import PART_NUMBER_MAP
 from utils.formulas import (
-    calculate_total_gasket_ft,
     calculate_end_dam,
     calculate_sill_flash_screw,
     calculate_end_dam_screw,
-    calculate_jamb_ft_v,
-    calculate_sill_ft_h,
-    calculate_flush_filler_v,
-    calculate_int_vertical,
-    calculate_sill_flashing_h,
-    calculate_glass_stop,
-    calculate_total_glass,
     calculate_fabrication_joints,
     calculate_total_door_area,
     calculate_glass_to_add_back,
@@ -20,120 +12,142 @@ from typing import Union
 
 
 # ---------------------------------------------------------------------------
-# Center-set-specific private helper formulas
+# Center-set DLO constants (YES 45 TU Center Set / Screw Spline)
+# In center set, each vertical contributes the same clearance to every adjacent
+# bay (no edge/interior distinction), yielding a uniform 8/3" deduction per bay.
 # ---------------------------------------------------------------------------
 
-
-def _calculate_shear_block_sill_horizontal(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
-    """
-    Shear block E1-1058 for sill and horizontal members.
-    Needed at each end of sill and horizontal members where they attach to verticals.
-    Formula: 2 * bays_wide * bays_tall * total_count
-    (sill contributes 2 * bays_wide, each horizontal row contributes 2 * bays_wide,
-     total horizontal rows = bays_tall - 1, so combined = 2 * bays_wide * bays_tall)
-    """
-    return 2 * bays_wide * bays_tall * total_count
+CS_DLO_DEDUCTION = 8 / 3       # inches — uniform per bay (width and height)
+CS_SILL_DEDUCTION = 7 / 16     # inches — additional deduction at bottom row
+CS_GLASS_MAKE_ADDITION = 3 / 4  # inches — glass make size = DLO + 3/4"
 
 
-def _calculate_shear_block_head(bays_wide: int, total_count: int) -> int:
-    """
-    Shear block E1-1059 for head members.
-    Needed at each end of head members.
-    Formula: 2 * bays_wide * total_count
-    """
-    return 2 * bays_wide * total_count
+# ---------------------------------------------------------------------------
+# Center-set DLO helpers
+# ---------------------------------------------------------------------------
+
+def _cs_dlo_width(bay_width: float) -> float:
+    return bay_width - CS_DLO_DEDUCTION
 
 
-def _calculate_cs_water_deflector(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
-    """
-    Water deflector for center set: 2 per intermediate horizontal.
-    Intermediate horizontals = (bays_tall - 1) * bays_wide.
-    Formula: 2 * (bays_tall - 1) * bays_wide * total_count
-    """
-    return 2 * (bays_tall - 1) * bays_wide * total_count
+def _cs_dlo_height(bay_height: float, is_bottom: bool) -> float:
+    dlo = bay_height - CS_DLO_DEDUCTION
+    if is_bottom:
+        dlo -= CS_SILL_DEDUCTION
+    return dlo
 
 
-def _calculate_cs_screw_pc1216(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
+# ---------------------------------------------------------------------------
+# Center-set glass & gasket calculations
+# ---------------------------------------------------------------------------
+
+def _calculate_cs_total_glass(
+    opening_width: float,
+    opening_height: float,
+    total_count: int,
+    bays_wide: int,
+    bays_tall: int,
+    custom_bay_widths=None,
+    custom_bay_heights=None,
+) -> float:
     """
-    Assembly screw PC-1216 (short spline) for center set.
-    Used where horizontals/sills/head connect to INTERMEDIATE verticals.
-    Each intermediate vertical has (bays_tall + 1) connection points
-    (1 head + (bays_tall-1) horizontals + 1 sill), each with 2 screws on each side.
-    Formula: 4 * (bays_wide - 1) * (bays_tall + 1) * total_count
+    Glass area (sqft) using center-set DLO deductions.
+    Uniform 8/3" deduction per bay; extra 7/16" at bottom row.
+    Glass make size = DLO + 3/4".
     """
-    return 4 * (bays_wide - 1) * (bays_tall + 1) * total_count
+    bay_widths = (
+        custom_bay_widths
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide
+        else [opening_width / bays_wide] * bays_wide
+    )
+    bay_heights = (
+        custom_bay_heights
+        if custom_bay_heights and len(custom_bay_heights) == bays_tall
+        else [opening_height / bays_tall] * bays_tall
+    )
+
+    total_sqft = 0.0
+    for col in range(bays_wide):
+        dlo_w = _cs_dlo_width(bay_widths[col])
+        glass_w = dlo_w + CS_GLASS_MAKE_ADDITION
+        for row in range(bays_tall):
+            dlo_h = _cs_dlo_height(bay_heights[row], is_bottom=(row == 0))
+            glass_h = dlo_h + CS_GLASS_MAKE_ADDITION
+            total_sqft += (glass_w * glass_h) / 144
+
+    return total_sqft * total_count
 
 
-def _calculate_cs_screw_pc1220(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
+def _calculate_cs_gasket(
+    opening_width: float,
+    opening_height: float,
+    total_count: int,
+    bays_wide: int,
+    bays_tall: int,
+    custom_bay_widths=None,
+    custom_bay_heights=None,
+) -> float:
     """
-    Assembly screw PC-1220 (long spline) for center set.
-    Used at every end of head/horizontal/sill members connecting to verticals.
-    Total members = 1 head + (bays_tall-1)*bays_wide horizontals + bays_wide sills
-                   = 1 + bays_wide * bays_tall
-    Each member has 2 ends, each with 2 screws.
-    Formula: 4 * (1 + bays_wide * bays_tall) * total_count
+    Glazing gasket E2-0052 (ft) = 2 sides × perimeter of each lite.
+    Uses glass make sizes (DLO + 3/4") for accurate gasket length.
     """
-    return 4 * (1 + bays_wide * bays_tall) * total_count
+    bay_widths = (
+        custom_bay_widths
+        if custom_bay_widths and len(custom_bay_widths) == bays_wide
+        else [opening_width / bays_wide] * bays_wide
+    )
+    bay_heights = (
+        custom_bay_heights
+        if custom_bay_heights and len(custom_bay_heights) == bays_tall
+        else [opening_height / bays_tall] * bays_tall
+    )
+
+    total_inches = 0.0
+    for col in range(bays_wide):
+        dlo_w = _cs_dlo_width(bay_widths[col])
+        glass_w = dlo_w + CS_GLASS_MAKE_ADDITION
+        for row in range(bays_tall):
+            dlo_h = _cs_dlo_height(bay_heights[row], is_bottom=(row == 0))
+            glass_h = dlo_h + CS_GLASS_MAKE_ADDITION
+            # 2 sides × perimeter of this lite
+            total_inches += 2 * 2 * (glass_w + glass_h)
+
+    return (total_inches * total_count) / 12
 
 
-def _calculate_cs_anti_walk_block(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
+# ---------------------------------------------------------------------------
+# Center-set profile helpers
+# ---------------------------------------------------------------------------
+
+def _calculate_cs_vertical_be9_2553(
+    opening_height: float, total_count: int, bays_wide: int
+) -> list:
     """
-    Anti-walk block E2-0153 for center set: 1 per lite (in deep vertical pocket).
-    Formula: bays_wide * bays_tall * total_count
+    BE9-2553 vertical pieces: 2 jambs + (bays_wide - 1) intermediates = bays_wide + 1 total.
+    Each piece is cut to opening_height - 7/16" (sill deduction) — verticals sit on top of sill flashing.
     """
-    return bays_wide * bays_tall * total_count
+    single_piece_ft = (opening_height - CS_SILL_DEDUCTION) / 12
+    pieces_per_elev = bays_wide + 1
+    return [single_piece_ft] * (pieces_per_elev * total_count)
 
 
-def _calculate_cs_setting_block_outside(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
+def _calculate_cs_head_be9_2553(
+    opening_width: float,
+    total_count: int,
+    bays_wide: int,
+    custom_bay_widths: list = None,
+) -> list:
     """
-    Setting block outside E2-0020: 2 per lite at DLO quarter points.
-    Formula: 2 * bays_wide * bays_tall * total_count
+    BE9-2553 horizontal head pieces: bays_wide pieces, each cut to DLO width
+    (bay_width - 8/3") — horizontals fit between vertical profiles.
     """
-    return 2 * bays_wide * bays_tall * total_count
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths_ft = [(w - CS_DLO_DEDUCTION) / 12.0 for w in custom_bay_widths]
+    else:
+        bay_width_ft = (opening_width / bays_wide - CS_DLO_DEDUCTION) / 12
+        bay_widths_ft = [bay_width_ft] * bays_wide
 
-
-def _calculate_cs_setting_block_inside(
-    bays_wide: int, bays_tall: int, total_count: int
-) -> int:
-    """
-    Setting block inside E2-0611: 2 per lite (center set has both inside and outside).
-    Formula: 2 * bays_wide * bays_tall * total_count
-    """
-    return 2 * bays_wide * bays_tall * total_count
-
-
-def _calculate_cs_flat_filler(bays_wide: int, total_count: int) -> int:
-    """
-    Flat filler E1-1054: used at head and jamb anchor locations.
-    2 per bay at head + 2 per jamb (2 jambs).
-    Formula: (2 * bays_wide + 4) * total_count
-    """
-    return (2 * bays_wide + 4) * total_count
-
-
-def _calculate_cs_head_h(
-    opening_width: float, total_count: int
-) -> Union[float, list[float]]:
-    """
-    Head BE9-2553 for center set: 1 piece at FULL frame width (not per bay).
-    Returns a list with a single full-width piece per unit.
-    """
-    full_width_ft = opening_width / 12
-    if total_count > 1:
-        return [full_width_ft] * total_count
-    return [full_width_ft]
+    return bay_widths_ft * total_count
 
 
 def _calculate_cs_int_horizontal(
@@ -142,31 +156,151 @@ def _calculate_cs_int_horizontal(
     bays_wide: int,
     bays_tall: int,
     custom_bay_widths: list = None,
-) -> Union[float, list[float]]:
+) -> list:
     """
-    Horizontal BE9-2556 for center set:
-    (bays_tall - 1) * bays_wide pieces, each cut to bay width.
+    Horizontal BE9-2556: (bays_tall - 1) * bays_wide pieces, each cut to DLO width
+    (bay_width - 8/3") — horizontals fit between vertical profiles.
     """
-    if bays_wide and bays_wide > 0:
-        if custom_bay_widths and len(custom_bay_widths) == bays_wide:
-            bay_widths_ft = [w / 12.0 for w in custom_bay_widths]
-        else:
-            bay_width_ft = (opening_width / bays_wide) / 12
-            bay_widths_ft = [bay_width_ft] * bays_wide
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths_ft = [(w - CS_DLO_DEDUCTION) / 12.0 for w in custom_bay_widths]
+    else:
+        bay_width_ft = (opening_width / bays_wide - CS_DLO_DEDUCTION) / 12
+        bay_widths_ft = [bay_width_ft] * bays_wide
 
-        # Repeat bay widths for each intermediate horizontal row
-        num_rows = bays_tall - 1
-        pieces = bay_widths_ft * num_rows
+    num_rows = bays_tall - 1
+    return (bay_widths_ft * num_rows) * total_count
 
-        if total_count > 1:
-            return pieces * total_count
-        return pieces
 
-    # Fallback: single piece at full width per row
-    single_piece_ft = opening_width / 12
-    num_pieces = (bays_tall - 1) * total_count
-    return [single_piece_ft] * num_pieces
+# ---------------------------------------------------------------------------
+# Center-set sill / flashing / glass-stop overrides
+# These override the shared formulas because center-set cut lengths differ:
+#   • Verticals/fillers: height − 7/16" (sill flashing takes up that space)
+#   • Sill flashing: width + 1/4" (extends past jambs)
+#   • Sill / glass-stop horizontals: DLO width = bay_width − 8/3"
+# ---------------------------------------------------------------------------
 
+def _calculate_cs_flush_filler_v(
+    bays_wide: int, total_count: int, opening_height: float
+) -> list:
+    """
+    BE9-2552 flush filler verticals: (bays_wide - 1) pieces, each cut to
+    opening_height - 7/16" (same deduction as BE9-2553 verticals).
+    """
+    single_piece_ft = (opening_height - CS_SILL_DEDUCTION) / 12
+    pieces_per_elev = bays_wide - 1
+    return [single_piece_ft] * (pieces_per_elev * total_count)
+
+
+def _calculate_cs_sill_ft_h(
+    opening_width: float,
+    total_count: int,
+    bays_wide: int,
+    custom_bay_widths: list = None,
+) -> list:
+    """
+    BE9-2579 sill pieces: bays_wide pieces, each cut to DLO width
+    (bay_width - 8/3") — same as head/intermediate horizontals.
+    """
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths_ft = [(w - CS_DLO_DEDUCTION) / 12.0 for w in custom_bay_widths]
+    else:
+        bay_width_ft = (opening_width / bays_wide - CS_DLO_DEDUCTION) / 12
+        bay_widths_ft = [bay_width_ft] * bays_wide
+    return bay_widths_ft * total_count
+
+
+def _calculate_cs_sill_flashing_h(opening_width: float, total_count: int) -> list:
+    """
+    BE9-2578 sill flashing: one piece per elevation at opening_width + 1/4"
+    (extends slightly past the jamb profiles).
+    """
+    single_piece_ft = (opening_width + 0.25) / 12
+    return [single_piece_ft] * total_count
+
+
+def _calculate_cs_glass_stop(
+    opening_width: float,
+    bays_tall: int,
+    total_count: int,
+    bays_wide: int,
+    custom_bay_widths: list = None,
+) -> list:
+    """
+    E9-1015 glass stop: bays_wide * bays_tall pieces, each cut to DLO width
+    (bay_width - 8/3").
+    """
+    if custom_bay_widths and len(custom_bay_widths) == bays_wide:
+        bay_widths_ft = [(w - CS_DLO_DEDUCTION) / 12.0 for w in custom_bay_widths]
+    else:
+        bay_width_ft = (opening_width / bays_wide - CS_DLO_DEDUCTION) / 12
+        bay_widths_ft = [bay_width_ft] * bays_wide
+    pieces_per_elev = bay_widths_ft * bays_tall
+    return pieces_per_elev * total_count
+
+
+# ---------------------------------------------------------------------------
+# Center-set accessory helpers
+# ---------------------------------------------------------------------------
+
+def _calculate_cs_water_deflector(
+    bays_wide: int, bays_tall: int, total_count: int
+) -> int:
+    """
+    Water deflector E2-0047: 2 per intermediate horizontal.
+    Intermediate horizontals = (bays_tall - 1) * bays_wide.
+    """
+    return 2 * (bays_tall - 1) * bays_wide * total_count
+
+
+def _calculate_cs_screw_pc1220(
+    bays_wide: int, bays_tall: int, total_count: int
+) -> int:
+    """
+    Assembly screw PC-1220: used at both ends of every horizontal member.
+    Members = head (bays_wide) + int horizontals ((bays_tall-1)*bays_wide) + sill (bays_wide)
+            = bays_wide * (bays_tall + 1)
+    Each member: 2 ends × 2 screws = 4 screws per member.
+    Formula: 4 * bays_wide * (bays_tall + 1) * total_count
+    """
+    return 4 * bays_wide * (bays_tall + 1) * total_count
+
+
+def _calculate_cs_anti_walk_block(
+    bays_wide: int, bays_tall: int, total_count: int
+) -> int:
+    """
+    W Side Block E2-0153: 2 per lite.
+    Formula: 2 * bays_wide * bays_tall * total_count
+    """
+    return 2 * bays_wide * bays_tall * total_count
+
+
+def _calculate_cs_setting_block(
+    bays_wide: int, bays_tall: int, total_count: int
+) -> int:
+    """
+    Setting / Side Block E2-0020: 2 per lite.
+    Formula: 2 * bays_wide * bays_tall * total_count
+    """
+    return 2 * bays_wide * bays_tall * total_count
+
+
+def _calculate_cs_flat_filler(
+    bays_wide: int, bays_tall: int, total_count: int
+) -> int:
+    """
+    Flat filler E1-1054 at perimeter anchor locations:
+      - Sill:  3 * bays_wide  (3 screws/clips per sill bay)
+      - Head:  2 * (bays_wide + 1)  (2 per anchor point at each vertical)
+      - Jambs: 2 * (bays_tall + 1)  (2 jambs × (bays_tall+1) anchors each)
+    Total: 5 * bays_wide + 2 * bays_tall + 4
+    """
+    return (5 * bays_wide + 2 * bays_tall + 4) * total_count
+
+
+# ---------------------------------------------------------------------------
+# Main calculation function
+# ---------------------------------------------------------------------------
 
 def calculate_yes45tu_center_set_quantities(
     bays_wide: int,
@@ -176,93 +310,62 @@ def calculate_yes45tu_center_set_quantities(
     opening_height: float,
     doors=None,
     custom_bay_widths=None,
+    custom_bay_heights=None,
     glass_per_sqft=None,
     fabrication_cost_per_joint=None,
 ) -> list:
     """
-    Calculates all the specific output quantities for the 'YES 45TU Center Set' system
-    by calling dedicated formula functions.
-    Returns a list of dictionaries with description, quantity, part number, and type.
+    Calculates all output quantities for the 'YES 45TU Center Set' system.
+    Returns a list of dicts with description, quantity, part_number, and type.
+
+    Key differences from Front Set (OG):
+    - BE9-2553 is used for ALL verticals (jambs + intermediates) AND head pieces
+    - Head = bays_wide pieces at bay width (not one full-width piece)
+    - No shear blocks (E1-1058/1059) or their screws (PC-1028/FC-1212/PC-1210)
+    - No PC-1216 short spline screw
+    - No E2-0611 inside setting block
+    - DLO uses uniform 8/3" deduction per bay (no edge/interior distinction)
     """
-    # Safety check for doors
     if doors is None:
         doors = []
-
-    # --- Shear block counts (used for screw calculations below) ---
-    shear_block_sill_horiz_count = _calculate_shear_block_sill_horizontal(
-        bays_wide, bays_tall, total_count
-    )
-    shear_block_head_count = _calculate_shear_block_head(bays_wide, total_count)
 
     outputs = [
         # --- Accessories ---
         ("E1-0199", calculate_end_dam(total_count)),
         ("E2-0047", _calculate_cs_water_deflector(bays_wide, bays_tall, total_count)),
-        ("PC-1216", _calculate_cs_screw_pc1216(bays_wide, bays_tall, total_count)),
         ("PC-1220", _calculate_cs_screw_pc1220(bays_wide, bays_tall, total_count)),
         ("PM-1008-SS", calculate_sill_flash_screw(bays_wide, total_count)),
         ("UA-1212", calculate_end_dam_screw(total_count)),
+        ("E2-0020", _calculate_cs_setting_block(bays_wide, bays_tall, total_count)),
         ("E2-0153", _calculate_cs_anti_walk_block(bays_wide, bays_tall, total_count)),
-        ("E2-0020", _calculate_cs_setting_block_outside(bays_wide, bays_tall, total_count)),
-        ("E2-0611", _calculate_cs_setting_block_inside(bays_wide, bays_tall, total_count)),
-        ("E1-1054", _calculate_cs_flat_filler(bays_wide, total_count)),
-        # --- Shear blocks ---
-        ("E1-1058", shear_block_sill_horiz_count),
-        ("E1-1059", shear_block_head_count),
-        # --- Shear block screws ---
-        ("PC-1028", 2 * shear_block_sill_horiz_count),
-        ("FC-1212", shear_block_head_count),
-        ("PC-1210", shear_block_sill_horiz_count),
-        # --- Profiles (center set part numbers) ---
-        ("BE9-2551", calculate_jamb_ft_v(opening_height, total_count)),
-        (
-            "BE9-2579",
-            calculate_sill_ft_h(
-                opening_width, total_count, bays_wide, custom_bay_widths
-            ),
-        ),
-        ("BE9-2552", calculate_flush_filler_v(bays_wide, total_count, opening_height)),
-        ("BE9-2555", calculate_int_vertical(bays_wide, total_count, opening_height)),
-        (
-            "BE9-2556",
-            _calculate_cs_int_horizontal(
-                opening_width, total_count, bays_wide, bays_tall, custom_bay_widths
-            ),
-        ),
-        (
-            "BE9-2553",
-            _calculate_cs_head_h(opening_width, total_count),
-        ),
-        ("BE9-2578", calculate_sill_flashing_h(opening_width, total_count)),
-        (
-            "E9-1015",
-            calculate_glass_stop(
-                opening_width, bays_tall, total_count, bays_wide, custom_bay_widths
-            ),
-        ),
-        (
-            "E2-0052",
-            calculate_total_gasket_ft(
-                bays_wide, bays_tall, opening_width, opening_height, total_count
-            ),
-        ),
+        ("E1-1054", _calculate_cs_flat_filler(bays_wide, bays_tall, total_count)),
+        # --- Profiles ---
+        # BE9-2553 vertical: jambs + intermediate verticals (bays_wide + 1 pieces)
+        ("BE9-2553", _calculate_cs_vertical_be9_2553(opening_height, total_count, bays_wide)),
+        # BE9-2552: shallow pocket filler verticals (bays_wide - 1 pieces)
+        ("BE9-2552", _calculate_cs_flush_filler_v(bays_wide, total_count, opening_height)),
+        # BE9-2553 head: bays_wide pieces at bay width
+        ("BE9-2553", _calculate_cs_head_be9_2553(opening_width, total_count, bays_wide, custom_bay_widths)),
+        # BE9-2579: sill pieces at DLO width
+        ("BE9-2579", _calculate_cs_sill_ft_h(opening_width, total_count, bays_wide, custom_bay_widths)),
+        # BE9-2556: intermediate horizontals
+        ("BE9-2556", _calculate_cs_int_horizontal(opening_width, total_count, bays_wide, bays_tall, custom_bay_widths)),
+        # BE9-2578: sill flashing at opening_width + 1/4"
+        ("BE9-2578", _calculate_cs_sill_flashing_h(opening_width, total_count)),
+        # E9-1015: glass stop at DLO width per lite
+        ("E9-1015", _calculate_cs_glass_stop(opening_width, bays_tall, total_count, bays_wide, custom_bay_widths)),
+        # E2-0052: glazing gasket
+        ("E2-0052", _calculate_cs_gasket(opening_width, opening_height, total_count, bays_wide, bays_tall, custom_bay_widths, custom_bay_heights)),
     ]
 
-    # --- Total area calculations ---
-    total_glass_area = calculate_total_glass(
-        opening_width,
-        opening_height,
-        total_count,
-        bays_wide,
-        bays_tall,
-        custom_bay_widths,
+    # --- Glass area (center-set DLO formula) ---
+    total_glass_area = _calculate_cs_total_glass(
+        opening_width, opening_height, total_count, bays_wide, bays_tall,
+        custom_bay_widths, custom_bay_heights,
     )
 
-    # Only calculate door area if doors exist
-    # Door count is per elevation, so multiply by total_count for total calculations
     has_doors = doors and len(doors) > 0
     if has_doors:
-        # Multiply door counts by total_count since door count is per elevation
         doors_with_total_count = []
         for door in doors:
             door_copy = door.copy()
@@ -272,53 +375,57 @@ def calculate_yes45tu_center_set_quantities(
         total_glass_to_add_back = calculate_glass_to_add_back(doors_with_total_count)
         adjusted_glass_area = max(
             total_glass_area - total_door_area + total_glass_to_add_back, 0
-        )  # Prevent negative glass area
+        )
     else:
         total_door_area = 0.0
         total_glass_to_add_back = 0.0
-        adjusted_glass_area = total_glass_area  # No door adjustments needed
+        adjusted_glass_area = total_glass_area
 
     results = []
 
-    # --- Standard outputs ---
+    # BE9-2553 appears twice (vertical + head); track counter for labeling
+    be9_2553_counter = 0
+
     for part_number, quantity in outputs:
         desc = None
         part_type = None
 
-        for category, parts_dict in PART_NUMBER_MAP.items():
-            if part_number in parts_dict:
-                base_desc = parts_dict[part_number]
-                # Add Horizontal/Vertical prefix for specific profile parts
-                if part_number in ["BE9-2553", "BE9-2556", "E9-1015"]:
-                    desc = f"Horizontal {base_desc}"
-                elif part_number in ["BE9-2552", "BE9-2555"]:
-                    desc = f"Vertical {base_desc}"
-                elif part_number == "BE9-2551":
-                    desc = f"Vertical {base_desc} (Jamb)"
-                elif part_number == "BE9-2579":
-                    desc = f"Horizontal {base_desc}"
-                elif part_number == "E2-0153":
-                    desc = f"Anti-Walk Block {base_desc}"
-                else:
-                    desc = base_desc
-                part_type = category
-                break
+        if part_number == "BE9-2553":
+            be9_2553_counter += 1
+            base_desc = PART_NUMBER_MAP.get("profiles", {}).get("BE9-2553", "UNKNOWN")
+            if be9_2553_counter == 1:
+                desc = f"Vertical {base_desc}"
+            else:
+                desc = f"Horizontal {base_desc} (Head)"
+            part_type = "profiles"
+        else:
+            for category, parts_dict in PART_NUMBER_MAP.items():
+                if part_number in parts_dict:
+                    base_desc = parts_dict[part_number]
+                    if part_number in ["BE9-2556", "E9-1015"]:
+                        desc = f"Horizontal {base_desc}"
+                    elif part_number == "BE9-2552":
+                        desc = f"Vertical {base_desc}"
+                    elif part_number == "BE9-2579":
+                        desc = f"Horizontal {base_desc} (Sill)"
+                    else:
+                        desc = base_desc
+                    part_type = category
+                    break
 
         if desc is None:
             desc = "UNKNOWN"
             part_type = "UNKNOWN"
             part_number = "UNKNOWN"
 
-        results.append(
-            {
-                "description": desc,
-                "quantity": quantity,
-                "part_number": part_number,
-                "type": part_type,
-            }
-        )
+        results.append({
+            "description": desc,
+            "quantity": quantity,
+            "part_number": part_number,
+            "type": part_type,
+        })
 
-    # Check if the adjusted glass area is zero and add a specific message.
+    # --- Glass output ---
     if adjusted_glass_area == 0:
         glass_output = {
             "description": "Glass Area (Adjusted)",
@@ -359,19 +466,15 @@ def calculate_yes45tu_center_set_quantities(
         },
     ]
 
-    # Only include door area calculation if doors exist
     if has_doors:
-        manual_outputs.insert(
-            1,
-            {
-                "description": "Door Area (to subtract from glass)",
-                "quantity": total_door_area,
-                "part_number": "N/A",
-                "type": "Calculations",
-                "unit": "sqft",
-                "manual": True,
-            },
-        )
+        manual_outputs.insert(1, {
+            "description": "Door Area (to subtract from glass)",
+            "quantity": total_door_area,
+            "part_number": "N/A",
+            "type": "Calculations",
+            "unit": "sqft",
+            "manual": True,
+        })
 
     results.extend(manual_outputs)
     return results
