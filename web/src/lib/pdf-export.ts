@@ -7,6 +7,7 @@ import type {
   ReportConfig,
 } from '@/types';
 import { getUnitPriceByPart, getPriceByPart, applyMaterialImpactInMemory } from '@/lib/pricing';
+import { upgradeGlassOutputs } from '@/lib/export';
 
 // ---------------------------------------------------------------------------
 // Helpers (shared with Excel export logic)
@@ -203,7 +204,8 @@ export async function exportToPdf(
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
     const elevFinish = elev.finish || '';
-    for (const output of elev.calculated_outputs) {
+    const prePassOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    for (const output of prePassOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
       if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
@@ -315,10 +317,12 @@ export async function exportToPdf(
     const elevMaterialsState: Record<string, ExtraMaterial> = {};
     const elevFinish = elev.finish || '';
 
+    const upgradedElevOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+
     for (const [catKey, catTitle] of catOrder) {
       // Skip section if unchecked in stock list
       if (elevSections?.[catKey] === false) continue;
-      const items = elev.calculated_outputs.filter(o => classifyOutput(o) === catKey);
+      const items = upgradedElevOutputs.filter(o => classifyOutput(o) === catKey);
       if (items.length === 0) continue;
 
       const isDisc = DISCOUNTABLE_TYPES.has(catKey);
@@ -561,7 +565,8 @@ export async function exportToPdf(
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
     const sumFinish = elev.finish || '';
-    for (const output of elev.calculated_outputs) {
+    const summaryOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    for (const output of summaryOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
 

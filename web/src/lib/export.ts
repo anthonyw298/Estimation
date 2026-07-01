@@ -179,6 +179,119 @@ interface CategoryData {
 }
 
 /**
+ * Detect whether a CalculatedOutput is an old-format glass area item
+ * (stored before the per-pane upgrade).
+ */
+function isLegacyGlassItem(output: CalculatedOutput): boolean {
+  if (output.area_sqft != null || output.unit === 'panes') return false;
+  const cat = classifyOutput(output);
+  if (cat !== 'glass') return false;
+  const desc = output.description || '';
+  return desc === 'Glass Area (Adjusted)' || desc === 'Glass Area';
+}
+
+/**
+ * Convert a legacy "Glass Area (Adjusted)" item into per-pane items
+ * by deriving the DLO grid from the elevation's stored dimensions.
+ * The stored adjusted sqft is used to compute a door-deduction item
+ * if the pane total exceeds the stored area.
+ */
+export function deriveGlassPaneItems(
+  elev: ElevationData,
+  storedAdjustedSqft: number,
+  glassRate: number,
+): CalculatedOutput[] {
+  const baysWide = elev.bays_wide || 1;
+  const baysTall = elev.bays_tall || 1;
+  const openingWidth = elev.opening_width_inches || 0;
+  const openingHeight = elev.opening_height_inches || 0;
+  const totalCount = elev.total_count || 1;
+
+  if (!openingWidth || !openingHeight) return [];
+
+  const bayWidths: number[] =
+    elev.custom_bay_widths?.length === baysWide
+      ? elev.custom_bay_widths
+      : Array(baysWide).fill(openingWidth / baysWide);
+  const bayHeights: number[] =
+    elev.custom_bay_heights?.length === baysTall
+      ? elev.custom_bay_heights
+      : Array(baysTall).fill(openingHeight / baysTall);
+
+  const { dloWidths, dloHeights } = buildDloGrid(bayWidths, bayHeights);
+
+  const paneGroups = new Map<string, { width: number; height: number; count: number }>();
+  for (let col = 0; col < baysWide; col++) {
+    for (let row = 0; row < baysTall; row++) {
+      const w = dloWidths[col];
+      const h = dloHeights[col][row];
+      const key = `${w.toFixed(4)}_${h.toFixed(4)}`;
+      const ex = paneGroups.get(key);
+      if (ex) ex.count++;
+      else paneGroups.set(key, { width: w, height: h, count: 1 });
+    }
+  }
+
+  const items: CalculatedOutput[] = [];
+  let totalPaneArea = 0;
+  for (const [, group] of paneGroups) {
+    const paneAreaSqft = (group.width * group.height) / 144;
+    const totalPanes = group.count * totalCount;
+    totalPaneArea += paneAreaSqft * totalPanes;
+    items.push({
+      description: `Glass Pane — DLO: ${group.width.toFixed(2)}" × ${group.height.toFixed(2)}"`,
+      quantity: totalPanes,
+      part_number: 'N/A',
+      type: 'Glass',
+      price: glassRate,
+      unit: 'panes',
+      area_sqft: paneAreaSqft,
+      manual: true,
+    });
+  }
+
+  // If the stored adjusted area is less than total pane area, door deduction was applied
+  const doorDeduction = totalPaneArea - storedAdjustedSqft;
+  if (doorDeduction > 0.01) {
+    items.push({
+      description: 'Glass — Door Area Deduction',
+      quantity: -doorDeduction,
+      part_number: 'N/A',
+      type: 'Glass',
+      price: glassRate,
+      unit: 'sqft',
+      manual: true,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * Upgrade calculated_outputs for an elevation: replace any legacy glass items
+ * with per-pane items derived from the elevation's dimension data.
+ */
+export function upgradeGlassOutputs(
+  outputs: CalculatedOutput[],
+  elev: ElevationData,
+  glassRate: number,
+): CalculatedOutput[] {
+  const result: CalculatedOutput[] = [];
+  for (const output of outputs) {
+    if (isLegacyGlassItem(output)) {
+      const storedSqft = typeof output.quantity === 'number' ? output.quantity : 0;
+      const derived = deriveGlassPaneItems(elev, storedSqft, glassRate);
+      if (derived.length > 0) {
+        result.push(...derived);
+        continue;
+      }
+    }
+    result.push(output);
+  }
+  return result;
+}
+
+/**
  * Build a display string for quantities with units, matching the Python
  * _write_output_section display_qty_string logic.
  * Profiles: "8ft x 3", "3ft x2, 8ft x1"
@@ -732,7 +845,9 @@ function buildSummaryCategories(
   for (const [, elev] of Object.entries(elevations)) {
     if (!elev.calculated_outputs) continue;
     const elevFinish = elev.finish || '';
-    for (const output of elev.calculated_outputs) {
+    const elevGlassRate = settings?.glass_per_sqft ?? 10.5;
+    const elevOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, elevGlassRate);
+    for (const output of elevOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
       const isManual = !!(output.manual) || cat === 'glass' || cat === 'fabrication' || cat === 'doors';
@@ -1975,7 +2090,8 @@ export async function exportToExcel(
   for (const [, elev] of Object.entries(elevations)) {
     if (!elev.calculated_outputs) continue;
     const elevFinish = elev.finish || '';
-    for (const output of elev.calculated_outputs) {
+    const prePassOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    for (const output of prePassOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
       if (output.manual || cat === 'glass' || cat === 'fabrication' || cat === 'doors') {
@@ -2039,7 +2155,12 @@ export async function exportToExcel(
     }
 
     // --- Material sections (starting col E) ---
-    const categories = buildElevationCategories(elev.calculated_outputs, elev.finish, totalCount, multiplier, elev.single_elevation_outputs, settings);
+    const glassRate = settings?.glass_per_sqft ?? 10.5;
+    const upgradedOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, glassRate);
+    const upgradedSingleElev = elev.single_elevation_outputs
+      ? upgradeGlassOutputs(elev.single_elevation_outputs, elev, glassRate)
+      : undefined;
+    const categories = buildElevationCategories(upgradedOutputs, elev.finish, totalCount, multiplier, upgradedSingleElev, settings);
     const startCol = 5;
     let sectionRow = 1;
 

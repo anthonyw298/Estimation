@@ -8,6 +8,7 @@ import {
   applyMaterialImpactInMemory,
 } from '@/lib/pricing';
 import { PART_NUMBER_MAP } from '@/data/part-number';
+import { upgradeGlassOutputs } from '@/lib/export';
 
 interface CostSummaryProps {
   elevations: Record<string, ElevationData>;
@@ -58,8 +59,9 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
     for (const [, elev] of Object.entries(elevations)) {
       if (!elev.calculated_outputs || elev.calculated_outputs.length === 0) continue;
       const elevFinish = (elev.finish || 'clear').toLowerCase();
+      const upgradedOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
 
-      for (const output of elev.calculated_outputs) {
+      for (const output of upgradedOutputs) {
         const pn = output.part_number?.trim() || '';
         const desc = output.description?.trim() || '';
         const manual = output.manual ?? false;
