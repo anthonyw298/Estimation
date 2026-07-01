@@ -196,7 +196,7 @@ function formatQtyDisplay(
   const isGlass = cat === 'glass';
   const displayUnit = (isProfile || isGasket) ? 'ft'
     : isAccessory ? 'pcs'
-    : isGlass ? 'sqft'
+    : isGlass ? (unit || 'sqft')
     : unit || 'pcs';
 
   if (Array.isArray(rawQty)) {
@@ -281,7 +281,8 @@ function buildElevationCategories(
       // Manual items: use LIVE settings rates for glass & fabrication so exports
       // always reflect current pricing. Doors use baked price.
       if (cat === 'glass' && settings) {
-        totalCost = qty * (settings.glass_per_sqft ?? 10.5);
+        const glassRate = settings.glass_per_sqft ?? 10.5;
+        totalCost = output.area_sqft != null ? qty * output.area_sqft * glassRate : qty * glassRate;
       } else if (cat === 'fabrication' && settings) {
         totalCost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
       } else {
@@ -725,6 +726,7 @@ function buildSummaryCategories(
     finish: string;
     isDiscountable: boolean;
     isManual: boolean;
+    area_sqft?: number;  // per-unit area for glass pane items
   }>();
 
   for (const [, elev] of Object.entries(elevations)) {
@@ -767,6 +769,7 @@ function buildSummaryCategories(
           finish: elevFinish,
           isDiscountable: DISCOUNTABLE_TYPES.has(cat),
           isManual,
+          area_sqft: output.area_sqft,
         });
       }
     }
@@ -797,7 +800,8 @@ function buildSummaryCategories(
     let totalCost: number;
     if (data.isManual) {
       if (data.category === 'glass' && settings) {
-        totalCost = data.total_qty * (settings.glass_per_sqft ?? 10.5);
+        const glassRate = settings.glass_per_sqft ?? 10.5;
+        totalCost = data.area_sqft != null ? data.total_qty * data.area_sqft * glassRate : data.total_qty * glassRate;
       } else if (data.category === 'fabrication' && settings) {
         totalCost = data.total_qty * (settings.fabrication_cost_per_joint ?? 15.0);
       } else {
@@ -889,12 +893,23 @@ function buildSummaryCategories(
       qtyStickReq = `${unitCountPerBundle.toFixed(0)} ${unitLabel}`;
       const numOrders = unitCountPerBundle > 0 ? Math.ceil(data.total_qty / unitCountPerBundle) : 0;
       quantityDisplay = `${numOrders} order${numOrders !== 1 ? 's' : ''}`;
+    } else if (data.area_sqft != null) {
+      // Per-pane glass items: show area and pane count
+      const totalArea = data.total_qty * data.area_sqft;
+      quantityReqFt = `${totalArea.toFixed(2)} sqft`;
+      const perPanePrice = data.area_sqft * (settings?.glass_per_sqft ?? 10.5);
+      qtyStickReq = `$${perPanePrice.toFixed(2)}/pane`;
+      quantityDisplay = `${data.total_qty} panes`;
     } else {
-      // glass, doors, fabrication/labor
+      // glass (legacy/deduction), doors, fabrication/labor
       quantityReqFt = 'N/A';
       if (data.total_qty > 0) {
         const up = totalCost / data.total_qty;
         qtyStickReq = `$${up.toFixed(2)}`;
+      } else if (data.total_qty < 0) {
+        // Door deduction items
+        const up = totalCost / data.total_qty;
+        qtyStickReq = `$${up.toFixed(2)}/sqft`;
       } else {
         qtyStickReq = '$0.00';
       }
@@ -1967,7 +1982,8 @@ export async function exportToExcel(
         // Manual items: use live settings rates for glass/fab
         const qty = sumQty(output.quantity);
         if (cat === 'glass') {
-          runningGrandTotal += qty * (settings.glass_per_sqft ?? 10.5);
+          const glassRate = settings.glass_per_sqft ?? 10.5;
+          runningGrandTotal += output.area_sqft != null ? qty * output.area_sqft * glassRate : qty * glassRate;
         } else if (cat === 'fabrication') {
           runningGrandTotal += qty * (settings.fabrication_cost_per_joint ?? 15.0);
         } else {

@@ -39,35 +39,6 @@ function csDloHeight(bayHeight: number, isBottom: boolean): number {
 // Center-set glass & gasket calculations
 // ---------------------------------------------------------------------------
 
-function calculateCsTotalGlass(
-  openingWidth: number,
-  openingHeight: number,
-  totalCount: number,
-  baysWide: number,
-  baysTall: number,
-  customBayWidths?: number[],
-  customBayHeights?: number[],
-): number {
-  const bayWidths =
-    customBayWidths && customBayWidths.length === baysWide
-      ? customBayWidths
-      : Array(baysWide).fill(openingWidth / baysWide);
-  const bayHeights =
-    customBayHeights && customBayHeights.length === baysTall
-      ? customBayHeights
-      : Array(baysTall).fill(openingHeight / baysTall);
-
-  let totalSqft = 0;
-  for (let col = 0; col < baysWide; col++) {
-    const glassW = csDloWidth(bayWidths[col]) + CS_GLASS_MAKE_ADDITION;
-    for (let row = 0; row < baysTall; row++) {
-      const glassH = csDloHeight(bayHeights[row], row === 0) + CS_GLASS_MAKE_ADDITION;
-      totalSqft += (glassW * glassH) / 144;
-    }
-  }
-  return totalSqft * totalCount;
-}
-
 function calculateCsGasket(
   openingWidth: number,
   openingHeight: number,
@@ -270,15 +241,37 @@ export function calculateYes45tuCenterSetQuantities(
     ['E2-0052', calculateCsGasket(openingWidth, openingHeight, totalCount, baysWide, baysTall, customBayWidths, customBayHeights)],
   ];
 
-  // --- Glass area (center-set DLO) ---
-  const totalGlassArea = calculateCsTotalGlass(
-    openingWidth, openingHeight, totalCount, baysWide, baysTall, customBayWidths, customBayHeights,
-  );
+  // --- Build bay dimension arrays for per-pane glass ---
+  const bayWidths: number[] =
+    customBayWidths && customBayWidths.length === baysWide
+      ? customBayWidths
+      : Array(baysWide).fill(openingWidth / baysWide);
 
+  const bayHeights: number[] =
+    customBayHeights && customBayHeights.length === baysTall
+      ? customBayHeights
+      : Array(baysTall).fill(openingHeight / baysTall);
+
+  // Group panes by unique center-set DLO dimensions
+  const paneGroups = new Map<string, { width: number; height: number; count: number }>();
+  for (let col = 0; col < baysWide; col++) {
+    for (let row = 0; row < baysTall; row++) {
+      const w = csDloWidth(bayWidths[col]);
+      const h = csDloHeight(bayHeights[row], row === 0);
+      const key = `${w.toFixed(4)}_${h.toFixed(4)}`;
+      const existing = paneGroups.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        paneGroups.set(key, { width: w, height: h, count: 1 });
+      }
+    }
+  }
+
+  // Door area calculations
   const hasDoors = doors && doors.length > 0;
   let totalDoorArea = 0;
   let totalGlassToAddBack = 0;
-  let adjustedGlassArea: number;
 
   if (hasDoors) {
     const doorsWithTotalCount: DoorConfig[] = doors.map(door => ({
@@ -287,9 +280,6 @@ export function calculateYes45tuCenterSetQuantities(
     }));
     totalDoorArea = formulas.calculateTotalDoorArea(doorsWithTotalCount);
     totalGlassToAddBack = formulas.calculateGlassToAddBack(doorsWithTotalCount);
-    adjustedGlassArea = Math.max(totalGlassArea - totalDoorArea + totalGlassToAddBack, 0);
-  } else {
-    adjustedGlassArea = totalGlassArea;
   }
 
   const results: CalculatedOutput[] = [];
@@ -342,11 +332,22 @@ export function calculateYes45tuCenterSetQuantities(
     });
   }
 
-  // --- Glass output ---
-  let glassOutput: CalculatedOutput;
-  if (adjustedGlassArea === 0) {
-    glassOutput = {
-      description: 'Glass Area (Adjusted)',
+  // --- Per-pane glass outputs (center-set uses glass make = DLO + 3/4") ---
+  const glassRate = glassPerSqft != null ? Number(glassPerSqft) : 10.5;
+  const doorDeduction = totalDoorArea - totalGlassToAddBack;
+  const totalPaneArea = Array.from(paneGroups.values()).reduce(
+    (sum, g) => {
+      const glassW = g.width + CS_GLASS_MAKE_ADDITION;
+      const glassH = g.height + CS_GLASS_MAKE_ADDITION;
+      return sum + (glassW * glassH / 144) * g.count * totalCount;
+    }, 0,
+  );
+  const adjustedGlassArea = Math.max(totalPaneArea - doorDeduction, 0);
+
+  const glassOutputs: CalculatedOutput[] = [];
+  if (adjustedGlassArea === 0 && hasDoors) {
+    glassOutputs.push({
+      description: 'Glass Area',
       quantity: 0,
       part_number: 'N/A',
       type: 'Glass',
@@ -354,22 +355,41 @@ export function calculateYes45tuCenterSetQuantities(
       unit: 'sqft',
       manual: true,
       message: 'Total door area equals or exceeds total glass area. No glass is needed.',
-    };
+    });
   } else {
-    glassOutput = {
-      description: 'Glass Area (Adjusted)',
-      quantity: adjustedGlassArea,
-      part_number: 'N/A',
-      type: 'Glass',
-      price: glassPerSqft != null ? Number(glassPerSqft) : 10.5,
-      unit: 'sqft',
-      manual: true,
-    };
+    for (const [, group] of paneGroups) {
+      const glassW = group.width + CS_GLASS_MAKE_ADDITION;
+      const glassH = group.height + CS_GLASS_MAKE_ADDITION;
+      const paneAreaSqft = (glassW * glassH) / 144;
+      const totalPanes = group.count * totalCount;
+      glassOutputs.push({
+        description: `Glass Pane — DLO: ${group.width.toFixed(2)}" × ${group.height.toFixed(2)}"`,
+        quantity: totalPanes,
+        part_number: 'N/A',
+        type: 'Glass',
+        price: glassRate,
+        unit: 'panes',
+        area_sqft: paneAreaSqft,
+        manual: true,
+      });
+    }
+
+    if (hasDoors && doorDeduction > 0) {
+      glassOutputs.push({
+        description: 'Glass — Door Area Deduction',
+        quantity: -doorDeduction,
+        part_number: 'N/A',
+        type: 'Glass',
+        price: glassRate,
+        unit: 'sqft',
+        manual: true,
+      });
+    }
   }
 
   const fabPrice = fabricationCostPerJoint != null ? Number(fabricationCostPerJoint) : 15.0;
   const manualOutputs: CalculatedOutput[] = [
-    glassOutput,
+    ...glassOutputs,
     {
       description: 'Joints Fabrication Labor',
       quantity: formulas.calculateFabricationJoints(baysWide, baysTall, totalCount),
@@ -382,7 +402,7 @@ export function calculateYes45tuCenterSetQuantities(
   ];
 
   if (hasDoors) {
-    manualOutputs.splice(1, 0, {
+    manualOutputs.push({
       description: 'Door Area (to subtract from glass)',
       quantity: totalDoorArea,
       part_number: 'N/A',

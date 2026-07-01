@@ -39,6 +39,7 @@ export interface CalculatedOutput {
   message?: string;
   hardware?: Record<string, boolean>;
   Style?: string;
+  area_sqft?: number; // Per-unit area in sqft (for glass pane items where quantity = pane count)
 }
 
 // Door configuration

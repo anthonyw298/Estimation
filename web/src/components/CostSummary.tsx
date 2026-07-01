@@ -50,6 +50,7 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
       manual: boolean;
       manualPrice: number; // per-unit price for manual items (glass, fab, doors)
       unit: string;
+      areaSqft?: number; // per-unit area for glass pane items
     }
 
     const aggregatedMap = new Map<string, AggregatedItem>();
@@ -123,6 +124,7 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
             manual: manual || isGlass || isFab || isDoor,
             manualPrice: perUnit,
             unit: output.unit || (isProfile || isGasket ? 'ft' : isAccessory ? 'pcs' : 'pcs'),
+            areaSqft: output.area_sqft,
           });
         }
       }
@@ -153,7 +155,8 @@ export default function CostSummary({ elevations, materials, settings }: CostSum
         // Manual items: use LIVE settings rates for glass & fabrication
         // so exports always reflect current pricing, not stale baked-in values.
         if (item.type === 'Glass') {
-          itemCost = item.quantityTotal * (settings.glass_per_sqft ?? 10.5);
+          const glassRate = settings.glass_per_sqft ?? 10.5;
+          itemCost = item.areaSqft != null ? item.quantityTotal * item.areaSqft * glassRate : item.quantityTotal * glassRate;
         } else if (item.type === 'Fabrication') {
           itemCost = item.quantityTotal * (settings.fabrication_cost_per_joint ?? 15.0);
         } else {

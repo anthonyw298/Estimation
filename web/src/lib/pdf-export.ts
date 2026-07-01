@@ -210,7 +210,8 @@ export async function exportToPdf(
         // Use live settings rates for glass/fab
         const qty = sumQty(output.quantity);
         if (cat === 'glass') {
-          runningGrandTotal += qty * (settings.glass_per_sqft ?? 10.5);
+          const glassRate = settings.glass_per_sqft ?? 10.5;
+          runningGrandTotal += output.area_sqft != null ? qty * output.area_sqft * glassRate : qty * glassRate;
         } else if (cat === 'fabrication') {
           runningGrandTotal += qty * (settings.fabrication_cost_per_joint ?? 15.0);
         } else {
@@ -345,7 +346,8 @@ export async function exportToPdf(
         if (item.manual || catKey === 'glass' || catKey === 'fabrication' || catKey === 'doors') {
           // Use live settings rates for glass/fab
           if (catKey === 'glass') {
-            cost = qty * (settings.glass_per_sqft ?? 10.5);
+            const glassRate = settings.glass_per_sqft ?? 10.5;
+            cost = item.area_sqft != null ? qty * item.area_sqft * glassRate : qty * glassRate;
           } else if (catKey === 'fabrication') {
             cost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
           } else {
@@ -568,7 +570,8 @@ export async function exportToPdf(
         // Use live settings rates for glass/fab
         const qty = sumQty(output.quantity);
         if (cat === 'glass') {
-          cost = qty * (settings.glass_per_sqft ?? 10.5);
+          const glassRate = settings.glass_per_sqft ?? 10.5;
+          cost = output.area_sqft != null ? qty * output.area_sqft * glassRate : qty * glassRate;
         } else if (cat === 'fabrication') {
           cost = qty * (settings.fabrication_cost_per_joint ?? 15.0);
         } else {
