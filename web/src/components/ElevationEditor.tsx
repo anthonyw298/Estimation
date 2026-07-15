@@ -900,13 +900,28 @@ export default function ElevationEditor({
   const groupedResults = useMemo(() => {
     if (!results) return [];
 
+    // Collapse per-DLO glass rows into a single total sqft line for display
+    const glassItems = results.filter(o => o.type === 'Glass');
+    const nonGlass = results.filter(o => o.type !== 'Glass');
+    let displayResults: CalculatedOutput[];
+    if (glassItems.length <= 1) {
+      displayResults = results;
+    } else {
+      const totalSqft = Math.round(glassItems.reduce((s, o) => s + (typeof o.quantity === 'number' ? o.quantity : 0), 0) * 100) / 100;
+      const totalCost = glassItems.reduce((s, o) => s + (o.price ?? 0), 0);
+      displayResults = [
+        ...nonGlass,
+        { description: 'Glass', quantity: totalSqft, part_number: 'N/A', type: 'Glass', price: totalCost, unit: 'sqft', manual: true },
+      ];
+    }
+
     // Classify each item into a section
     const groups: Record<string, CalculatedOutput[]> = {};
     const profileParts = new Set(Object.keys(PART_NUMBER_MAP['profiles'] ?? {}));
     const accessoryParts = new Set(Object.keys(PART_NUMBER_MAP['accessories'] ?? {}));
     const GASKET_PARTS = new Set(['E2-0052', 'E2-0053', 'E2-0065']);
 
-    for (const item of results) {
+    for (const item of displayResults) {
       if (item.type === 'Calculations') continue; // skip info-only rows
 
       let section = item.type; // default from calculation engine

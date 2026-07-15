@@ -7,7 +7,7 @@ import type {
   ReportConfig,
 } from '@/types';
 import { getUnitPriceByPart, getPriceByPart, applyMaterialImpactInMemory } from '@/lib/pricing';
-import { upgradeGlassOutputs } from '@/lib/export';
+import { upgradeGlassOutputs, summarizeGlassItems } from '@/lib/export';
 
 // ---------------------------------------------------------------------------
 // Helpers (shared with Excel export logic)
@@ -317,7 +317,11 @@ export async function exportToPdf(
     const elevMaterialsState: Record<string, ExtraMaterial> = {};
     const elevFinish = elev.finish || '';
 
-    const upgradedElevOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    const elevGlassOpts = reportConfig?.per_elevation_glass_options?.[elevName] ?? { display_mode: 'summary' as const };
+    const upgradedElevOutputs = summarizeGlassItems(
+      upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5),
+      elevGlassOpts,
+    );
 
     for (const [catKey, catTitle] of catOrder) {
       // Skip section if unchecked in stock list
@@ -565,7 +569,10 @@ export async function exportToPdf(
   for (const elev of Object.values(elevations)) {
     if (!elev.calculated_outputs) continue;
     const sumFinish = elev.finish || '';
-    const summaryOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    const summaryOutputs = summarizeGlassItems(
+      upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5),
+      reportConfig?.glass_options,
+    );
     for (const output of summaryOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;

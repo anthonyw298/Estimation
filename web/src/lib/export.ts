@@ -292,6 +292,51 @@ export function upgradeGlassOutputs(
 }
 
 /**
+ * Collapse glass pane rows into a single summary line (default export behavior).
+ * If show_pane_breakdown is true, returns per-pane rows instead.
+ */
+export function summarizeGlassItems(
+  outputs: CalculatedOutput[],
+  glassOptions?: { display_mode?: string; show_pane_count?: boolean; show_dimensions?: boolean; show_dlo?: boolean },
+): CalculatedOutput[] {
+  const glassItems = outputs.filter(o => o.type === 'Glass' || o.type === 'glass');
+  const nonGlass = outputs.filter(o => o.type !== 'Glass' && o.type !== 'glass');
+
+  if (glassItems.length === 0) return outputs;
+
+  const showBreakdown = glassOptions?.display_mode === 'by-pane';
+  if (showBreakdown) {
+    // By-pane: keep per-DLO rows as-is; total sqft shown in section footer
+    return outputs;
+  }
+
+  // Sum all glass quantities into one line
+  let totalSqft = 0;
+  for (const item of glassItems) {
+    const qty = typeof item.quantity === 'number' ? item.quantity : 0;
+    if (item.area_sqft != null) {
+      totalSqft += qty * item.area_sqft;
+    } else {
+      totalSqft += qty;
+    }
+  }
+
+  const totalCost = glassItems.reduce((s, o) => s + (o.price ?? 0), 0);
+  const roundedSqft = Math.round(totalSqft * 100) / 100;
+  const summaryItem: CalculatedOutput = {
+    description: 'Glass',
+    quantity: roundedSqft,
+    part_number: 'N/A',
+    type: 'Glass',
+    price: totalCost,
+    unit: 'sqft',
+    manual: true,
+  };
+
+  return [...nonGlass, summaryItem];
+}
+
+/**
  * Build a display string for quantities with units, matching the Python
  * _write_output_section display_qty_string logic.
  * Profiles: "8ft x 3", "3ft x2, 8ft x1"
@@ -625,7 +670,12 @@ function writeMaterialSection(
   };
   const totalsRow = sheet.getRow(row);
   let tCol = startCol;
-  totalsRow.getCell(tCol).value = `Total ${_titleMap[title] ?? title} Cost`;
+  // For Glass, append total sqft to the label (sum of all glass item quantities = sqft)
+  const glassTotalSqft = title === 'Glass'
+    ? catData.items.reduce((s, i) => s + (i.total_qty ?? 0), 0)
+    : 0;
+  const glassSqftSuffix = title === 'Glass' ? ` — ${glassTotalSqft.toFixed(2)} sqft` : '';
+  totalsRow.getCell(tCol).value = `Total ${_titleMap[title] ?? title} Cost${glassSqftSuffix}`;
   setBoldFont(totalsRow.getCell(tCol), 10);
   tCol++; tCol++; tCol++; // skip part #, qty
   if (showPerElev) tCol++;
@@ -826,6 +876,7 @@ function buildSummaryCategories(
   materials: Record<string, ExtraMaterial>,
   multiplier: number,
   settings?: ProjectSettings,
+  glassOptions?: { display_mode?: string },
 ): Record<string, SummaryCategory> {
   // Step 2: Aggregate quantities across all elevations by category and part number
   // (matching Python create_summary_sheet Steps 2 + 2.5)
@@ -855,13 +906,17 @@ function buildSummaryCategories(
       // Key construction matching Python logic
       const pn = output.part_number || '';
       const isProfileOrGasket = cat === 'profiles' || cat === 'gaskets' || cat === 'glass' || cat === 'fabrication' || cat === 'doors';
-      const key = isManual
-        ? (pn && pn !== 'N/A'
-          ? (isProfileOrGasket && elevFinish ? `MANUAL_${pn}-${elevFinish}` : `MANUAL_${pn}`)
-          : `MANUAL_NO_PN_${output.description}`)
-        : (cat === 'profiles' || cat === 'gaskets') && elevFinish
-          ? `${pn}-${elevFinish}`
-          : pn;
+      // Glass key: collapse to one row in summary mode; keep per-DLO rows in by-pane mode
+      const summaryGlassByPane = glassOptions?.display_mode === 'by-pane';
+      const key = cat === 'glass'
+        ? (summaryGlassByPane ? `MANUAL_NO_PN_${output.description}` : 'MANUAL_GLASS')
+        : isManual
+          ? (pn && pn !== 'N/A'
+            ? (isProfileOrGasket && elevFinish ? `MANUAL_${pn}-${elevFinish}` : `MANUAL_${pn}`)
+            : `MANUAL_NO_PN_${output.description}`)
+          : (cat === 'profiles' || cat === 'gaskets') && elevFinish
+            ? `${pn}-${elevFinish}`
+            : pn;
 
       const qty = sumQty(output.quantity);
       const qtyList = Array.isArray(output.quantity) ? output.quantity : [output.quantity];
@@ -876,8 +931,8 @@ function buildSummaryCategories(
       } else {
         partMap.set(key, {
           category: cat,
-          description: output.description,
-          part_number: pn,
+          description: (cat === 'glass' && !summaryGlassByPane) ? 'Glass' : output.description,
+          part_number: (cat === 'glass' && !summaryGlassByPane) ? 'N/A' : pn,
           total_qty: qty,
           quantity_list: [...qtyList],
           manual_total_cost: isManual ? (output.price ?? 0) : 0,
@@ -1015,6 +1070,12 @@ function buildSummaryCategories(
       const perPanePrice = data.area_sqft * (settings?.glass_per_sqft ?? 10.5);
       qtyStickReq = `$${perPanePrice.toFixed(2)}/pane`;
       quantityDisplay = `${data.total_qty} panes`;
+    } else if (data.category === 'glass' && data.area_sqft == null) {
+      // Consolidated glass row: total_qty = total sqft
+      quantityReqFt = 'N/A';
+      const rate = data.total_qty > 0 ? totalCost / data.total_qty : 0;
+      qtyStickReq = `$${rate.toFixed(2)}/sqft`;
+      quantityDisplay = `${data.total_qty.toFixed(2)} sqft`;
     } else {
       // glass (legacy/deduction), doors, fabrication/labor
       quantityReqFt = 'N/A';
@@ -1170,7 +1231,11 @@ function writeSummaryCategorySection(
 
   // Totals row
   const totRow = sheet.getRow(row);
-  totRow.getCell(startCol).value = `Total ${categoryLabel} Cost`;
+  const summaryGlassTotalSqft = catKey === 'glass'
+    ? cat.items.reduce((s, i) => s + (i.total_qty_required ?? 0), 0)
+    : 0;
+  const summaryGlassSuffix = catKey === 'glass' ? ` — ${summaryGlassTotalSqft.toFixed(2)} sqft` : '';
+  totRow.getCell(startCol).value = `Total ${categoryLabel} Cost${summaryGlassSuffix}`;
   setBoldFont(totRow.getCell(startCol), 10);
   // Total List Cost (col 5)
   totRow.getCell(startCol + 5).value = cat.total_original;
@@ -2090,7 +2155,7 @@ export async function exportToExcel(
   for (const [, elev] of Object.entries(elevations)) {
     if (!elev.calculated_outputs) continue;
     const elevFinish = elev.finish || '';
-    const prePassOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5);
+    const prePassOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, settings.glass_per_sqft ?? 10.5); // Keep detailed for cost calc
     for (const output of prePassOutputs) {
       const cat = classifyOutput(output);
       if (cat === 'calculations') continue;
@@ -2156,9 +2221,17 @@ export async function exportToExcel(
 
     // --- Material sections (starting col E) ---
     const glassRate = settings?.glass_per_sqft ?? 10.5;
-    const upgradedOutputs = upgradeGlassOutputs(elev.calculated_outputs, elev, glassRate);
+    // Per-elevation glass options are independent from summary glass options; default to summary (1 liner)
+    const elevGlassOpts = reportConfig?.per_elevation_glass_options?.[elevName] ?? { display_mode: 'summary' as const };
+    const upgradedOutputs = summarizeGlassItems(
+      upgradeGlassOutputs(elev.calculated_outputs, elev, glassRate),
+      elevGlassOpts,
+    );
     const upgradedSingleElev = elev.single_elevation_outputs
-      ? upgradeGlassOutputs(elev.single_elevation_outputs, elev, glassRate)
+      ? summarizeGlassItems(
+          upgradeGlassOutputs(elev.single_elevation_outputs, elev, glassRate),
+          elevGlassOpts,
+        )
       : undefined;
     const categories = buildElevationCategories(upgradedOutputs, elev.finish, totalCount, multiplier, upgradedSingleElev, settings);
     const startCol = 5;
@@ -2247,7 +2320,7 @@ export async function exportToExcel(
   const sumCostOverview = reportConfig?.summary_options?.cost_overview;
 
   // Build summary categories
-  const summaryCategories = buildSummaryCategories(elevations, materials, multiplier, settings);
+  const summaryCategories = buildSummaryCategories(elevations, materials, multiplier, settings, reportConfig?.glass_options);
 
   // Compute totals
   let totalListPrice = 0;

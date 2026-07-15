@@ -124,6 +124,13 @@ export default function ReportOptionsDialog({
   // State: collapsed panels
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
 
+  // State: glass display options — summary sheet uses glassDisplayMode; per-elevation uses elevGlassDisplayModes
+  const [glassDisplayMode, setGlassDisplayMode] = useState<'summary' | 'by-pane'>('summary');
+  const [glassShowPaneCount, setGlassShowPaneCount] = useState(false);
+  const [glassShowDimensions, setGlassShowDimensions] = useState(false);
+  const [glassShowDLO, setGlassShowDLO] = useState(false);
+  const [elevGlassDisplayModes, setElevGlassDisplayModes] = useState<Record<string, 'summary' | 'by-pane'>>({});
+
   // Sync inclusion / section / column state when elevations change (e.g. after async load)
   useEffect(() => {
     const names = Object.keys(elevations).sort();
@@ -238,6 +245,15 @@ export default function ReportOptionsDialog({
           columns: {},
           cost_overview: costOverview,
         },
+        glass_options: {
+          display_mode: glassDisplayMode,
+          show_pane_count: glassShowPaneCount,
+          show_dimensions: glassShowDimensions,
+          show_dlo: glassShowDLO,
+        },
+        per_elevation_glass_options: Object.fromEntries(
+          Object.keys(elevGlassDisplayModes).map(n => [n, { display_mode: elevGlassDisplayModes[n] }])
+        ),
       };
       await exportToExcel(projectName, filteredElevations, filteredDoors, settings, materials, reportConfig);
       onClose();
@@ -276,6 +292,15 @@ export default function ReportOptionsDialog({
           columns: {},
           cost_overview: costOverview,
         },
+        glass_options: {
+          display_mode: glassDisplayMode,
+          show_pane_count: glassShowPaneCount,
+          show_dimensions: glassShowDimensions,
+          show_dlo: glassShowDLO,
+        },
+        per_elevation_glass_options: Object.fromEntries(
+          Object.keys(elevGlassDisplayModes).map(n => [n, { display_mode: elevGlassDisplayModes[n] }])
+        ),
       };
       await exportToPdf(projectName, filteredElevations, filteredDoors, settings, materials, reportConfig);
       onClose();
@@ -387,6 +412,44 @@ export default function ReportOptionsDialog({
                           <span className="font-medium">{SECTION_LABELS[section]}</span>
                         </label>
 
+                        {/* Glass display options (shown when glass section is enabled) */}
+                        {section === 'glass' && sectionEnabled && (
+                          <div className="ml-6 mt-2 mb-1 p-2 rounded bg-[#0c0c18] border border-[#1e1e2a] space-y-2">
+                            <p className="text-[10px] text-[#ffffff] uppercase tracking-wider font-semibold">Glass Display</p>
+                            <div className="flex flex-col gap-1.5">
+                              {(['summary', 'by-pane'] as const).map(mode => (
+                                <label key={mode} className="flex items-center gap-2 text-[10px] text-[#ffffff] cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`glass-mode-${name}`}
+                                    checked={(elevGlassDisplayModes[name] ?? 'summary') === mode}
+                                    onChange={() => setElevGlassDisplayModes(prev => ({ ...prev, [name]: mode }))}
+                                    className="h-3 w-3 accent-blue-500"
+                                  />
+                                  {mode === 'summary' ? 'Total sqft (1 line)' : 'By pane (show count + sqft per group)'}
+                                </label>
+                              ))}
+                            </div>
+                            <div className="pt-1 border-t border-[#1e1e2a] flex flex-col gap-1.5">
+                              {[
+                                { key: 'pane_count', label: 'Show pane count', state: glassShowPaneCount, setter: setGlassShowPaneCount },
+                                { key: 'dimensions', label: 'Show pane dimensions (W × H)', state: glassShowDimensions, setter: setGlassShowDimensions },
+                                { key: 'dlo', label: 'Show DLO dimensions', state: glassShowDLO, setter: setGlassShowDLO },
+                              ].map(({ key, label, state, setter }) => (
+                                <label key={key} className="flex items-center gap-2 text-[10px] text-[#ffffff] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={state}
+                                    onChange={e => setter(e.target.checked)}
+                                    className="h-3 w-3 rounded border-[#2a2a3a] bg-[#0c0c12] text-blue-500 accent-blue-500"
+                                  />
+                                  {label}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Column toggles (only for material sections when enabled) */}
                         {isMaterial && sectionEnabled && (
                           <div className="ml-6 mt-1.5 mb-1 grid grid-cols-2 gap-1">
@@ -471,6 +534,27 @@ export default function ReportOptionsDialog({
                       </label>
                     ))}
                   </div>
+
+                  {/* Glass display options in summary */}
+                  {(summarySections['glass'] ?? true) && (
+                    <div className="mt-2 ml-1 p-2 rounded bg-[#0c0c18] border border-[#1e1e2a] space-y-2">
+                      <p className="text-[10px] text-[#ffffff] uppercase tracking-wider font-semibold">Glass Display</p>
+                      <div className="flex flex-col gap-1.5">
+                        {(['summary', 'by-pane'] as const).map(mode => (
+                          <label key={mode} className="flex items-center gap-2 text-[10px] text-[#ffffff] cursor-pointer">
+                            <input
+                              type="radio"
+                              name="glass-mode-summary"
+                              checked={glassDisplayMode === mode}
+                              onChange={() => setGlassDisplayMode(mode)}
+                              className="h-3 w-3 accent-blue-500"
+                            />
+                            {mode === 'summary' ? 'Total sqft (1 line)' : 'By pane (show count + sqft per group)'}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

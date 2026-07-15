@@ -363,13 +363,13 @@ export function calculateYes45tuCenterSetQuantities(
       const paneAreaSqft = (glassW * glassH) / 144;
       const totalPanes = group.count * totalCount;
       glassOutputs.push({
-        description: `Glass Pane — DLO: ${group.width.toFixed(2)}" × ${group.height.toFixed(2)}"`,
-        quantity: totalPanes,
+        description: `Glass Pane — DLO: ${group.width.toFixed(2)}" × ${group.height.toFixed(2)}" (${totalPanes} pane${totalPanes !== 1 ? 's' : ''})`,
+        quantity: Math.round(paneAreaSqft * totalPanes * 100) / 100,
         part_number: 'N/A',
         type: 'Glass',
         price: glassRate,
-        unit: 'panes',
-        area_sqft: paneAreaSqft,
+        unit: 'sqft',
+        pane_count: totalPanes,
         manual: true,
       });
     }

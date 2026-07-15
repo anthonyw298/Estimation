@@ -39,7 +39,8 @@ export interface CalculatedOutput {
   message?: string;
   hardware?: Record<string, boolean>;
   Style?: string;
-  area_sqft?: number; // Per-unit area in sqft (for glass pane items where quantity = pane count)
+  area_sqft?: number; // Per-unit area in sqft (for glass pane items)
+  pane_count?: number; // Number of panes (for display)
 }
 
 // Door configuration
@@ -141,6 +142,15 @@ export interface ReportConfig {
   summary_included: boolean;
   per_elevation_sections: Record<string, Record<string, boolean>>;
   per_elevation_columns: Record<string, Record<string, Record<string, boolean>>>;
+  glass_options?: {
+    display_mode: 'summary' | 'by-pane';
+    show_pane_count: boolean;
+    show_dimensions: boolean;
+    show_dlo: boolean;
+  };
+  per_elevation_glass_options?: Record<string, {
+    display_mode: 'summary' | 'by-pane';
+  }>;
   summary_options: {
     sections: Record<string, boolean>;
     columns: Record<string, Record<string, boolean>>;

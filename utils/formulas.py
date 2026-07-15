@@ -543,6 +543,84 @@ def calculate_total_door_area(doors: list) -> float:
     return total_area
 
 
+def validate_door_fits(door, total_glass_area: float) -> dict:
+    """
+    Validate if a door opening would make glass area go negative.
+
+    Args:
+        door (dict): Door with 'size', 'count', 'stile' keys.
+        total_glass_area (float): Total glass area in sqft (from calculate_total_glass).
+
+    Returns:
+        dict: {'valid': bool, 'message': str, 'glass_after': float}
+    """
+    deductions = {
+        "Narrow": {"height": 13.5625, "width": 4.875},
+        "Medium": {"height": 15.1875, "width": 7.625},
+        "Wide": {"height": 16.25, "width": 10.625},
+    }
+
+    stile = door.get("stile", "").title()
+    if stile not in deductions:
+        return {"valid": False, "message": "Invalid stile type", "glass_after": total_glass_area}
+
+    size_str = door.get("size", "")
+    if not size_str:
+        return {"valid": False, "message": "No door size specified", "glass_after": total_glass_area}
+
+    # Parse door size
+    size_match = re.match(r"\s*(\d+)' *[xX] *(\d+)'", size_str)
+    if not size_match:
+        return {"valid": False, "message": f"Invalid door size format: {size_str}", "glass_after": total_glass_area}
+
+    opening_width_ft = int(size_match.group(1))
+    opening_height_ft = int(size_match.group(2))
+    opening_width_in = opening_width_ft * 12
+    opening_height_in = opening_height_ft * 12
+
+    # Calculate door glass area
+    if opening_width_ft == 6:
+        glass_width = (opening_width_in / 2) - deductions[stile]["width"]
+    else:
+        glass_width = opening_width_in - deductions[stile]["width"]
+
+    glass_height = opening_height_in - deductions[stile]["height"]
+
+    if glass_width <= 0 or glass_height <= 0:
+        return {
+            "valid": False,
+            "message": f"Door stile '{stile}' too large for {size_str} opening",
+            "glass_after": total_glass_area
+        }
+
+    door_count = door.get("count", 1)
+    door_glass_area = (glass_width * glass_height) / 144 * door_count
+    glass_after = round(total_glass_area - door_glass_area, 2)
+
+    if glass_after < 0:
+        return {
+            "valid": False,
+            "message": f"⚠️ CAUTION: Door opening ({door_glass_area:.2f} sqft) exceeds available glass ({total_glass_area:.2f} sqft). Result: {glass_after:.2f} sqft (NEGATIVE)",
+            "glass_after": glass_after,
+            "door_area": door_glass_area
+        }
+    elif glass_after < 0.5:
+        return {
+            "valid": True,
+            "message": f"⚠️ WARNING: Very little glass remaining ({glass_after:.2f} sqft). Door opening: {door_glass_area:.2f} sqft",
+            "glass_after": glass_after,
+            "door_area": door_glass_area,
+            "is_warning": True
+        }
+
+    return {
+        "valid": True,
+        "message": f"Door fits. Glass remaining: {glass_after:.2f} sqft",
+        "glass_after": glass_after,
+        "door_area": door_glass_area
+    }
+
+
 def calculate_glass_to_add_back(doors):
     """
     Calculate total glass back area in sqft based on door sizes.
