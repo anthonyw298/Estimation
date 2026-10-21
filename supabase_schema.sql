@@ -49,6 +49,25 @@ CREATE TABLE IF NOT EXISTS materials (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Explicit Data API privileges. Keep these in sync with migrations that create
+-- or recreate public tables. The web app uses the anon key for CRUD operations.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    public.projects,
+    public.elevations,
+    public.settings,
+    public.doors,
+    public.materials
+TO anon, authenticated, service_role;
+
+-- SERIAL columns use sequences, which need their own privileges for inserts.
+GRANT USAGE, SELECT ON SEQUENCE
+    public.projects_id_seq,
+    public.elevations_id_seq,
+    public.settings_id_seq,
+    public.doors_id_seq,
+    public.materials_id_seq
+TO anon, authenticated, service_role;
+
 -- Enable Row Level Security (optional but recommended)
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE elevations ENABLE ROW LEVEL SECURITY;
@@ -67,4 +86,3 @@ CREATE POLICY "Allow all access to materials" ON materials FOR ALL USING (true);
 CREATE INDEX IF NOT EXISTS idx_elevations_project ON elevations(project_name);
 CREATE INDEX IF NOT EXISTS idx_doors_project ON doors(project_name);
 CREATE INDEX IF NOT EXISTS idx_doors_elevation ON doors(project_name, elevation_name);
-
